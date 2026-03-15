@@ -1,24 +1,15 @@
 name: Deploy to GitHub Pages
 
-# Когда запускать этот workflow
 on:
-  # При пуше в ветку main
   push:
     branches: [ "main" ]
-  # Можно также настроить на master, если у тебя master
-  # push:
-  #   branches: [ "master" ]
-  
-  # Возможность запустить вручную
   workflow_dispatch:
 
-# Права для деплоя
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
-# Параллельный деплой запрещён
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -28,29 +19,27 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Клонируем репозиторий
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2. Устанавливаем Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
-      # 3. Устанавливаем зависимости
       - name: Install dependencies
         run: npm ci
 
-      # 4. Собираем проект
       - name: Build project
         run: npm run build
 
-      # 5. Деплоим на GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          publish_branch: gh-pages  # Ветка, куда пушить готовый сайт
+          publish_branch: gh-pages
+          force_orphan: true
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
