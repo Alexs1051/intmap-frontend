@@ -16,7 +16,7 @@ class App {
     this._sceneManager = SceneManager.getInstance();
 
     // Загружаем здание и запускаем анимацию камеры
-    this._sceneManager.loadBuilding("/models/building.glb").then(() => {
+    this._sceneManager.loadBuilding("./models/building.glb").then(() => {
       console.log("🚀 Приложение запущено");
     });
 

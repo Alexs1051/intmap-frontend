@@ -1,5 +1,6 @@
 const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
+const CopyPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   entry: path.resolve(__dirname, "src/app.ts"),
@@ -32,6 +33,11 @@ module.exports = {
     new HtmlWebpackPlugin({
       inject: true,
       template: path.resolve(__dirname, "public/index.html"),
+    }),
+    new CopyPlugin({
+      patterns: [
+        { from: "public/models", to: "models" },
+      ],
     }),
   ],
   mode: "development",
