@@ -6,12 +6,14 @@ export class LoadingScreen {
   private _isVisible: boolean = false;
 
   constructor() {
+    console.log("📦 Создаём LoadingScreen");
     this.createLoadingScreen();
   }
 
   private createLoadingScreen(): void {
     // Основной контейнер
     this._container = document.createElement('div');
+    this._container.id = 'loading-screen';
     this._container.style.cssText = `
       position: absolute;
       top: 0;
@@ -88,12 +90,14 @@ export class LoadingScreen {
     this._container.appendChild(this._statusText);
 
     document.body.appendChild(this._container);
+    console.log("✅ LoadingScreen создан и добавлен в DOM");
   }
 
   /**
    * Показать экран загрузки
    */
   public show(): void {
+    console.log("👁️ Показываем LoadingScreen");
     this._isVisible = true;
     this._container.style.display = 'flex';
     this._container.style.opacity = '1';
@@ -103,31 +107,41 @@ export class LoadingScreen {
    * Скрыть экран загрузки
    */
   public hide(): void {
+    console.log("👁️ Скрываем LoadingScreen");
     this._container.style.opacity = '0';
     setTimeout(() => {
       this._container.style.display = 'none';
       this._isVisible = false;
+      console.log("✅ LoadingScreen скрыт");
     }, 500);
   }
 
   /**
    * Обновить прогресс загрузки
    */
-  public updateProgress(progress: number, status: string = ''): void {
+  public updateProgress(progress: number): void {
     const percent = Math.min(100, Math.max(0, Math.round(progress * 100)));
+    console.log(`📊 updateProgress: ${percent}%`);
     this._progressBar.style.width = `${percent}%`;
     this._progressText.textContent = `${percent}%`;
-    
-    if (status) {
-      this._statusText.textContent = status;
-    }
   }
 
   /**
    * Установить статус загрузки
    */
   public setStatus(status: string): void {
+    console.log(`📝 setStatus: ${status}`);
     this._statusText.textContent = status;
+  }
+
+  /**
+   * Очистить ресурсы и удалить DOM элементы
+   */
+  public dispose(): void {
+    console.log("🗑️ LoadingScreen disposed");
+    if (this._container && this._container.parentNode) {
+      this._container.parentNode.removeChild(this._container);
+    }
   }
 
   /**

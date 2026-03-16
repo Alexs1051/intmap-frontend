@@ -71,7 +71,10 @@ export class MarkerManager {
     if (this._selectedMarker) {
       this._selectedMarker.setSelected(false);
       this._selectedMarker = null;
-      console.log("🔽 Выделение сброшено");
+      
+      if (this._onMarkerSelectedCallback) {
+        this._onMarkerSelectedCallback(null);
+      }
     }
   }
 
@@ -145,19 +148,20 @@ export class MarkerManager {
   private handleMarkerClick(marker: Marker): void {
     console.log(`📍 Клик по маркеру: ${marker.id} (${marker.data.title})`);
     
-    // Если кликнули по тому же маркеру, который уже выделен - ничего не делаем
     if (this._selectedMarker === marker) {
       return;
     }
     
-    // Снимаем выделение с предыдущего маркера
     if (this._selectedMarker) {
       this._selectedMarker.setSelected(false);
     }
     
-    // Выделяем новый маркер
     marker.setSelected(true);
     this._selectedMarker = marker;
+    
+    if (this._onMarkerSelectedCallback) {
+      this._onMarkerSelectedCallback(marker);
+    }
   }
 
   private handleMarkerDoubleClick(marker: Marker): void {
@@ -309,5 +313,11 @@ export class MarkerManager {
    */
   public get isInitialized(): boolean {
     return this._isInitialized;
+  }
+
+  private _onMarkerSelectedCallback: ((marker: Marker | null) => void) | null = null;
+
+  public setOnMarkerSelected(callback: (marker: Marker | null) => void): void {
+    this._onMarkerSelectedCallback = callback;
   }
 }

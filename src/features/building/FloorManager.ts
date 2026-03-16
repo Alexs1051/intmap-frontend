@@ -42,8 +42,11 @@ export class FloorManager {
       });
     }
 
-    // ВАЖНО: Этажи всегда в непрозрачной группе
     element.mesh.renderingGroupId = 0;
+    
+    // Сохраняем оригинальную позицию
+    if (!element.mesh.metadata) element.mesh.metadata = {};
+    element.mesh.metadata.originalPosition = element.mesh.position.clone();
     
     this._floors.get(floorNumber)!.elements.push(element);
     
@@ -100,6 +103,7 @@ export class FloorManager {
     // 3. Показываем все остальные элементы
     this._floors.forEach(floor => {
       floor.elements.forEach(element => {
+        element.mesh.setEnabled(true);
         element.mesh.isVisible = true;
         element.isVisible = true;
       });

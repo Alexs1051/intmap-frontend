@@ -4,6 +4,7 @@ import { BuildingParser } from "./BuildingParser";
 import { BuildingData, BuildingElement } from "./types";
 import { FloorManager } from "./FloorManager";
 import { WallManager } from "./WallManager";
+import { BuildingAnimator } from "./BuildingAnimator";
 
 export class BuildingManager {
   private static _instance: BuildingManager;
@@ -15,15 +16,16 @@ export class BuildingManager {
   // Менеджеры
   private _floorManager: FloorManager;
   private _wallManager: WallManager;
+  private _animator: BuildingAnimator;
 
   private constructor(scene: Scene) {
     this._scene = scene;
     this._loader = new BuildingLoader(scene);
     this._parser = new BuildingParser();
     
-    // Инициализируем дочерние менеджеры (пока без данных)
     this._floorManager = FloorManager.getInstance(scene);
     this._wallManager = WallManager.getInstance(scene);
+    this._animator = new BuildingAnimator(scene);
   }
 
   public static getInstance(scene: Scene): BuildingManager {
@@ -34,7 +36,7 @@ export class BuildingManager {
   }
 
   /**
-   * Загрузка модели здания с прогрессом
+   * Загрузка модели здания с прогрессом (без анимации)
    */
   public async loadBuilding(
     modelUrl: string, 
@@ -43,24 +45,19 @@ export class BuildingManager {
     try {
       console.log("🏗 Загрузка здания...");
       
-      // 0-40%: Загрузка модели
       if (onProgress) onProgress(0.1);
       
       const loadResult = await this._loader.loadModel(modelUrl, (fileProgress) => {
-        // Прогресс от 0.1 до 0.4
         if (onProgress) onProgress(0.1 + fileProgress * 0.3);
       });
       
-      // 40-60%: Парсинг мешей
       if (onProgress) onProgress(0.4);
       this._data = this._parser.parseMeshes(loadResult.meshes);
       
-      // 60-80%: Инициализация менеджеров
       if (onProgress) onProgress(0.6);
       this.initializeManagers();
       
-      // 80-100%: Показываем всё здание
-      if (onProgress) onProgress(0.8);
+      // ВАЖНО: Сразу показываем всё здание (без анимации)
       this._floorManager.showAllFloors();
       
       if (onProgress) onProgress(1.0);
@@ -74,71 +71,77 @@ export class BuildingManager {
   }
 
   /**
-   * Инициализация менеджеров данными
+   * Анимация строительства (запускается отдельно)
    */
-  private initializeManagers(): void {
+  public async animateConstruction(): Promise<void> {
     if (!this._data) {
-      console.warn("⚠️ Нет данных для инициализации");
+      console.warn("⚠️ Нет данных для анимации");
       return;
     }
 
-    console.log("🏗 Инициализация менеджеров...");
-    console.log(`  - Всего элементов: ${this._data.elements.size}`);
-    console.log(`  - Найдено этажей в _data.floors: ${this._data.floors.size}`);
-    console.log(`  - Найдено нод этажей: ${this._data.floorNodes.size}`);
+    console.log("🎬 Запуск анимации строительства...");
 
-    // 1. Сначала добавляем этажи
-    let floorsAdded = 0;
-    this._data.floors.forEach((elements, floorNumber) => {
-      console.log(`  → Обработка этажа ${floorNumber}, элементов: ${elements.length}`);
-      
-      // Получаем родительскую ноду
-      const floorNode = this._data?.floorNodes.get(floorNumber);
-      
-      // Добавляем каждый элемент этажа
-      elements.forEach(element => {
-        // Важно: передаём и элемент, и ноду
-        this._floorManager.addFloor(element, floorNode);
-      });
-      
-      floorsAdded++;
+    // Сохраняем текущие позиции как оригинальные
+    this._data.elements.forEach(element => {
+      if (!element.mesh.metadata) element.mesh.metadata = {};
+      element.mesh.metadata.originalPosition = element.mesh.position.clone();
     });
 
-    // 2. Добавляем стены
-    let wallsAdded = 0;
-    this._data.walls.forEach(element => {
-      this._wallManager.addWall(element);
-      wallsAdded++;
+    // Группируем стены по этажам
+    const wallsByFloor = new Map<number, BuildingElement[]>();
+    this._data.walls.forEach(wall => {
+      if (wall.floorNumber) {
+        if (!wallsByFloor.has(wall.floorNumber)) {
+          wallsByFloor.set(wall.floorNumber, []);
+        }
+        wallsByFloor.get(wall.floorNumber)!.push(wall);
+      }
     });
 
-    console.log(`✅ Менеджеры инициализированы. Добавлено этажей: ${floorsAdded}, стен: ${wallsAdded}`);
-    
-    // 3. Проверяем, что добавилось в FloorManager
-    console.log(`  → FloorManager содержит этажей: ${this._floorManager.floorCount}`);
+    // Запускаем анимацию (элементы уже видимы, аниматор сам их поднимет и опустит)
+    await this._animator.animateConstruction(
+      this._data.floors,
+      wallsByFloor
+    );
+
+    console.log("✅ Анимация строительства завершена");
   }
 
-  /**
-   * Перезагрузка модели (если нужно сменить здание)
-   */
+  private initializeManagers(): void {
+    if (!this._data) return;
+
+    console.log("🏗 Инициализация менеджеров...");
+
+    this._data.floors.forEach((elements, floorNumber) => {
+      const floorNode = this._data?.floorNodes.get(floorNumber);
+      elements.forEach(element => {
+        this._floorManager.addFloor(element, floorNode);
+      });
+    });
+
+    this._data.walls.forEach(element => {
+      this._wallManager.addWall(element);
+    });
+
+    console.log(`✅ Менеджеры инициализированы. Этажей: ${this._floorManager.floorCount}, стен: ${this._wallManager.count}`);
+  }
+
   public async reloadBuilding(modelUrl: string, onProgress?: (progress: number) => void): Promise<void> {
-    // Очищаем старые данные
     this._loader.unloadModel();
-    this._data = null;
     
-    // Загружаем новую модель
+    if (this._data) {
+      const allElements = Array.from(this._data.elements.values());
+      this._animator.resetAllElements(allElements);
+    }
+    
+    this._data = null;
     await this.loadBuilding(modelUrl, onProgress);
   }
 
-  /**
-   * Получить элемент по имени
-   */
   public getElement(name: string): BuildingElement | undefined {
     return this._data?.elements.get(name);
   }
 
-  /**
-   * Получить все элементы определённого типа
-   */
   public getElementsByType(type: string): BuildingElement[] {
     if (!this._data) return [];
     return Array.from(this._data.elements.values()).filter(el => el.type === type);
@@ -159,5 +162,9 @@ export class BuildingManager {
 
   public get data(): BuildingData | null {
     return this._data;
+  }
+
+  public get animator(): BuildingAnimator {
+    return this._animator;
   }
 }

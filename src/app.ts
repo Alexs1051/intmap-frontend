@@ -1,51 +1,46 @@
 import { BabylonEngine } from "./core/engine/BabylonEngine";
 import { SceneManager } from "./core/scene/SceneManager";
-import { LoadingScreen } from "./ui/LoadingScreen";
-import { ConnectionScreen } from "./ui/ConnectionScreen";
-import { FPSCounter } from "./utils/FPSCounter";
+import { UIManager } from "./features/ui/UIManager";
+import { ConnectionScreen } from "./features/ui/components/ConnectionScreen";
+import { FPSCounter } from "./features/ui/components/FPSCounter";
 
 class App {
   private _engine: BabylonEngine;
   private _sceneManager: SceneManager;
   private _fpsCounter: FPSCounter;
-  private _loadingScreen: LoadingScreen;
+  private _uiManager: UIManager;
   private _connectionScreen: ConnectionScreen;
   private _modelUrl: string = '/models/building.glb';
   
-  // Таймер для производительности
   private _lastTime: number = performance.now();
 
   constructor() {
-    // Создаём экраны
-    this._loadingScreen = new LoadingScreen();
+    console.log("📱 Создаём UIManager");
+    this._uiManager = UIManager.getInstance();
     this._connectionScreen = new ConnectionScreen();
     
-    // Показываем экран загрузки
-    this._loadingScreen.show();
-    this._loadingScreen.setStatus('Инициализация движка...');
-    this._loadingScreen.updateProgress(0);
+    // Показываем экран загрузки через UIManager
+    this._uiManager.showLoading('Инициализация движка...');
+    this._uiManager.updateLoadingProgress(0);
 
-    // Инициализируем движок
+    console.log("⚙️ Инициализируем BabylonEngine");
     this._engine = BabylonEngine.getInstance();
-    this._sceneManager = SceneManager.getInstance();
+    
+    // Передаём UIManager в SceneManager
+    console.log("📤 Передаём UIManager в SceneManager");
+    this._sceneManager = SceneManager.getInstance(this._uiManager);
+    
     this._fpsCounter = new FPSCounter();
 
-    // Настраиваем обработку соединения
     this.setupConnectionHandling();
-
-    // Загружаем все ресурсы
     this.loadAllResources();
 
-    // Запускаем рендер-цикл с замером производительности
     this._engine.runRenderLoop(() => {
       const now = performance.now();
-      const deltaTime = (now - this._lastTime) / 1000; // в секундах
+      const deltaTime = (now - this._lastTime) / 1000;
       this._lastTime = now;
       
-      // Рендерим сцену
       this._sceneManager.render(deltaTime);
-      
-      // Обновляем FPS счётчик
       this._fpsCounter.update();
     });
 
@@ -66,7 +61,6 @@ class App {
   }
 
   private setupConnectionHandling(): void {
-    // Обработка потери интернет-соединения
     window.addEventListener('offline', () => {
       console.warn('⚠️ Интернет соединение потеряно');
       this._connectionScreen.show('Интернет соединение потеряно');
@@ -79,13 +73,11 @@ class App {
       }
     });
 
-    // Кнопка повторной попытки
     this._connectionScreen.setRetryCallback(() => {
       this._connectionScreen.hide();
       this.loadAllResources();
     });
 
-    // Проверка при старте
     if (!navigator.onLine) {
       this._connectionScreen.show('Нет интернет соединения');
     }
@@ -93,40 +85,32 @@ class App {
 
   private async loadAllResources(): Promise<void> {
     try {
-      this._loadingScreen.show();
-      this._loadingScreen.setStatus('Проверка соединения...');
-      this._loadingScreen.updateProgress(0);
-
-      // 1. Проверяем доступность модели
+      console.log("📥 Начинаем загрузку ресурсов...");
+      
       const isAvailable = await this.checkModelAvailability(this._modelUrl);
       
       if (!isAvailable) {
-        // Если модель недоступна - показываем экран ошибки
-        this._loadingScreen.hide();
+        console.error("❌ Модель недоступна");
+        this._uiManager.hideLoading();
         this._connectionScreen.showError('Сервер с моделью недоступен. Проверьте соединение.');
         return;
       }
 
-      // 2. Если модель доступна - продолжаем загрузку
-      this._loadingScreen.setStatus('Загрузка ресурсов...');
+      // Загружаем ресурсы
+      await this._sceneManager.loadAll(this._modelUrl);
       
-      await this._sceneManager.loadAll(
-        this._modelUrl,
-        (progress: number, stage: string) => {
-          this._loadingScreen.updateProgress(progress);
-          this._loadingScreen.setStatus(stage);
-        }
-      );
+      // Скрываем экран загрузки
+      console.log("✅ Загрузка завершена, скрываем экран");
+      await this._uiManager.hideLoading();
       
-      // 3. Успешная загрузка
-      await this._loadingScreen.hide();
+      // Показываем сцену с анимациями
+      console.log("🎬 Запуск анимаций сцены");
       await this._sceneManager.showScene();
       
     } catch (error) {
       console.error('❌ Ошибка загрузки:', error);
-      this._loadingScreen.hide();
+      this._uiManager.hideLoading();
       
-      // Определяем тип ошибки
       if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
         this._connectionScreen.showError('Сервер недоступен. Проверьте соединение.');
       } else {
@@ -135,9 +119,6 @@ class App {
     }
   }
 
-  /**
-   * Проверка доступности модели на сервере
-   */
   private async checkModelAvailability(url: string): Promise<boolean> {
     try {
       const response = await fetch(url, { method: 'HEAD' });
@@ -149,7 +130,6 @@ class App {
   }
 }
 
-// Запускаем приложение
 window.addEventListener('load', () => {
   new App();
 });

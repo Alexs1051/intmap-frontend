@@ -164,4 +164,21 @@ export class ConnectionScreen {
   public get isVisible(): boolean {
     return this._isVisible;
   }
+
+  /**
+   * Полное удаление компонента
+   */
+  public dispose(): void {
+    // Удаляем все обработчики событий
+    this._retryButton.removeEventListener('click', this._retryCallback || (() => {}));
+    
+    // Удаляем элемент из DOM
+    if (this._container && this._container.parentNode) {
+      this._container.parentNode.removeChild(this._container);
+    }
+    
+    // Очищаем ссылки
+    this._retryCallback = null;
+    console.log("ConnectionScreen disposed");
+  }
 }

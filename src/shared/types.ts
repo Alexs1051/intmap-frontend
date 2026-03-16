@@ -9,6 +9,7 @@ export interface UIEvent {
 export enum UIEventType {
   CAMERA_MODE_TOGGLE,
   RESET_CAMERA,
+  SEARCH_TOGGLE,
   VIEW_MODE_TOGGLE,
   WALLS_TRANSPARENCY_TOGGLE,
   NEXT_FLOOR,

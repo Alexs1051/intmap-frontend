@@ -73,6 +73,7 @@ export class WallManager {
   public showAllWalls(): void {
     console.log(`  🧱 Показываю все стены (${this._walls.length})`);
     this._walls.forEach(wall => {
+      wall.mesh.setEnabled(true);
       wall.mesh.isVisible = true;
       wall.isVisible = true;
     });

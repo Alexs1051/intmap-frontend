@@ -8,17 +8,27 @@ module.exports = {
     filename: "js/bundle.js",
     path: path.resolve(__dirname, "dist"),
     clean: true,
+    publicPath: '/',
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
   },
   devServer: {
-    static: path.resolve(__dirname, "public"),
+    static: [
+      {
+        directory: path.resolve(__dirname, "public"),
+        publicPath: "/",
+      },
+      {
+        directory: path.resolve(__dirname, "src/styles"),
+        publicPath: "/styles",
+      },
+    ],
     port: 8080,
     hot: true,
-    devMiddleware: {
-      publicPath: "/",
-    },
     client: {
       overlay: {
         errors: true,
@@ -26,19 +36,52 @@ module.exports = {
       },
       logging: 'error',
     },
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+      "Access-Control-Allow-Headers": "X-Requested-With, content-type, Authorization",
+    },
   },
   module: {
     rules: [
       {
         test: /\.tsx?$/,
-        use: "ts-loader",
+        use: [
+          {
+            loader: "ts-loader",
+            options: {
+              transpileOnly: true,
+              compilerOptions: {
+                module: "esnext",
+              },
+            },
+          },
+        ],
         exclude: /node_modules/,
       },
-            {
+      {
         test: /\.js$/,
         use: ["source-map-loader"],
         enforce: "pre",
         exclude: /node_modules\/@babylonjs/,
+      },
+      {
+        test: /\.css$/,
+        use: ["style-loader", "css-loader"],
+      },
+      {
+        test: /\.(png|svg|jpg|jpeg|gif|ico)$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'assets/images/[name][ext]',
+        },
+      },
+      {
+        test: /\.(woff|woff2|eot|ttf|otf)$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'assets/fonts/[name][ext]',
+        },
       },
     ],
   },
@@ -52,12 +95,24 @@ module.exports = {
     new HtmlWebpackPlugin({
       inject: true,
       template: path.resolve(__dirname, "public/index.html"),
+      filename: "index.html",
     }),
     new CopyPlugin({
       patterns: [
-        { from: "public/models", to: "models" },
+        { from: "public/models", to: "models", noErrorOnMissing: true },
+        { from: "src/styles", to: "styles", noErrorOnMissing: true },
       ],
     }),
   ],
+  devtool: "source-map",
   mode: "development",
+  stats: {
+    modules: false,
+    children: false,
+    chunks: false,
+    chunkModules: false,
+  },
+  performance: {
+    hints: false,
+  },
 };
