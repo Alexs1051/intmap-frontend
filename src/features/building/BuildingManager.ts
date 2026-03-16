@@ -34,25 +34,42 @@ export class BuildingManager {
   }
 
   /**
-   * Загрузка модели здания
+   * Загрузка модели здания с прогрессом
    */
-  public async loadBuilding(modelUrl: string): Promise<void> {
+  public async loadBuilding(
+    modelUrl: string, 
+    onProgress?: (progress: number) => void
+  ): Promise<void> {
     try {
       console.log("🏗 Загрузка здания...");
       
-      const loadResult = await this._loader.loadModel(modelUrl);
+      // 0-40%: Загрузка модели
+      if (onProgress) onProgress(0.1);
+      
+      const loadResult = await this._loader.loadModel(modelUrl, (fileProgress) => {
+        // Прогресс от 0.1 до 0.4
+        if (onProgress) onProgress(0.1 + fileProgress * 0.3);
+      });
+      
+      // 40-60%: Парсинг мешей
+      if (onProgress) onProgress(0.4);
       this._data = this._parser.parseMeshes(loadResult.meshes);
       
-      // Инициализируем менеджеры
+      // 60-80%: Инициализация менеджеров
+      if (onProgress) onProgress(0.6);
       this.initializeManagers();
       
-      console.log(`✅ Здание загружено. Элементов: ${this._data.elements.size}`);
-      
-      // Показываем всё здание при загрузке
+      // 80-100%: Показываем всё здание
+      if (onProgress) onProgress(0.8);
       this._floorManager.showAllFloors();
+      
+      if (onProgress) onProgress(1.0);
+      
+      console.log(`✅ Здание загружено. Элементов: ${this._data.elements.size}`);
 
     } catch (error) {
       console.error("❌ Ошибка загрузки здания:", error);
+      throw error;
     }
   }
 
@@ -103,13 +120,13 @@ export class BuildingManager {
   /**
    * Перезагрузка модели (если нужно сменить здание)
    */
-  public async reloadBuilding(modelUrl: string): Promise<void> {
+  public async reloadBuilding(modelUrl: string, onProgress?: (progress: number) => void): Promise<void> {
     // Очищаем старые данные
     this._loader.unloadModel();
     this._data = null;
     
     // Загружаем новую модель
-    await this.loadBuilding(modelUrl);
+    await this.loadBuilding(modelUrl, onProgress);
   }
 
   /**

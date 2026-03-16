@@ -14,9 +14,12 @@ export class BuildingLoader {
   }
 
   /**
-   * Загрузка модели из файла
+   * Загрузка модели из файла с прогрессом
    */
-  public async loadModel(modelUrl: string): Promise<LoadResult> {
+  public async loadModel(
+    modelUrl: string, 
+    onProgress?: (progress: number) => void
+  ): Promise<LoadResult> {
     try {
       console.log(`📦 Загрузка модели: ${modelUrl}`);
       
@@ -25,7 +28,14 @@ export class BuildingLoader {
         "",
         modelUrl,
         this._scene,
-        undefined,
+        (event) => {
+          // Событие прогресса загрузки
+          if (event.lengthComputable && onProgress) {
+            const progress = event.loaded / event.total;
+            onProgress(progress);
+            console.log(`📊 Прогресс загрузки модели: ${Math.round(progress * 100)}%`);
+          }
+        },
         ".glb"
       );
 
@@ -47,7 +57,7 @@ export class BuildingLoader {
   }
 
   /**
-   * Очистка предыдущей модели (если нужно)
+   * Очистка предыдущей модели
    */
   public unloadModel(): void {
     // Ищем и удаляем все меши, связанные с моделью

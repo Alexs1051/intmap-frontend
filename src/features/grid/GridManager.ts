@@ -6,11 +6,11 @@ export class GridManager {
   private _scene: Scene;
   private _gridNode: TransformNode;
   private _gridLines: LinesMesh[] = [];
+  private _isInitialized: boolean = false;
 
   private constructor(scene: Scene) {
     this._scene = scene;
     this._gridNode = new TransformNode("gridNode", scene);
-    this.createInfiniteGrid();
   }
 
   public static getInstance(scene: Scene): GridManager {
@@ -18,6 +18,31 @@ export class GridManager {
       GridManager._instance = new GridManager(scene);
     }
     return GridManager._instance;
+  }
+
+  /**
+   * Инициализация сетки с возможностью отслеживания прогресса
+   */
+  public async initialize(onProgress?: (progress: number) => void): Promise<void> {
+    console.log("🔲 Инициализация сетки...");
+    
+    // 0-30%: Подготовка
+    if (onProgress) onProgress(0.1);
+    
+    // 30-80%: Создание сетки
+    if (onProgress) onProgress(0.3);
+    this.createInfiniteGrid();
+    
+    // 80-90%: Настройка сетки
+    if (onProgress) onProgress(0.8);
+    
+    // 90-100%: Финализация
+    if (onProgress) onProgress(0.9);
+    this._isInitialized = true;
+    
+    if (onProgress) onProgress(1.0);
+    
+    console.log(`✅ Сетка инициализирована. Линий: ${this._gridLines.length}`);
   }
 
   /**
@@ -104,12 +129,13 @@ export class GridManager {
     // Делаем линии чуть приподнятыми, чтобы избежать z-fighting
     lines.position.y = 0.01;
     
-    // ИСПОЛЬЗУЕМ METADATA вместо userData
+    // Сохраняем оригинальный цвет в metadata
     lines.metadata = {
-      originalColor: color.clone()
+      originalColor: color.clone(),
+      thickness: thickness
     };
     
-    // Сохраняем ссылку на линию (может пригодиться)
+    // Сохраняем ссылку на линию
     this._gridLines.push(lines);
   }
 
@@ -119,7 +145,6 @@ export class GridManager {
   public setOpacity(opacity: number): void {
     this._gridLines.forEach(line => {
       if (line.color && line.metadata?.originalColor) {
-        // Достаём оригинальный цвет из metadata
         const original = line.metadata.originalColor;
         
         // Меняем яркость в зависимости от opacity
@@ -130,5 +155,34 @@ export class GridManager {
         );
       }
     });
+  }
+
+  /**
+   * Показать/скрыть сетку
+   */
+  public setVisible(visible: boolean): void {
+    this._gridLines.forEach(line => {
+      line.setEnabled(visible);
+    });
+  }
+
+  /**
+   * Обновление сетки (если нужно)
+   */
+  public update(deltaTime: number): void {
+    // Здесь можно добавить анимацию сетки
+  }
+
+  // Геттеры
+  public get isInitialized(): boolean {
+    return this._isInitialized;
+  }
+
+  public get gridNode(): TransformNode {
+    return this._gridNode;
+  }
+
+  public get gridLines(): LinesMesh[] {
+    return this._gridLines;
   }
 }

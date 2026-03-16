@@ -41,7 +41,7 @@ export class WallManager {
 
     // ВАЖНО: Устанавливаем rendering group для прозрачных объектов
     // Прозрачные объекты должны рендериться после непрозрачных
-    element.mesh.renderingGroupId = 1; // 0 - непрозрачные, 1 - прозрачные
+    element.mesh.renderingGroupId = 0; // 0 - непрозрачные, 1 - прозрачные
   }
 
   /**
@@ -133,7 +133,7 @@ export class WallManager {
             wall.mesh.material.needDepthPrePass = true;
             
             // ВАЖНО: Переключаем группу рендеринга на прозрачную
-            wall.mesh.renderingGroupId = 1;
+            wall.mesh.renderingGroupId = 0;
             
             // Сохраняем цвет
             if (wall.originalMaterial instanceof StandardMaterial) {
@@ -166,7 +166,7 @@ export class WallManager {
             wall.mesh.material.backFaceCulling = false;
             wall.mesh.material.needDepthPrePass = true;
             
-            wall.mesh.renderingGroupId = 1;
+            wall.mesh.renderingGroupId = 0;
             
             if (wall.originalMaterial instanceof PBRMaterial) {
               wall.mesh.material.albedoColor = wall.originalMaterial.albedoColor.clone();

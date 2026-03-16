@@ -29,6 +29,11 @@ export class CameraManager {
       Vector3.Zero(),
       scene
     );
+
+    this._camera.maxZ = 2000;
+  
+    this._camera.lowerRadiusLimit = 5;
+    this._camera.upperRadiusLimit = 500;
     
     this._camera.attachControl(canvas, true);
     

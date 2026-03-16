@@ -87,3 +87,13 @@ export const GRID_SECONDARY_LINE_THICKNESS = 0.3;
  * Яркость осей X и Z
  */
 export const GRID_AXIS_BRIGHTNESS = 2.0;
+
+export const MARKER_CONFIG = {
+  defaultSize: 2.0,
+  hoverScale: 1.2,
+  selectedOutlineColor: new Color3(0.3, 0.6, 1.0), // Голубой
+  outlineWidth: 0.1,
+  focusDistance: 10,
+  defaultBackground: new Color3(0.2, 0.4, 0.8), // Синий
+  defaultForeground: new Color3(1, 1, 1) // Белый
+};

@@ -6,10 +6,10 @@ export class LightingManager {
   private _hemisphericLight: HemisphericLight;
   private _directionalLight: DirectionalLight;
   private _shadowGenerator?: ShadowGenerator;
+  private _isInitialized: boolean = false;
 
   private constructor(scene: Scene) {
     this._scene = scene;
-    this.setupLights();
   }
 
   public static getInstance(scene: Scene): LightingManager {
@@ -19,60 +19,95 @@ export class LightingManager {
     return LightingManager._instance;
   }
 
-  private setupLights(): void {
-    // 1. HemisphericLight (окружающий свет) - освещает всё равномерно
+  /**
+   * Инициализация освещения с возможностью отслеживания прогресса
+   */
+  public async initialize(onProgress?: (progress: number) => void): Promise<void> {
+    console.log("💡 Инициализация освещения...");
+    
+    // 0-30%: Подготовка
+    if (onProgress) onProgress(0.1);
+    
+    // 30-60%: Создание HemisphericLight
+    if (onProgress) onProgress(0.3);
+    this.createHemisphericLight();
+    
+    // 60-90%: Создание DirectionalLight
+    if (onProgress) onProgress(0.6);
+    this.createDirectionalLight();
+    
+    // 90-95%: Настройка теней
+    if (onProgress) onProgress(0.9);
+    this.setupShadows();
+    
+    // 95-100%: Финализация
+    if (onProgress) onProgress(0.95);
+    this._isInitialized = true;
+    
+    if (onProgress) onProgress(1.0);
+    
+    console.log("✅ Освещение инициализировано");
+  }
+
+  private createHemisphericLight(): void {
     this._hemisphericLight = new HemisphericLight(
       "hemisphericLight",
       new Vector3(0, 1, 0),
       this._scene
     );
     
-    // Настраиваем цвета для HemisphericLight
-    this._hemisphericLight.diffuse = new Color3(1, 1, 1);      // Белый диффузный свет
-    this._hemisphericLight.specular = new Color3(0.1, 0.1, 0.1); // Слабые блики
-    this._hemisphericLight.groundColor = new Color3(0.5, 0.5, 0.5); // Свет от земли
+    this._hemisphericLight.diffuse = new Color3(1, 1, 1);
+    this._hemisphericLight.specular = new Color3(0.1, 0.1, 0.1);
+    this._hemisphericLight.groundColor = new Color3(0.5, 0.5, 0.5);
+    this._hemisphericLight.intensity = 0.8;
+  }
 
-    // 2. DirectionalLight (направленный свет) - создаёт тени и объём
+  private createDirectionalLight(): void {
     this._directionalLight = new DirectionalLight(
       "directionalLight",
-      new Vector3(-1, -2, -1), // Направление света (сверху-сбоку)
+      new Vector3(-1, -2, -1),
       this._scene
     );
     
-    // Настраиваем направленный свет
-    this._directionalLight.diffuse = new Color3(1, 1, 1);      // Белый свет
-    this._directionalLight.specular = new Color3(0.5, 0.5, 0.5); // Средние блики
-    this._directionalLight.intensity = 1.5; // Ярче, чем Hemispheric
-
-    // Позиционируем источник света
+    this._directionalLight.diffuse = new Color3(1, 1, 1);
+    this._directionalLight.specular = new Color3(0.5, 0.5, 0.5);
+    this._directionalLight.intensity = 1.2;
     this._directionalLight.position = new Vector3(20, 30, 20);
-    
-    // Настраиваем тени (опционально)
-    this.setupShadows();
-
-    console.log("💡 Освещение настроено");
   }
 
   private setupShadows(): void {
-    // Включаем тени (если нужно)
+    // Тени можно включить позже, если нужно
     // this._shadowGenerator = new ShadowGenerator(1024, this._directionalLight);
     // this._shadowGenerator.useBlurExponentialShadowMap = true;
     // this._shadowGenerator.blurKernel = 32;
   }
 
   /**
+   * Обновление освещения каждый кадр
+   */
+  public update(deltaTime: number): void {
+    // Здесь можно добавить анимацию света, смену времени суток и т.д.
+  }
+
+  /**
    * Изменение интенсивности освещения
    */
   public setIntensity(hemisphericIntensity: number, directionalIntensity: number): void {
-    this._hemisphericLight.intensity = hemisphericIntensity;
-    this._directionalLight.intensity = directionalIntensity;
+    if (this._hemisphericLight) {
+      this._hemisphericLight.intensity = hemisphericIntensity;
+    }
+    if (this._directionalLight) {
+      this._directionalLight.intensity = directionalIntensity;
+    }
   }
 
   /**
    * Изменение направления света
    */
   public setLightDirection(direction: Vector3): void {
-    this._directionalLight.direction = direction;
+    if (this._directionalLight) {
+      this._directionalLight.direction = direction;
+    }
   }
 
   /**
@@ -92,5 +127,9 @@ export class LightingManager {
 
   public get directionalLight(): DirectionalLight {
     return this._directionalLight;
+  }
+
+  public get isInitialized(): boolean {
+    return this._isInitialized;
   }
 }
