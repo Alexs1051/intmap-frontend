@@ -66,72 +66,85 @@ class App {
   }
 
   private setupConnectionHandling(): void {
-    // Обработка потери соединения
+    // Обработка потери интернет-соединения
     window.addEventListener('offline', () => {
-      console.warn('⚠️ Соединение потеряно');
-      this._connectionScreen.show('Соединение с интернетом потеряно');
+      console.warn('⚠️ Интернет соединение потеряно');
+      this._connectionScreen.show('Интернет соединение потеряно');
     });
 
     window.addEventListener('online', () => {
-      console.log('✅ Соединение восстановлено');
+      console.log('✅ Интернет соединение восстановлено');
       if (this._connectionScreen.isVisible) {
         this._connectionScreen.hide();
-        // Пробуем перезагрузить все ресурсы
-        this.loadAllResources();
       }
     });
 
-    // Настраиваем кнопку повторной попытки
+    // Кнопка повторной попытки
     this._connectionScreen.setRetryCallback(() => {
       this._connectionScreen.hide();
-      this._loadingScreen.show();
-      this._loadingScreen.setStatus('Повторная попытка загрузки...');
-      this._loadingScreen.updateProgress(0);
       this.loadAllResources();
     });
 
-    // Проверка на начальное отсутствие соединения
+    // Проверка при старте
     if (!navigator.onLine) {
-      this._connectionScreen.show('Нет соединения с интернетом');
+      this._connectionScreen.show('Нет интернет соединения');
+    }
+  }
+
+  private async loadAllResources(): Promise<void> {
+    try {
+      this._loadingScreen.show();
+      this._loadingScreen.setStatus('Проверка соединения...');
+      this._loadingScreen.updateProgress(0);
+
+      // 1. Проверяем доступность модели
+      const isAvailable = await this.checkModelAvailability(this._modelUrl);
+      
+      if (!isAvailable) {
+        // Если модель недоступна - показываем экран ошибки
+        this._loadingScreen.hide();
+        this._connectionScreen.showError('Сервер с моделью недоступен. Проверьте соединение.');
+        return;
+      }
+
+      // 2. Если модель доступна - продолжаем загрузку
+      this._loadingScreen.setStatus('Загрузка ресурсов...');
+      
+      await this._sceneManager.loadAll(
+        this._modelUrl,
+        (progress: number, stage: string) => {
+          this._loadingScreen.updateProgress(progress);
+          this._loadingScreen.setStatus(stage);
+        }
+      );
+      
+      // 3. Успешная загрузка
+      await this._loadingScreen.hide();
+      await this._sceneManager.showScene();
+      
+    } catch (error) {
+      console.error('❌ Ошибка загрузки:', error);
+      this._loadingScreen.hide();
+      
+      // Определяем тип ошибки
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        this._connectionScreen.showError('Сервер недоступен. Проверьте соединение.');
+      } else {
+        this._connectionScreen.showError('Не удалось загрузить модель здания');
+      }
     }
   }
 
   /**
-   * Загрузка всех ресурсов с реальным прогрессом по этапам
+   * Проверка доступности модели на сервере
    */
-  private async loadAllResources(): Promise<void> {
+  private async checkModelAvailability(url: string): Promise<boolean> {
     try {
-      this._loadingScreen.show();
-      this._loadingScreen.setStatus('Подготовка к загрузке...');
-      this._loadingScreen.updateProgress(0);
-
-      // Загружаем все ресурсы через SceneManager
-      await this._sceneManager.loadAll(
-        this._modelUrl,
-        (progress: number, stage: string) => {
-          // Обновляем UI реальным прогрессом
-          this._loadingScreen.updateProgress(progress);
-          this._loadingScreen.setStatus(stage);
-          
-          // Логируем прогресс для отладки
-          if (progress % 0.1 < 0.01) {
-            console.log(`📊 Прогресс: ${Math.round(progress * 100)}% - ${stage}`);
-          }
-        }
-      );
-      
-      // Скрываем экран загрузки с анимацией
-      await this._loadingScreen.hide();
-      
-      // Запускаем анимацию камеры
-      await this._sceneManager.showScene();
-      
-      console.log("🎉 Приложение полностью загружено и готово к использованию!");
-      
+      const response = await fetch(url, { method: 'HEAD' });
+      return response.ok;
     } catch (error) {
-      console.error('❌ Критическая ошибка загрузки:', error);
-      this._loadingScreen.hide();
-      this._connectionScreen.showError('Не удалось загрузить ресурсы. Проверьте соединение.');
+      console.warn('⚠️ Модель недоступна:', error);
+      return false;
     }
   }
 }

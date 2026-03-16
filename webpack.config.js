@@ -19,6 +19,13 @@ module.exports = {
     devMiddleware: {
       publicPath: "/",
     },
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false,
+      },
+      logging: 'error',
+    },
   },
   module: {
     rules: [
@@ -27,8 +34,20 @@ module.exports = {
         use: "ts-loader",
         exclude: /node_modules/,
       },
+            {
+        test: /\.js$/,
+        use: ["source-map-loader"],
+        enforce: "pre",
+        exclude: /node_modules\/@babylonjs/,
+      },
     ],
   },
+  ignoreWarnings: [
+    {
+      module: /@babylonjs/,
+      message: /sourcemap/,
+    },
+  ],
   plugins: [
     new HtmlWebpackPlugin({
       inject: true,

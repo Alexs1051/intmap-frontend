@@ -9,6 +9,9 @@
     "preserveConstEnums": true,
     "lib": ["dom", "es6"],
     "rootDir": "src",
-    "outDir": "./dist/"
-  }
+    "outDir": "./dist/",
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "exclude": ["node_modules"]
 }
