@@ -8,7 +8,7 @@ module.exports = {
     filename: "bundle.js",
     path: path.resolve(__dirname, "dist"),
     clean: true,
-    publicPath: '', // Пустой publicPath для относительных путей
+    publicPath: './', // Важно: используем относительные пути
   },
   resolve: {
     extensions: [".ts", ".js"],
@@ -43,19 +43,19 @@ module.exports = {
       patterns: [
         { 
           from: "public/models", 
-          to: "models", // Скопирует в dist/models/
-          noErrorOnMissing: false, // Меняем на false, чтобы видеть ошибки
+          to: "models", 
+          noErrorOnMissing: false,
+          globOptions: {
+            dot: true,
+            gitignore: false,
+            ignore: ["**/.DS_Store"], // Игнорируем служебные файлы
+          },
         },
-        // Добавляем копирование самой модели, если она в корне public
+        // Копируем все glb файлы из public
         {
-          from: "public/*.glb",
+          from: "public/**/*.glb",
           to: "[name][ext]",
-          noErrorOnMissing: true,
-        },
-        // Копируем все ресурсы, которые могут понадобиться
-        {
-          from: "public/**/*",
-          to: "[path][name][ext]",
+          toType: "template",
           noErrorOnMissing: true,
         },
       ],
