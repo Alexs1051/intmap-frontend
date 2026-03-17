@@ -21,11 +21,7 @@ module.exports = {
       {
         directory: path.resolve(__dirname, "public"),
         publicPath: "/",
-      },
-      {
-        directory: path.resolve(__dirname, "src/styles"),
-        publicPath: "/styles",
-      },
+      }
     ],
     port: 8080,
     hot: true,
@@ -35,11 +31,6 @@ module.exports = {
         warnings: false,
       },
       logging: 'error',
-    },
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-      "Access-Control-Allow-Headers": "X-Requested-With, content-type, Authorization",
     },
   },
   module: {
@@ -70,17 +61,14 @@ module.exports = {
         use: ["style-loader", "css-loader"],
       },
       {
+        test: /\.md$/,
+        type: 'asset/source', // Импортирует markdown как строку
+      },
+      {
         test: /\.(png|svg|jpg|jpeg|gif|ico)$/,
         type: 'asset/resource',
         generator: {
           filename: 'assets/images/[name][ext]',
-        },
-      },
-      {
-        test: /\.(woff|woff2|eot|ttf|otf)$/,
-        type: 'asset/resource',
-        generator: {
-          filename: 'assets/fonts/[name][ext]',
         },
       },
     ],
@@ -100,18 +88,11 @@ module.exports = {
     new CopyPlugin({
       patterns: [
         { from: "public/models", to: "models", noErrorOnMissing: true },
-        { from: "src/styles", to: "styles", noErrorOnMissing: true },
       ],
     }),
   ],
   devtool: "source-map",
   mode: "development",
-  stats: {
-    modules: false,
-    children: false,
-    chunks: false,
-    chunkModules: false,
-  },
   performance: {
     hints: false,
   },

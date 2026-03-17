@@ -2,25 +2,23 @@ import { Scene, ArcRotateCamera, Vector3 } from "@babylonjs/core";
 import { CameraModeManager } from "./CameraModeManager";
 import { CameraAnimator } from "./CameraAnimator";
 import { CameraInputHandler } from "./CameraInputHandler";
-import { CameraMode, BuildingBounds, CameraTransform } from "./types";
+import { CameraMode, CameraTransform, BuildingDimensions } from "./types";
+import { logger } from "../../core/logger/Logger";
+
+const cameraLogger = logger.getLogger('CameraManager');
 
 export class CameraManager {
   private static _instance: CameraManager;
-  private _scene: Scene;
-  private _camera: ArcRotateCamera;
-  private _modeManager: CameraModeManager;
-  private _animator: CameraAnimator;
-  private _inputHandler: CameraInputHandler;
+  private readonly _camera: ArcRotateCamera;
+  private readonly _modeManager: CameraModeManager;
+  private readonly _animator: CameraAnimator;
+  private readonly _inputHandler: CameraInputHandler;
+  private readonly _dimensions: BuildingDimensions;
   
-  // Текущий этаж (для UI)
-  private _currentFloor: number = 1;
-  
-  // Сохраняем позицию инициализации для сброса
   private _initialTransform: CameraTransform | null = null;
+  private _targetPosition: Vector3 = Vector3.Zero();
 
   private constructor(scene: Scene, canvas: HTMLCanvasElement) {
-    this._scene = scene;
-    
     this._camera = new ArcRotateCamera(
       "camera",
       -Math.PI / 2,
@@ -31,18 +29,22 @@ export class CameraManager {
     );
 
     this._camera.maxZ = 2000;
-  
     this._camera.lowerRadiusLimit = 5;
     this._camera.upperRadiusLimit = 500;
-    
     this._camera.attachControl(canvas, true);
     
-    this._modeManager = new CameraModeManager(this._camera);
+    this._dimensions = {
+      height: 30,
+      width: 30,
+      depth: 30
+    };
+    
+    this._modeManager = new CameraModeManager(this._camera, this._dimensions);
     this._animator = new CameraAnimator(this._camera, scene);
     this._inputHandler = new CameraInputHandler(this._camera, canvas);
     
     scene.activeCamera = this._camera;
-    console.log("CameraManager initialized");
+    cameraLogger.info("CameraManager инициализирован");
   }
 
   public static getInstance(scene: Scene, canvas: HTMLCanvasElement): CameraManager {
@@ -52,17 +54,30 @@ export class CameraManager {
     return CameraManager._instance;
   }
 
-  public setBuildingBounds(bounds: BuildingBounds): void {
-    this._modeManager.setBuildingBounds(bounds);
-  }
-
-  /**
-   * Инициализация камеры с кастомной анимацией выезда
-   */
   public async initialize(customStart?: CameraTransform, customEnd?: CameraTransform): Promise<void> {
-    await this._animator.playIntroAnimation(this._modeManager.bounds, customStart, customEnd);
+    const maxDimension = Math.max(this._dimensions.height, this._dimensions.width, this._dimensions.depth);
     
-    // Сохраняем финальную позицию после анимации как позицию для сброса
+    const startTransform: CameraTransform = customStart ?? {
+      alpha: Math.PI / 3,
+      beta: Math.PI / 3.5,
+      radius: maxDimension * 3.5 * 2.0,
+      target: this._targetPosition.clone()
+    };
+
+    const endTransform: CameraTransform = customEnd ?? {
+      alpha: -Math.PI / 2.5,
+      beta: Math.PI / 4,
+      radius: maxDimension * 2.2 * 2.0,
+      target: this._targetPosition.clone()
+    };
+
+    this._camera.alpha = startTransform.alpha;
+    this._camera.beta = startTransform.beta;
+    this._camera.radius = startTransform.radius;
+    this._camera.target.copyFrom(startTransform.target);
+    
+    await this._animator.animateTo(endTransform, 2.0);
+    
     this._initialTransform = {
       alpha: this._camera.alpha,
       beta: this._camera.beta,
@@ -70,60 +85,62 @@ export class CameraManager {
       target: this._camera.target.clone()
     };
     
-    console.log("✅ Камера готова, позиция для сброса сохранена");
+    cameraLogger.info(`Камера готова, дистанция: ${this._camera.radius.toFixed(1)}`);
+  }
+
+  public setTargetPosition(position: Vector3): void {
+    this._targetPosition = position.clone();
+    this._modeManager.setTarget(position);
+  }
+
+  public setDimensions(dimensions: BuildingDimensions): void {
+    this._dimensions.height = dimensions.height;
+    this._dimensions.width = dimensions.width;
+    this._dimensions.depth = dimensions.depth ?? dimensions.width;
+    cameraLogger.debug(`Размеры здания установлены: ${JSON.stringify(this._dimensions)}`);
   }
 
   public async toggleCameraMode(): Promise<void> {
     const oldMode = this._modeManager.cameraMode;
     this._modeManager.toggleCameraMode();
     
-    if (oldMode === CameraMode.MODE_3D) {
-      await this._animator.animateTo(this._modeManager.get2DTransform(), 1.0);
-    } else {
-      await this._animator.animateTo(this._modeManager.get3DTransform(), 1.0);
-    }
+    const transform = oldMode === CameraMode.MODE_3D 
+      ? this._modeManager.get2DTransform()
+      : this._modeManager.get3DTransform();
+      
+    await this._animator.animateTo(transform, 1.0);
   }
 
-  /**
-   * Сброс камеры в позицию инициализации
-   */
   public async resetCamera(): Promise<void> {
     if (!this._initialTransform) {
-      console.warn("Позиция для сброса не сохранена");
+      cameraLogger.warn("Позиция для сброса не сохранена");
       return;
     }
     
-    // Если мы в 2D режиме, переключаемся в 3D (без анимации)
     if (this._modeManager.cameraMode === CameraMode.MODE_2D) {
-      this._modeManager.toggleCameraMode(); // Переключаем режим без анимации
+      this._modeManager.toggleCameraMode();
     }
     
-    // Анимируем к сохранённой позиции инициализации
     await this._animator.animateTo(this._initialTransform, 1.0);
-    console.log("🔄 Камера сброшена в позицию инициализации");
+    cameraLogger.debug("Камера сброшена");
   }
 
-  // Методы для управления этажами
-  public nextFloor(): void {
-    const maxFloor = Math.floor(this._modeManager.bounds.maxY / 3);
-    if (this._currentFloor < maxFloor) {
-      this._currentFloor++;
-      console.log(`Camera floor: ${this._currentFloor}`);
-    }
-  }
-
-  public previousFloor(): void {
-    if (this._currentFloor > 1) {
-      this._currentFloor--;
-      console.log(`Camera floor: ${this._currentFloor}`);
-    }
+  public async focusOnPoint(point: Vector3, distance: number = 8, duration: number = 1.0): Promise<void> {
+    const targetTransform: CameraTransform = {
+      alpha: this._camera.alpha,
+      beta: this._camera.beta,
+      radius: distance,
+      target: point.clone()
+    };
+    
+    await this._animator.animateTo(targetTransform, duration);
+    this._modeManager.setTarget(point);
   }
 
   public canInteractWithUI(): boolean {
     return !this._animator.isAnimating;
   }
 
-  // Геттеры
   public get camera(): ArcRotateCamera {
     return this._camera;
   }
@@ -140,7 +157,11 @@ export class CameraManager {
     return this._modeManager.cameraMode;
   }
 
-  public get currentFloor(): number {
-    return this._currentFloor;
+  public get dimensions(): BuildingDimensions {
+    return this._dimensions;
+  }
+
+  public get targetPosition(): Vector3 {
+    return this._targetPosition;
   }
 }

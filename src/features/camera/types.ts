@@ -12,18 +12,8 @@ export interface CameraTransform {
   target: Vector3;
 }
 
-export interface BuildingBounds {
-  minY: number;
-  maxY: number;
-  center: Vector3;  // Центр здания (уже есть, просто убеждаемся)
+export interface BuildingDimensions {
+  height: number;
+  width: number;
+  depth: number;
 }
-
-export interface AnimationConfig {
-  duration: number;
-  easing?: (t: number) => number;
-  onComplete?: () => void;
-}
-
-export const EasingFunctions = {
-  easeOutCubic: (t: number) => 1 - Math.pow(1 - t, 3)
-};

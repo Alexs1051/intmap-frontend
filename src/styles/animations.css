@@ -1,4 +1,12 @@
-/* Анимации для UI элементов */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
 
 @keyframes slideDown {
   from {
@@ -47,37 +55,26 @@
   }
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 @keyframes float {
   0% { transform: translateY(0px); }
   50% { transform: translateY(-5px); }
   100% { transform: translateY(0px); }
 }
 
-@keyframes shimmer {
-  0% { background-position: -1000px 0; }
-  100% { background-position: 1000px 0; }
-}
-
-/* Классы для использования анимаций */
 .animate-slide-down {
-  animation: slideDown 0.3s ease-out forwards;
+  animation: slideDown var(--transition-normal) ease-out forwards;
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s ease-out forwards;
+  animation: slideUp var(--transition-normal) ease-out forwards;
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
+  animation: fadeIn var(--transition-normal) ease-out forwards;
 }
 
 .animate-fade-out {
-  animation: fadeOut 0.3s ease-out forwards;
+  animation: fadeOut var(--transition-normal) ease-out forwards;
 }
 
 .animate-pulse {
@@ -91,74 +88,3 @@
 .animate-float {
   animation: float 3s ease-in-out infinite;
 }
-
-/* Анимации для popup */
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes slideOutRight {
-  from {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-}
-
-.popup-enter {
-  animation: slideInRight 0.3s ease-out forwards;
-}
-
-.popup-exit {
-  animation: slideOutRight 0.3s ease-out forwards;
-}
-
-/* Анимация для прогресс-бара */
-@keyframes shrink {
-  from {
-    width: 100%;
-  }
-  to {
-    width: 0%;
-  }
-}
-
-/* Анимация появления popup */
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Анимация исчезновения popup */
-@keyframes slideUp {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-}
-
-/* Задержки анимаций */
-.delay-100 { animation-delay: 100ms; }
-.delay-200 { animation-delay: 200ms; }
-.delay-300 { animation-delay: 300ms; }
-.delay-500 { animation-delay: 500ms; }

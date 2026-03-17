@@ -6,8 +6,10 @@ import { LightingManager } from "../../features/lighting/LightingManager";
 import { CameraManager } from "../../features/camera/CameraManager";
 import { UIManager } from "../../features/ui/UIManager";
 import { BuildingManager } from "../../features/building/BuildingManager";
-import { BuildingBounds } from "../../features/camera/types";
 import { MarkerManager } from "../../features/markers/MarkerManager";
+import { logger } from "../logger/Logger";
+
+const sceneLogger = logger.getLogger('SceneManager');
 
 export class SceneManager {
   private static _instance: SceneManager;
@@ -23,11 +25,8 @@ export class SceneManager {
   private _isLoading: boolean = false;
 
   private constructor(uiManager: UIManager) {
-    console.log("🔧 SceneManager constructor called");
-    
     const engine = BabylonEngine.getInstance();
     this._scene = new Scene(engine.engine);
-    
     this._uiManager = uiManager;
 
     this._backgroundManager = BackgroundManager.getInstance(this._scene);
@@ -37,11 +36,12 @@ export class SceneManager {
     this._buildingManager = BuildingManager.getInstance(this._scene);
     this._markerManager = MarkerManager.getInstance(this._scene);
     
-    this._uiManager.initialize(this._scene, this._cameraManager);
+    this._uiManager.initialize(this._scene, this._cameraManager, this._buildingManager);
+    
     this._markerManager.setCameraManager(this._cameraManager);
     this.setupInputHandling(engine.canvas);
 
-    console.log("SceneManager initialized");
+    sceneLogger.info("SceneManager инициализирован");
   }
 
   public static getInstance(uiManager: UIManager): SceneManager {
@@ -66,28 +66,30 @@ export class SceneManager {
 
   public async loadAll(modelUrl: string): Promise<void> {
     if (this._isLoading) return;
-
     this._isLoading = true;
 
     try {
-      console.log("🚀 Начинаем загрузку всех ресурсов...");
+      sceneLogger.info("Начинаем загрузку всех ресурсов");
       
+      // Этап 1: Сцена (0% - 20%)
       this._uiManager.updateLoadingProgress(0.0, "Загрузка сцены...");
       await this.loadScene();
       
+      // Этап 2: Здание (20% - 70%)
       this._uiManager.updateLoadingProgress(0.2, "Загрузка здания...");
       await this.loadBuilding(modelUrl);
       
+      // Этап 3: Маркеры (70% - 90%)
       this._uiManager.updateLoadingProgress(0.7, "Создание маркеров...");
       await this.loadMarkers();
       
+      // Финализация (90% - 100%)
       this._uiManager.updateLoadingProgress(0.9, "Финализация...");
       await this.finalize();
       
-      console.log("✅ Все ресурсы загружены");
-      
+      sceneLogger.info("Все ресурсы загружены");
     } catch (error) {
-      console.error("❌ Ошибка загрузки:", error);
+      sceneLogger.error("Ошибка загрузки", error);
       throw error;
     } finally {
       this._isLoading = false;
@@ -95,60 +97,63 @@ export class SceneManager {
   }
 
   private async loadScene(): Promise<void> {
-    console.log("🎬 Этап 1: Загрузка сцены");
+    sceneLogger.debug("Этап 1: Загрузка сцены");
     
-    const backgroundPromise = this._backgroundManager.initialize((progress) => {
-      this._uiManager.updateLoadingProgress(0.0 + progress * 0.05, "Создание фона...");
-    });
-    
-    const lightingPromise = this._lightingManager.initialize((progress) => {
-      this._uiManager.updateLoadingProgress(0.05 + progress * 0.05, "Настройка освещения...");
-    });
-    
-    const gridPromise = this._gridManager.initialize((progress) => {
-      this._uiManager.updateLoadingProgress(0.10 + progress * 0.05, "Создание сетки...");
-    });
-    
-    await Promise.all([backgroundPromise, lightingPromise, gridPromise]);
+    await Promise.all([
+      this._backgroundManager.initialize((progress) => {
+        this._uiManager.updateLoadingProgress(0.0 + progress * 0.05, "Создание фона...");
+      }),
+      this._lightingManager.initialize((progress) => {
+        this._uiManager.updateLoadingProgress(0.05 + progress * 0.05, "Настройка освещения...");
+      }),
+      this._gridManager.initialize((progress) => {
+        this._uiManager.updateLoadingProgress(0.10 + progress * 0.05, "Создание сетки...");
+      })
+    ]);
     
     this._uiManager.updateLoadingProgress(0.15, "Настройка камеры...");
-    console.log("✅ Этап 1 завершён");
+    sceneLogger.debug("Этап 1 завершён");
   }
 
   private async loadBuilding(modelUrl: string): Promise<void> {
-    console.log("🏗 Этап 2: Загрузка здания");
+    sceneLogger.debug("Этап 2: Загрузка здания");
     
-    await this._buildingManager.loadBuilding(modelUrl, (fileProgress) => {
-      const totalProgress = 0.2 + (fileProgress * 0.5);
-      this._uiManager.updateLoadingProgress(totalProgress, "Загрузка модели здания...");
+    await this._buildingManager.loadBuilding(modelUrl, (progress) => {
+      this._uiManager.updateLoadingProgress(0.2 + progress * 0.5, "Загрузка модели здания...");
     });
     
-    const bounds = this.calculateBuildingBounds();
-    this._cameraManager.setBuildingBounds(bounds);
+    const dimensions = this._buildingManager.getBuildingDimensions();
+    const center = this._buildingManager.getBuildingCenter();
     
-    console.log("✅ Этап 2 завершён");
+    this._cameraManager.setDimensions(dimensions);
+    this._cameraManager.setTargetPosition(center);
+    
+    sceneLogger.debug(`Этап 2 завершён, размеры здания: ${JSON.stringify(dimensions)}`);
   }
 
   private async loadMarkers(): Promise<void> {
-    console.log("📍 Этап 3: Создание маркеров");
+    sceneLogger.debug("Этап 3: Создание маркеров");
     
     await this._markerManager.initialize((progress) => {
-      const totalProgress = 0.7 + (progress * 0.2);
+      const totalProgress = 0.7 + progress * 0.2;
       
+      let status: string;
       if (progress < 0.3) {
-        this._uiManager.updateLoadingProgress(totalProgress, "Инициализация маркеров...");
+        status = "Инициализация маркеров...";
       } else if (progress < 0.6) {
-        this._uiManager.updateLoadingProgress(totalProgress, "Создание маркеров...");
+        status = "Создание маркеров...";
       } else {
-        this._uiManager.updateLoadingProgress(totalProgress, "Настройка маркеров...");
+        status = "Настройка маркеров...";
       }
+      
+      this._uiManager.updateLoadingProgress(totalProgress, status);
     });
     
-    console.log("✅ Этап 3 завершён");
+    sceneLogger.debug("Этап 3 завершён");
   }
 
   private async finalize(): Promise<void> {
-    console.log("✨ Финализация");
+    sceneLogger.debug("Финализация");
     
     this._uiManager.updateLoadingProgress(0.90, "Подготовка к анимации...");
     this._uiManager.updateLoadingProgress(0.95, "Готово!");
@@ -159,26 +164,14 @@ export class SceneManager {
   }
 
   public async showScene(): Promise<void> {
-    console.log("🎬 Запуск анимаций...");
+    sceneLogger.info("Запуск анимаций");
     
-    // Запускаем анимации параллельно
     await Promise.all([
-      this._cameraManager.initialize(),        // Анимация камеры
-      this._buildingManager.animateConstruction() // Анимация здания
+      this._cameraManager.initialize(),
+      this._buildingManager.animateConstruction()
     ]);
     
-    console.log("✅ Все анимации завершены");
-  }
-
-  private calculateBuildingBounds(): BuildingBounds {
-    const floorCount = this._buildingManager.floorManager.floorCount;
-    const height = Math.max(floorCount * 3, 30);
-    
-    return {
-      minY: 0,
-      maxY: height,
-      center: new Vector3(0, height / 2, 0)
-    };
+    sceneLogger.info("Все анимации завершены");
   }
 
   public render(deltaTime: number): void {
@@ -195,6 +188,7 @@ export class SceneManager {
 
   public dispose(): void {
     this._scene.dispose();
+    sceneLogger.info("SceneManager уничтожен");
   }
 
   public get scene(): Scene {

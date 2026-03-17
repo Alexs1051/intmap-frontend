@@ -1,5 +1,8 @@
 import { Scene, SceneLoader, AbstractMesh } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF";
+import { logger } from "../../core/logger/Logger";
+
+const loaderLogger = logger.getLogger('BuildingLoader');
 
 export interface LoadResult {
   meshes: AbstractMesh[];
@@ -7,21 +10,14 @@ export interface LoadResult {
 }
 
 export class BuildingLoader {
-  private _scene: Scene;
+  constructor(private readonly _scene: Scene) {}
 
-  constructor(scene: Scene) {
-    this._scene = scene;
-  }
-
-  /**
-   * Загрузка модели из файла с прогрессом
-   */
   public async loadModel(
     modelUrl: string, 
     onProgress?: (progress: number) => void
   ): Promise<LoadResult> {
     try {
-      console.log(`📦 Загрузка модели: ${modelUrl}`);
+      loaderLogger.info(`Загрузка модели: ${modelUrl}`);
       
       const result = await SceneLoader.ImportMeshAsync(
         "",
@@ -29,38 +25,27 @@ export class BuildingLoader {
         modelUrl,
         this._scene,
         (event) => {
-          // Событие прогресса загрузки
           if (event.lengthComputable && onProgress) {
-            const progress = event.loaded / event.total;
-            onProgress(progress);
-            console.log(`📊 Прогресс загрузки модели: ${Math.round(progress * 100)}%`);
+            onProgress(event.loaded / event.total);
           }
         },
         ".glb"
       );
 
-      console.log(`✅ Модель загружена. Мешей: ${result.meshes.length}`);
+      loaderLogger.info(`Модель загружена. Мешей: ${result.meshes.length}`);
 
-      // Находим корневой меш (если есть)
       const rootMesh = result.meshes.find(mesh => 
-        mesh.name === "__root__" || mesh.name === "root" || mesh.name === "scene"
+        ["__root__", "root", "scene"].includes(mesh.name)
       ) || null;
 
-      return {
-        meshes: result.meshes,
-        rootMesh: rootMesh
-      };
+      return { meshes: result.meshes, rootMesh };
     } catch (error) {
-      console.error("❌ Ошибка загрузки модели:", error);
+      loaderLogger.error("Ошибка загрузки модели", error);
       throw error;
     }
   }
 
-  /**
-   * Очистка предыдущей модели
-   */
   public unloadModel(): void {
-    // Ищем и удаляем все меши, связанные с моделью
     const meshesToRemove = this._scene.meshes.filter(mesh => 
       mesh.name.startsWith("SM_") || 
       mesh.name.includes("building") ||
@@ -68,6 +53,6 @@ export class BuildingLoader {
     );
     
     meshesToRemove.forEach(mesh => mesh.dispose());
-    console.log(`🧹 Очищено ${meshesToRemove.length} мешей`);
+    loaderLogger.info(`Очищено ${meshesToRemove.length} мешей`);
   }
 }

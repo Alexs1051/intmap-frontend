@@ -1,18 +1,19 @@
-import { Scene, TransformNode, AbstractMesh } from "@babylonjs/core";
+import { Scene, TransformNode } from "@babylonjs/core";
 import { BuildingElement, FloorData } from "./types";
 import { WallManager } from "./WallManager";
+import { logger } from "../../core/logger/Logger";
+
+const floorLogger = logger.getLogger('FloorManager');
 
 export class FloorManager {
   private static _instance: FloorManager;
-  private _scene: Scene;
-  private _floors: Map<number, FloorData> = new Map();
-  private _floorNodes: Map<number, TransformNode> = new Map();
+  private readonly _floors: Map<number, FloorData> = new Map();
+  private readonly _floorNodes: Map<number, TransformNode> = new Map();
   private _currentFloor: number = 1;
   private _wallManager: WallManager;
 
-  private constructor(scene: Scene) {
-    this._scene = scene;
-    this._wallManager = WallManager.getInstance(scene);
+  private constructor(private readonly _scene: Scene) {
+    this._wallManager = WallManager.getInstance(_scene);
   }
 
   public static getInstance(scene: Scene): FloorManager {
@@ -22,17 +23,12 @@ export class FloorManager {
     return FloorManager._instance;
   }
 
-  /**
-   * Добавить этаж
-   */
   public addFloor(element: BuildingElement, floorNode?: TransformNode): void {
     const floorNumber = element.floorNumber;
     if (!floorNumber) {
-      console.warn(`⚠️ Элемент ${element.name} не имеет номера этажа`);
+      floorLogger.warn(`Элемент ${element.name} не имеет номера этажа`);
       return;
     }
-
-    console.log(`    🏗 Добавление элемента ${element.name} на этаж ${floorNumber}`);
 
     if (!this._floors.has(floorNumber)) {
       this._floors.set(floorNumber, {
@@ -43,9 +39,7 @@ export class FloorManager {
     }
 
     element.mesh.renderingGroupId = 0;
-    
-    // Сохраняем оригинальную позицию
-    if (!element.mesh.metadata) element.mesh.metadata = {};
+    element.mesh.metadata ??= {};
     element.mesh.metadata.originalPosition = element.mesh.position.clone();
     
     this._floors.get(floorNumber)!.elements.push(element);
@@ -54,76 +48,79 @@ export class FloorManager {
       this._floorNodes.set(floorNumber, floorNode);
       floorNode.setEnabled(true);
     }
+    
+    floorLogger.debug(`Добавлен этаж ${floorNumber}, всего этажей: ${this._floors.size}`);
   }
 
-  /**
-   * Показать конкретный этаж
-   */
   public showFloor(floorNumber: number): void {
-    console.log(`📌 Показать этаж ${floorNumber}`);
+    if (!this._floors.has(floorNumber)) {
+      floorLogger.warn(`Этаж ${floorNumber} не существует. Доступны: ${this.getFloorNumbers().join(', ')}`);
+      return;
+    }
 
-    // 1. Сначала показываем всё (все ноды включены)
-    this._floorNodes.forEach((node) => {
-      node.setEnabled(true);
-    });
+    floorLogger.debug(`Показать этаж ${floorNumber}`);
 
-    // 2. Скрываем стены других этажей через WallManager
-    // Показываем стены только текущего этажа
+    this._floorNodes.forEach(node => node.setEnabled(true));
     this._wallManager.showWallsForFloor(floorNumber);
 
-    // 3. Для не-стен (пол, потолок) используем старую логику
     this._floors.forEach((floor, num) => {
+      const visible = num === floorNumber;
       floor.elements.forEach(element => {
-        // Не трогаем стены - они уже обработаны WallManager
         if (element.type !== 'wall') {
-          element.mesh.isVisible = (num === floorNumber);
-          element.isVisible = (num === floorNumber);
+          element.mesh.isVisible = visible;
+          element.isVisible = visible;
         }
       });
+      floor.isVisible = visible;
     });
     
     this._currentFloor = floorNumber;
-    console.log(`✅ Показан этаж ${floorNumber}`);
   }
 
-  /**
-   * Показать все этажи
-   */
   public showAllFloors(): void {
-    console.log(`🏢 Показываю все этажи`);
+    floorLogger.debug("Показать все этажи");
     
-    // 1. Включаем все родительские ноды
-    this._floorNodes.forEach((node) => {
-      node.setEnabled(true);
-    });
-
-    // 2. Показываем все стены через WallManager
+    this._floorNodes.forEach(node => node.setEnabled(true));
     this._wallManager.showAllWalls();
 
-    // 3. Показываем все остальные элементы
     this._floors.forEach(floor => {
       floor.elements.forEach(element => {
         element.mesh.setEnabled(true);
         element.mesh.isVisible = true;
         element.isVisible = true;
       });
+      floor.isVisible = true;
     });
   }
 
-  /**
-   * Скрыть все этажи
-   */
   public hideAllFloors(): void {
-    // Не отключаем ноды! Просто скрываем всё через видимость
     this._floors.forEach(floor => {
       floor.elements.forEach(element => {
         element.mesh.isVisible = false;
         element.isVisible = false;
       });
+      floor.isVisible = false;
     });
   }
 
-  // Геттеры
+  public getFloorNumbers(): number[] {
+    return Array.from(this._floors.keys()).sort((a, b) => a - b);
+  }
+
+  public get minFloor(): number {
+    const floors = this.getFloorNumbers();
+    return floors.length > 0 ? floors[0] : 1;
+  }
+
+  public get maxFloor(): number {
+    const floors = this.getFloorNumbers();
+    return floors.length > 0 ? floors[floors.length - 1] : 1;
+  }
+
+  public hasFloor(floorNumber: number): boolean {
+    return this._floors.has(floorNumber);
+  }
+
   public get currentFloor(): number {
     return this._currentFloor;
   }

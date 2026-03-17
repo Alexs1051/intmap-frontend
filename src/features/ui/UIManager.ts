@@ -11,6 +11,9 @@ import { SearchBar } from "./components/SearchBar";
 import { PopupManager } from "./components/PopupManager";
 import { MarkerDetailsPanel } from "./components/MarkerDetailsPanel";
 import { UIEvent, UIEventType, CameraMode } from "../../shared/types";
+import { logger } from "../../core/logger/Logger";
+
+const uiLogger = logger.getLogger('UIManager');
 
 export class UIManager {
   private static _instance: UIManager;
@@ -19,7 +22,6 @@ export class UIManager {
   private _buildingManager: BuildingManager | null = null;
   private _markerManager: MarkerManager | null = null;
   
-  // UI Components
   private _controlPanel: ControlPanel | null = null;
   private _connectionScreen: ConnectionScreen;
   private _loadingScreen: LoadingScreen;
@@ -28,14 +30,12 @@ export class UIManager {
   private _popupManager: PopupManager;
   private _markerDetailsPanel: MarkerDetailsPanel;
 
-  // Состояния
   private _currentViewMode: 'building' | 'floor' = 'building';
   private _wallsTransparent: boolean = false;
   private _showFPS: boolean = true;
   private _isLoading: boolean = true;
 
   private constructor() {
-    // Инициализируем базовые UI компоненты
     this._connectionScreen = new ConnectionScreen();
     this._loadingScreen = new LoadingScreen();
     this._searchBar = new SearchBar();
@@ -43,12 +43,10 @@ export class UIManager {
     this._markerDetailsPanel = new MarkerDetailsPanel();
 
     this._markerDetailsPanel.setCloseCallback(() => {
-      if (this._markerManager) {
-        this._markerManager.clearSelection();
-      }
+      this._markerManager?.clearSelection();
     });
     
-    console.log("UIManager created with basic UI components");
+    uiLogger.debug("UIManager создан");
   }
 
   public static getInstance(): UIManager {
@@ -58,99 +56,54 @@ export class UIManager {
     return UIManager._instance;
   }
 
-  /**
-   * Инициализация с зависимостями (вызывается после создания Scene)
-   */
-  public initialize(scene: Scene, cameraManager: CameraManager): void {
+  public initialize(scene: Scene, cameraManager: CameraManager, buildingManager: BuildingManager): void {
     this._scene = scene;
     this._cameraManager = cameraManager;
-    this._buildingManager = BuildingManager.getInstance(scene);
+    this._buildingManager = buildingManager;
     this._markerManager = MarkerManager.getInstance(scene);
     
-    // Создаём ControlPanel (зависит от cameraManager)
     this._controlPanel = new ControlPanel(cameraManager.modeManager);
     
-    // Настраиваем обработчики
     this.setupEventListeners();
     this.setupSearchHandlers();
     
-    // Принудительно обновляем состояние кнопок при инициализации
     setTimeout(() => {
       this.updateButtonStates();
-      this.updateFloorButtons(); // Это заблокирует кнопки этажей
-      console.log("🔄 Начальное состояние кнопок обновлено");
+      this.updateFloorButtons();
     }, 100);
 
-    this._markerManager = MarkerManager.getInstance(scene);
-    this._markerManager.setOnMarkerSelected((marker: Marker) => {
-      if (marker) {
-        this._markerDetailsPanel.show(marker);
-      } else {
-        this._markerDetailsPanel.hide();
-      }
+    this._markerManager.setOnMarkerSelected((marker: Marker | null) => {
+      marker ? this._markerDetailsPanel.show(marker) : this._markerDetailsPanel.hide();
     });
 
     this._markerDetailsPanel.setFocusCallback((marker: Marker) => {
-      console.log(`🎯 Фокус на метку из панели: ${marker.data.title}`);
-      
-      // Вызываем focusOnMarker через MarkerManager
-      if (this._markerManager) {
-        this._markerManager.focusOnMarker(marker, {
-          distance: 8,
-          duration: 1.2
-        });
-        
-        // Показываем уведомление
-        this.showInfo(`Фокус на ${marker.data.title}`);
-      } else {
-        console.warn("MarkerManager не инициализирован");
-      }
+      uiLogger.info(`Фокус на метку: ${marker.data.title}`);
+      this._cameraManager?.focusOnPoint(marker.position, 8, 1.2);
+      this.showInfo(`Фокус на ${marker.data.title}`);
     });
     
-    console.log("UIManager fully initialized with all components");
+    uiLogger.info("UIManager полностью инициализирован");
   }
 
   private setupEventListeners(): void {
     if (!this._controlPanel || !this._cameraManager) return;
     
     this._controlPanel.addEventListener(async (event: UIEvent) => {
-      if (!this._cameraManager!.canInteractWithUI()) {
-        console.log("UI interaction blocked - camera is animating");
-        return;
-      }
+      if (!this._cameraManager!.canInteractWithUI()) return;
 
-      console.log(`UI Event: ${UIEventType[event.type]}`);
+      uiLogger.debug(`UI Event: ${UIEventType[event.type]}`);
 
-      switch (event.type) {
-        case UIEventType.SEARCH_TOGGLE:  // Добавить этот case
-          this.toggleSearch();
-          break;
-          
-        case UIEventType.CAMERA_MODE_TOGGLE:
-          await this._cameraManager!.toggleCameraMode();
-          break;
-          
-        case UIEventType.RESET_CAMERA:
-          await this._cameraManager!.resetCamera();
-          break;
-          
-        case UIEventType.VIEW_MODE_TOGGLE:
-          this.toggleViewMode();
-          break;
-          
-        case UIEventType.WALLS_TRANSPARENCY_TOGGLE:
-          this.toggleWallsTransparency();
-          break;
-          
-        case UIEventType.NEXT_FLOOR:
-          this.nextFloor();
-          break;
-          
-        case UIEventType.PREVIOUS_FLOOR:
-          this.previousFloor();
-          break;
-      }
-      
+      const handlers: Record<UIEventType, () => Promise<void> | void> = {
+        [UIEventType.SEARCH_TOGGLE]: () => this.toggleSearch(),
+        [UIEventType.CAMERA_MODE_TOGGLE]: () => this._cameraManager!.toggleCameraMode(),
+        [UIEventType.RESET_CAMERA]: () => this._cameraManager!.resetCamera(),
+        [UIEventType.VIEW_MODE_TOGGLE]: () => this.toggleViewMode(),
+        [UIEventType.WALLS_TRANSPARENCY_TOGGLE]: () => this.toggleWallsTransparency(),
+        [UIEventType.NEXT_FLOOR]: () => this.nextFloor(),
+        [UIEventType.PREVIOUS_FLOOR]: () => this.previousFloor()
+      };
+
+      await handlers[event.type]?.();
       this.updateButtonStates();
       this.updateFloorButtons();
     });
@@ -158,104 +111,71 @@ export class UIManager {
 
   private setupSearchHandlers(): void {
     this._searchBar.setSearchCallback((query: string) => {
-      console.log(`Searching for: ${query}`);
+      uiLogger.debug(`Поиск: ${query}`);
+      const markers = this._markerManager?.getAllMarkers() || [];
+      const results = markers
+        .filter(m => m.data.title.toLowerCase().includes(query.toLowerCase()))
+        .map(m => ({
+          id: m.id,
+          name: m.data.title,
+          type: m.type,
+          icon: m.data.icon,
+          floor: m.data.floor,
+          marker: m
+        }));
       
-      const mockResults = [
-        { id: '1', name: 'Офис 101', type: 'marker' },
-        { id: '2', name: 'Этаж 3', type: 'floor' },
-        { id: '3', name: 'Главное здание', type: 'building' },
-        { id: '4', name: 'Конференц-зал', type: 'marker' },
-        { id: '5', name: 'Столовая', type: 'marker' },
-      ].filter(item => 
-        item.name.toLowerCase().includes(query.toLowerCase())
-      );
-      
-      this._searchBar.showResults(mockResults);
+      this._searchBar.showResults(results);
     });
 
-    this._searchBar.setCloseCallback(() => {
-      console.log("Search closed");
+    this._searchBar.setCloseCallback(() => uiLogger.debug("Поиск закрыт"));
+    this._searchBar.setResultClickCallback((result) => {
+      if (result.marker) {
+        this._markerManager?.focusOnMarker(result.marker);
+        this._markerDetailsPanel.show(result.marker);
+      }
     });
   }
 
-  /**
-   * Показать экран загрузки
-   */
   public showLoading(status: string = 'Загрузка...'): void {
     this._isLoading = true;
     this._loadingScreen.show();
     this._loadingScreen.setStatus(status);
   }
 
-  /**
-   * Обновить прогресс загрузки
-   */
   public updateLoadingProgress(progress: number, status?: string): void {
     this._loadingScreen.updateProgress(progress);
-    if (status) {
-      this._loadingScreen.setStatus(status);
-    }
+    if (status) this._loadingScreen.setStatus(status);
   }
 
-  /**
-   * Скрыть экран загрузки
-   */
   public hideLoading(): void {
     this._isLoading = false;
     this._loadingScreen.hide();
   }
 
-  /**
-   * Показать экран соединения
-   */
   public showConnection(reason: string = 'Соединение прервано'): void {
     this._connectionScreen.show(reason);
   }
 
-  /**
-   * Показать ошибку соединения
-   */
   public showConnectionError(reason: string = 'Ошибка соединения'): void {
     this._connectionScreen.showError(reason);
   }
 
-  /**
-   * Скрыть экран соединения
-   */
   public hideConnection(): void {
     this._connectionScreen.hide();
   }
 
-  /**
-   * Установить колбэк для повторной попытки соединения
-   */
   public setRetryCallback(callback: () => void): void {
     this._connectionScreen.setRetryCallback(callback);
   }
 
-  /**
-   * Включить/выключить отображение FPS
-   */
   public toggleFPS(show?: boolean): void {
-    if (show !== undefined) {
-      this._showFPS = show;
-    } else {
-      this._showFPS = !this._showFPS;
-    }
+    this._showFPS = show ?? !this._showFPS;
   }
 
-  /**
-   * Обновить FPS (вызывать каждый кадр)
-   */
   public updateFPS(): void {
-    if (this._showFPS) {
-      this._fpsCounter.update();
-    }
+    if (this._showFPS) this._fpsCounter.update();
   }
 
-  /**
-   * Показать/скрыть поиск
-   */
   public toggleSearch(): void {
     this._searchBar.toggle();
   }
@@ -272,27 +192,26 @@ export class UIManager {
     this._popupManager.success(message, duration);
   }
 
-  public showError(message: string, duration: number = 8000): void { // Ошибки дольше
+  public showError(message: string, duration: number = 8000): void {
     this._popupManager.error(message, duration);
   }
 
-  public showWarning(message: string, duration: number = 6000): void { // Предупреждения тоже подольше
+  public showWarning(message: string, duration: number = 6000): void {
     this._popupManager.warning(message, duration);
   }
 
   private toggleViewMode(): void {
     if (!this._buildingManager || !this._cameraManager) return;
     
+    const floorManager = this._buildingManager.floorManager;
     this._currentViewMode = this._currentViewMode === 'building' ? 'floor' : 'building';
     
     if (this._currentViewMode === 'building') {
-      console.log("🏢 Показываю все этажи");
-      this._buildingManager.floorManager.showAllFloors();
+      floorManager.showAllFloors();
       this.showInfo('Режим: всё здание');
     } else {
-      const currentFloor = this._cameraManager.currentFloor;
-      console.log(`📌 Показываю этаж ${currentFloor}`);
-      this._buildingManager.floorManager.showFloor(currentFloor);
+      const currentFloor = floorManager.currentFloor;
+      floorManager.showFloor(currentFloor);
       this.showInfo(`Этаж ${currentFloor}`);
     }
     
@@ -305,37 +224,36 @@ export class UIManager {
     
     this._wallsTransparent = !this._wallsTransparent;
     this._buildingManager.wallManager.setTransparency(this._wallsTransparent);
-    this.showInfo(
-      this._wallsTransparent ? 'Стены прозрачные' : 'Стены непрозрачные'
-    );
+    this.showInfo(this._wallsTransparent ? 'Стены прозрачные' : 'Стены непрозрачные');
   }
 
   private nextFloor(): void {
-    if (!this._cameraManager || !this._buildingManager) return;
+    if (!this._buildingManager) return;
     
-    this._cameraManager.nextFloor();
-    const currentFloor = this._cameraManager.currentFloor;
+    const floorManager = this._buildingManager.floorManager;
+    const currentFloor = floorManager.currentFloor;
+    const maxFloor = floorManager.maxFloor;
     
-    if (this._currentViewMode === 'floor') {
-      this._buildingManager.floorManager.showFloor(currentFloor);
+    if (currentFloor < maxFloor) {
+      const nextFloor = currentFloor + 1;
+      floorManager.showFloor(nextFloor);
+      this.showSuccess(`Этаж ${nextFloor}`, 3000);
+      this.updateFloorButtons();
     }
-    
-    this.showSuccess(`Этаж ${currentFloor}`, 3000); // Для успеха оставим поменьше
-    this.updateFloorButtons();
   }
 
   private previousFloor(): void {
-    if (!this._cameraManager || !this._buildingManager) return;
+    if (!this._buildingManager) return;
     
-    this._cameraManager.previousFloor();
-    const currentFloor = this._cameraManager.currentFloor;
+    const floorManager = this._buildingManager.floorManager;
+    const currentFloor = floorManager.currentFloor;
     
-    if (this._currentViewMode === 'floor') {
-      this._buildingManager.floorManager.showFloor(currentFloor);
+    if (currentFloor > 1) {
+      const prevFloor = currentFloor - 1;
+      floorManager.showFloor(prevFloor);
+      this.showSuccess(`Этаж ${prevFloor}`, 3000);
+      this.updateFloorButtons();
     }
-    
-    this.showSuccess(`Этаж ${currentFloor}`, 3000);
-    this.updateFloorButtons();
   }
 
   private updateButtonStates(): void {
@@ -347,26 +265,20 @@ export class UIManager {
   }
 
   private updateFloorButtons(): void {
-    if (!this._controlPanel || !this._buildingManager || !this._cameraManager) return;
+    if (!this._controlPanel || !this._buildingManager) return;
     
-    const maxFloor = this._buildingManager.floorManager.floorCount;
-    const currentFloor = this._cameraManager.currentFloor;
+    const floorManager = this._buildingManager.floorManager;
+    const maxFloor = floorManager.maxFloor;
+    const currentFloor = floorManager.currentFloor;
     
-    // В режиме здания передаём 0, чтобы заблокировать кнопки
-    // В режиме этажа передаём номер текущего этажа
     this._controlPanel.updateFloorButtons(
       this._currentViewMode === 'floor' ? currentFloor : 0,
       maxFloor
     );
   }
 
-  /**
-   * Очистить все UI компоненты
-   */
   public dispose(): void {
-    if (this._controlPanel) {
-      this._controlPanel.dispose();
-    }
+    this._controlPanel?.dispose();
     this._connectionScreen.dispose();
     this._loadingScreen.dispose();
     this._fpsCounter.dispose();
@@ -377,10 +289,9 @@ export class UIManager {
     this._cameraManager = null;
     this._buildingManager = null;
     
-    console.log("UIManager fully disposed");
+    uiLogger.info("UIManager уничтожен");
   }
 
-  // Геттеры
   public get isLoading(): boolean {
     return this._isLoading;
   }

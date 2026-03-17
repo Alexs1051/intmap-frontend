@@ -1,36 +1,29 @@
 import { ArcRotateCamera, Vector3 } from "@babylonjs/core";
-import { CameraMode, CameraTransform, BuildingBounds } from "./types";
+import { CameraMode, CameraTransform, BuildingDimensions } from "./types";
+import { CAMERA_CONFIG } from "./constants";
+import { logger } from "../../core/logger/Logger";
+
+const modeLogger = logger.getLogger('CameraModeManager');
 
 export class CameraModeManager {
-  private _camera: ArcRotateCamera;
   private _currentCameraMode: CameraMode = CameraMode.MODE_3D;
-  private _bounds: BuildingBounds = {
-    minY: 0,
-    maxY: 30,
-    center: Vector3.Zero()
-  };
-
-  // Сохранённые состояния
+  private _target: Vector3 = Vector3.Zero();
   private _saved3DState: CameraTransform | null = null;
-  private _saved2DState: CameraTransform | null = null;
 
-  constructor(camera: ArcRotateCamera) {
-    this._camera = camera;
+  constructor(
+    private readonly _camera: ArcRotateCamera,
+    private readonly _dimensions: BuildingDimensions
+  ) {
     this.setupCamera();
   }
 
   private setupCamera(): void {
-    this._camera.alpha = -Math.PI / 2;
-    this._camera.beta = Math.PI / 3;
-    this._camera.radius = 40;
-    this._camera.target = Vector3.Zero();
-    
     this._camera.angularSensibilityX = 1000;
     this._camera.angularSensibilityY = 1000;
-    this._camera.panningSensibility = 50;
-    this._camera.wheelPrecision = 10;
-    this._camera.pinchPrecision = 10;
-    
+    this._camera.panningSensibility = CAMERA_CONFIG.panningSpeed;
+    this._camera.wheelPrecision = CAMERA_CONFIG.wheelPrecision;
+    this._camera.pinchPrecision = CAMERA_CONFIG.pinchPrecision;
+    this._camera.target = this._target;
     this.applyConstraints();
   }
 
@@ -38,59 +31,46 @@ export class CameraModeManager {
     if (this._currentCameraMode === CameraMode.MODE_2D) {
       this._camera.lowerBetaLimit = 0.1;
       this._camera.upperBetaLimit = 0.1;
-      this._camera.lowerAlphaLimit = -Infinity;
-      this._camera.upperAlphaLimit = Infinity;
-      this._camera.lowerRadiusLimit = 10;
-      this._camera.upperRadiusLimit = 100;
+      this._camera.lowerRadiusLimit = 20;
+      this._camera.upperRadiusLimit = 200;
     } else {
-      this._camera.lowerBetaLimit = 0.1;
-      this._camera.upperBetaLimit = Math.PI / 2;
-      this._camera.lowerAlphaLimit = -Infinity;
-      this._camera.upperAlphaLimit = Infinity;
-      this._camera.lowerRadiusLimit = 2;
-      this._camera.upperRadiusLimit = 50;
+      this._camera.lowerBetaLimit = CAMERA_CONFIG.minBeta;
+      this._camera.upperBetaLimit = CAMERA_CONFIG.maxBeta;
+      this._camera.lowerRadiusLimit = CAMERA_CONFIG.minRadius;
+      this._camera.upperRadiusLimit = CAMERA_CONFIG.maxRadius;
     }
   }
 
-  public setBuildingBounds(bounds: BuildingBounds): void {
-    this._bounds = bounds;
-    this._camera.target = bounds.center.clone();
+  public setTarget(target: Vector3): void {
+    this._target = target.clone();
+    this._camera.target = this._target;
   }
 
   public get2DTransform(): CameraTransform {
-    const height = this._bounds.maxY + 20;
-    
+    const maxDimension = Math.max(this._dimensions.height, this._dimensions.width, this._dimensions.depth);
     return {
       alpha: -Math.PI / 2,
       beta: 0.1,
-      radius: height,
-      target: this._bounds.center.clone()
+      radius: maxDimension * 2.5,
+      target: this._target.clone()
     };
   }
 
   public get3DTransform(): CameraTransform {
-    if (this._saved3DState) {
-      return this._saved3DState;
-    }
+    const maxDimension = Math.max(this._dimensions.height, this._dimensions.width, this._dimensions.depth);
+    const defaultRadius = Math.max(30, maxDimension * 2.0);
     
-    return {
+    return this._saved3DState ?? {
       alpha: -Math.PI / 2,
-      beta: Math.PI / 3,
-      radius: this._bounds.maxY * 1.2,
-      target: this._bounds.center.clone()
+      beta: Math.PI / 3.5,
+      radius: defaultRadius,
+      target: this._target.clone()
     };
   }
 
   public toggleCameraMode(): CameraMode {
     if (this._currentCameraMode === CameraMode.MODE_3D) {
       this._saved3DState = {
-        alpha: this._camera.alpha,
-        beta: this._camera.beta,
-        radius: this._camera.radius,
-        target: this._camera.target.clone()
-      };
-    } else {
-      this._saved2DState = {
         alpha: this._camera.alpha,
         beta: this._camera.beta,
         radius: this._camera.radius,
@@ -103,18 +83,17 @@ export class CameraModeManager {
       : CameraMode.MODE_3D;
 
     this.applyConstraints();
+    modeLogger.debug(`Режим камеры: ${this._currentCameraMode}`);
     
-    console.log(`Camera mode switched to: ${this._currentCameraMode}`);
     return this._currentCameraMode;
   }
 
-  // Геттеры
   public get cameraMode(): CameraMode {
     return this._currentCameraMode;
   }
 
-  public get bounds(): BuildingBounds {
-    return this._bounds;
+  public get target(): Vector3 {
+    return this._target;
   }
 
   public get camera(): ArcRotateCamera {

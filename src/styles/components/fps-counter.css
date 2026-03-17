@@ -1,0 +1,31 @@
+.fps-counter {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  color: white;
+  font-family: monospace;
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  z-index: var(--z-fps-counter);
+  pointer-events: none;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-sm);
+}
+
+.fps-counter.good {
+  color: var(--color-success);
+  background: rgba(68, 255, 68, 0.2);
+}
+
+.fps-counter.warning {
+  color: var(--color-warning);
+  background: rgba(255, 170, 68, 0.2);
+}
+
+.fps-counter.bad {
+  color: var(--color-error);
+  background: rgba(255, 68, 68, 0.2);
+}

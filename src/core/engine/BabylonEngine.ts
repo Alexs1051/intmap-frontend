@@ -1,4 +1,7 @@
 import { Engine } from "@babylonjs/core";
+import { logger } from "../logger/Logger";
+
+const engineLogger = logger.getLogger('BabylonEngine');
 
 export class BabylonEngine {
   private static _instance: BabylonEngine;
@@ -14,10 +17,9 @@ export class BabylonEngine {
 
     this._engine = new Engine(this._canvas, true);
     
-    // Обработка ресайза
-    window.addEventListener("resize", () => {
-      this._engine.resize();
-    });
+    window.addEventListener("resize", () => this._engine.resize());
+    
+    engineLogger.info("BabylonEngine инициализирован");
   }
 
   public static getInstance(): BabylonEngine {

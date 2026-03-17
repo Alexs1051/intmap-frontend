@@ -1,15 +1,16 @@
 import { ArcRotateCamera, Scene, Vector3 } from "@babylonjs/core";
-import { CameraTransform, AnimationConfig, EasingFunctions, BuildingBounds } from "./types";
+import { CameraTransform } from "./types";
+import { logger } from "../../core/logger/Logger";
+
+const animatorLogger = logger.getLogger('CameraAnimator');
 
 export class CameraAnimator {
-  private _camera: ArcRotateCamera;
-  private _scene: Scene;
   private _isAnimating: boolean = false;
 
-  constructor(camera: ArcRotateCamera, scene: Scene) {
-    this._camera = camera;
-    this._scene = scene;
-  }
+  constructor(
+    private readonly _camera: ArcRotateCamera,
+    private readonly _scene: Scene
+  ) {}
 
   public async animateTo(
     target: CameraTransform,
@@ -32,66 +33,69 @@ export class CameraAnimator {
         elapsed += this._scene.getEngine().getDeltaTime() / 1000;
 
         if (elapsed >= duration) {
-          this._camera.alpha = target.alpha;
-          this._camera.beta = target.beta;
-          this._camera.radius = target.radius;
-          this._camera.target.copyFrom(target.target);
-
+          this.applyTransform(target);
           this._scene.onBeforeRenderObservable.remove(observer);
           this._isAnimating = false;
           resolve();
           return;
         }
 
-        const t = EasingFunctions.easeOutCubic(elapsed / duration);
-        
-        this._camera.alpha = this.lerp(start.alpha, target.alpha, t);
-        this._camera.beta = this.lerp(start.beta, target.beta, t);
-        this._camera.radius = this.lerp(start.radius, target.radius, t);
-        
-        const targetPos = Vector3.Lerp(start.target, target.target, t);
-        this._camera.target.copyFrom(targetPos);
+        const t = this.easeOutCubic(elapsed / duration);
+        this.interpolateTransform(start, target, t);
       });
     });
   }
 
-  /**
-   * Анимация выезда камеры при загрузке
-   */
   public async playIntroAnimation(
-    bounds: BuildingBounds,
+    buildingHeight: number,
+    targetPosition: Vector3,
     customStart?: CameraTransform,
     customEnd?: CameraTransform
   ): Promise<void> {
-    // Центр здания по высоте - на уровне 1/3 от низа
-    const targetHeight = bounds.maxY * 0.3;
+    const targetHeight = targetPosition.y;
     
     const start: CameraTransform = customStart ?? {
       alpha: Math.PI / 4,
       beta: Math.PI / 4,
-      radius: bounds.maxY * 1.2,
-      target: new Vector3(0, targetHeight, 0)
+      radius: buildingHeight * 1.5,
+      target: targetPosition.clone()
     };
 
     const end: CameraTransform = customEnd ?? {
       alpha: -Math.PI / 3,
       beta: Math.PI / 3.5,
-      radius: bounds.maxY * 0.9,
-      target: new Vector3(0, targetHeight, 0)
+      radius: buildingHeight * 1.2,
+      target: targetPosition.clone()
     };
 
-    // Устанавливаем начальную позицию без анимации
-    this._camera.alpha = start.alpha;
-    this._camera.beta = start.beta;
-    this._camera.radius = start.radius;
-    this._camera.target.copyFrom(start.target);
-
-    // Анимируем к конечной
+    this.applyTransform(start);
     await this.animateTo(end, 2.0);
+  }
+
+  private applyTransform(transform: CameraTransform): void {
+    this._camera.alpha = transform.alpha;
+    this._camera.beta = transform.beta;
+    this._camera.radius = transform.radius;
+    this._camera.target.copyFrom(transform.target);
+  }
+
+  private interpolateTransform(
+    start: CameraTransform,
+    target: CameraTransform,
+    t: number
+  ): void {
+    this._camera.alpha = this.lerp(start.alpha, target.alpha, t);
+    this._camera.beta = this.lerp(start.beta, target.beta, t);
+    this._camera.radius = this.lerp(start.radius, target.radius, t);
+    this._camera.target.copyFrom(Vector3.Lerp(start.target, target.target, t));
   }
 
   private lerp(a: number, b: number, t: number): number {
     return a + (b - a) * t;
+  }
+
+  private easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
   }
 
   public get isAnimating(): boolean {

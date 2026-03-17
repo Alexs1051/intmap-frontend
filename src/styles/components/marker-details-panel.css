@@ -1,0 +1,426 @@
+@import '../variables.css';
+
+.marker-details-panel {
+  position: fixed;
+  top: 0;
+  left: -400px;
+  width: 380px;
+  height: 100vh;
+  background: var(--color-bg-primary);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+  z-index: var(--z-marker-details);
+  transition: left var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  color: var(--color-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.marker-details-panel.visible {
+  left: 0;
+}
+
+/* Заголовок */
+.marker-details-header {
+  padding: var(--spacing-xl);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.marker-details-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.marker-details-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.marker-details-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Контент */
+.marker-details-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-xl);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+}
+
+.marker-details-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.marker-details-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+}
+
+.marker-details-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+}
+
+.marker-details-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Кнопки маршрута */
+.route-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: var(--spacing-xl);
+}
+
+.route-button {
+  flex: 1;
+  padding: 12px 0;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.route-button.active {
+  background: var(--color-accent-primary);
+  color: white;
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
+}
+
+.route-button:not(.active):hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* Кнопка фокуса */
+.focus-button {
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: var(--spacing-xl);
+  background: var(--gradient-accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all var(--transition-fast);
+  box-shadow: 0 4px 10px rgba(0, 210, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.focus-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 210, 255, 0.5);
+}
+
+.focus-button i {
+  font-size: 16px;
+}
+
+/* Секция с названием и иконкой */
+.title-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.title-wrapper {
+  flex: 1;
+}
+
+.title-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.title-value {
+  font-size: 16px;
+  font-weight: 500;
+  word-wrap: break-word;
+  color: #fff;
+}
+
+.marker-icon {
+  font-size: 28px;
+  background: rgba(255, 255, 255, 0.1);
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-circle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Секция описания с Markdown */
+.description-section {
+  margin-bottom: 20px;
+}
+
+.description-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.description-markdown {
+  width: 100%;
+  min-height: 150px;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  color: #ddd;
+  overflow-y: auto;
+  word-wrap: break-word;
+  box-sizing: border-box;
+}
+
+/* Стили для Markdown контента */
+.description-markdown h1 {
+  font-size: 1.5em;
+  margin: 0.5em 0;
+  color: var(--color-accent-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.3em;
+}
+
+.description-markdown h2 {
+  font-size: 1.3em;
+  margin: 0.5em 0;
+  color: var(--color-accent-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.2em;
+}
+
+.description-markdown h3 {
+  font-size: 1.1em;
+  margin: 0.5em 0;
+  color: #fff;
+}
+
+.description-markdown h4, 
+.description-markdown h5, 
+.description-markdown h6 {
+  font-size: 1em;
+  margin: 0.5em 0;
+  color: #eee;
+}
+
+.description-markdown p {
+  margin: 0.5em 0;
+  line-height: 1.6;
+}
+
+.description-markdown ul, 
+.description-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.8em;
+}
+
+.description-markdown li {
+  margin: 0.3em 0;
+  line-height: 1.5;
+}
+
+.description-markdown li > ul,
+.description-markdown li > ol {
+  margin: 0.2em 0 0.2em 1.5em;
+}
+
+.description-markdown code {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  color: #ffa657;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.description-markdown pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.description-markdown pre code {
+  background: none;
+  padding: 0;
+  border: none;
+  color: #ddd;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.description-markdown blockquote {
+  border-left: 3px solid var(--color-accent-primary);
+  margin: 0.8em 0;
+  padding: 0.5em 1em;
+  background: rgba(255, 255, 255, 0.02);
+  color: #aaa;
+  font-style: italic;
+}
+
+.description-markdown a {
+  color: var(--color-accent-primary);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--color-accent-primary);
+}
+
+.description-markdown a:hover {
+  color: #fff;
+  border-bottom: 1px solid #fff;
+}
+
+.description-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.8em 0;
+  font-size: 0.9em;
+}
+
+.description-markdown th {
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  color: #fff;
+}
+
+.description-markdown th,
+.description-markdown td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.6em;
+  text-align: left;
+}
+
+.description-markdown tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.description-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5em 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.description-markdown hr {
+  border: none;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 1em 0;
+}
+
+.description-markdown strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.description-markdown em {
+  color: #ddd;
+}
+
+.description-markdown del {
+  color: #888;
+}
+
+/* Информационная секция */
+.info-section {
+  margin-bottom: 15px;
+}
+
+.info-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.info-value {
+  font-size: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  box-sizing: border-box;
+  width: 100%;
+  color: #ddd;
+}
+
+.info-value.monospace {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+  .marker-details-panel {
+    width: 320px;
+  }
+  
+  .marker-details-content {
+    padding: var(--spacing-lg);
+  }
+  
+  .title-value {
+    font-size: 15px;
+  }
+  
+  .description-markdown {
+    font-size: 13px;
+    padding: 12px;
+  }
+}
+
+/* Темная тема (по умолчанию) */
+@media (prefers-color-scheme: dark) {
+  .marker-details-panel {
+    background: rgba(20, 20, 30, 0.98);
+  }
+}

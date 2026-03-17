@@ -1,0 +1,81 @@
+.control-panel {
+  position: fixed;
+  background: var(--color-bg-primary);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-control-panel);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+}
+
+.control-panel.landscape {
+  bottom: var(--spacing-xl);
+  right: var(--spacing-xl);
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-radius: var(--radius-full);
+  max-width: calc(100vw - 40px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.control-panel.portrait {
+  bottom: var(--spacing-xl);
+  right: var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-full);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.control-panel-button {
+  width: 50px;
+  height: 50px;
+  border-radius: var(--radius-circle);
+  border: none;
+  background: rgba(60, 60, 80, 0.6);
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.control-panel-button:hover {
+  background: rgba(80, 80, 120, 0.8);
+  transform: scale(1.05);
+}
+
+.control-panel-button.active {
+  background: rgba(100, 100, 200, 0.9);
+  box-shadow: 0 0 10px rgba(100, 100, 200, 0.5);
+}
+
+.control-panel-button.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.control-panel-button.floor-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.control-panel-button.floor-button:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}

@@ -1,16 +1,14 @@
 import { ArcRotateCamera } from "@babylonjs/core";
 
 export class CameraInputHandler {
-  private _camera: ArcRotateCamera;
-  private _canvas: HTMLCanvasElement;
-  
   private _isLeftPressed: boolean = false;
   private _isMiddlePressed: boolean = false;
   private _isRightPressed: boolean = false;
 
-  constructor(camera: ArcRotateCamera, canvas: HTMLCanvasElement) {
-    this._camera = camera;
-    this._canvas = canvas;
+  constructor(
+    private readonly _camera: ArcRotateCamera,
+    private readonly _canvas: HTMLCanvasElement
+  ) {
     this.setupInputListeners();
   }
 

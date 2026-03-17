@@ -1,17 +1,19 @@
-import { CameraMode } from "../features/camera/types";
-export { CameraMode };
-
-export interface UIEvent {
-  type: UIEventType;
-  payload?: any;
+export enum CameraMode {
+  MODE_2D = '2d',
+  MODE_3D = '3d'
 }
 
 export enum UIEventType {
+  SEARCH_TOGGLE,
   CAMERA_MODE_TOGGLE,
   RESET_CAMERA,
-  SEARCH_TOGGLE,
   VIEW_MODE_TOGGLE,
   WALLS_TRANSPARENCY_TOGGLE,
   NEXT_FLOOR,
   PREVIOUS_FLOOR
+}
+
+export interface UIEvent {
+  type: UIEventType;
+  payload?: any;
 }

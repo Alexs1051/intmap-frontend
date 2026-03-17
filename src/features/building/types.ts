@@ -12,7 +12,7 @@ export interface BuildingElement {
   originalPosition: Vector3;
   originalRotation: Vector3;
   originalScaling: Vector3;
-  renderingGroupId?: number; // Добавляем группу рендеринга
+  renderingGroupId?: number;
 }
 
 export interface FloorData {
@@ -21,7 +21,7 @@ export interface FloorData {
   isVisible: boolean;
 }
 
-export interface BuildingData {
+export interface ParseResult {
   elements: Map<string, BuildingElement>;
   floors: Map<number, BuildingElement[]>;
   walls: BuildingElement[];
@@ -30,3 +30,5 @@ export interface BuildingData {
   stairs: BuildingElement[];
   floorNodes: Map<number, TransformNode>;
 }
+
+export interface BuildingData extends ParseResult {}
