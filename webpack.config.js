@@ -2,13 +2,16 @@ const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const CopyPlugin = require('copy-webpack-plugin');
 
+const isProduction = process.env.NODE_ENV === 'production';
+const publicPath = isProduction ? '/IntMap/' : '/';
+
 module.exports = {
   entry: path.resolve(__dirname, "src/app.ts"),
   output: {
     filename: "js/bundle.js",
     path: path.resolve(__dirname, "dist"),
     clean: true,
-    publicPath: '/',
+    publicPath: publicPath, // Динамический publicPath
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"],
@@ -62,7 +65,7 @@ module.exports = {
       },
       {
         test: /\.md$/,
-        type: 'asset/source', // Импортирует markdown как строку
+        type: 'asset/source',
       },
       {
         test: /\.(png|svg|jpg|jpeg|gif|ico)$/,
@@ -92,7 +95,7 @@ module.exports = {
     }),
   ],
   devtool: "source-map",
-  mode: "development",
+  mode: isProduction ? "production" : "development",
   performance: {
     hints: false,
   },
