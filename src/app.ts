@@ -16,10 +16,15 @@ class App {
   private _fpsCounter: FPSCounter;
   private _uiManager: UIManager;
   private _connectionScreen: ConnectionScreen;
-  private _modelUrl: string = '/models/building.glb';
+  private _modelUrl: string;
   private _lastTime: number = performance.now();
 
   constructor() {
+    const baseUrl = window.location.hostname.includes('github.io') 
+      ? '/IntMap/models' 
+      : '/models';
+    this._modelUrl = `${baseUrl}/building.glb`;
+
     this._uiManager = UIManager.getInstance();
     this._connectionScreen = new ConnectionScreen();
     
