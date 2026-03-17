@@ -21,7 +21,6 @@ const widgetLogger = logger.getLogger('MarkerWidget');
 export class MarkerWidget {
   private readonly _root: TransformNode;
   private readonly _background: Mesh;
-  private readonly _outline: Mesh | null;
   private readonly _guiTexture: AdvancedDynamicTexture;
   private readonly _titleText: TextBlock;
   private readonly _iconContainer: Rectangle;
@@ -42,9 +41,6 @@ export class MarkerWidget {
   private readonly PADDING = 8;
   private readonly FONT_SIZE = 36;
   private readonly TEXTURE_SCALE = 100;
-  private readonly MIN_SCALE = 0.5;
-  private readonly MAX_SCALE = 2.5;
-  private readonly OPTIMAL_DISTANCE = 20;
 
   constructor(
     scene: Scene,
@@ -73,12 +69,12 @@ export class MarkerWidget {
     this._root.position = position.clone();
 
     this._background = this.createBackground(scene);
-    this._outline = this.createOutline(scene);
-    const { guiTexture, titleText, iconContainer, backgroundRect } = this.createGUI(scene);
-    this._guiTexture = guiTexture;
-    this._titleText = titleText;
-    this._iconContainer = iconContainer;
-    this._backgroundRect = backgroundRect;
+    
+    const gui = this.createGUI(scene);
+    this._guiTexture = gui.guiTexture;
+    this._titleText = gui.titleText;
+    this._iconContainer = gui.iconContainer;
+    this._backgroundRect = gui.backgroundRect;
 
     this._background.metadata = { widget: this };
   }
@@ -107,25 +103,6 @@ export class MarkerWidget {
     bg.enablePointerMoveEvents = true;
     
     return bg;
-  }
-
-  private createOutline(scene: Scene): Mesh | null {
-    const outline = MeshBuilder.CreatePlane("markerOutline", {
-      width: this._currentWidth / this.TEXTURE_SCALE + 0.1,
-      height: this._currentHeight / this.TEXTURE_SCALE + 0.1
-    }, scene);
-    
-    const material = new StandardMaterial("markerOutlineMat", scene);
-    material.diffuseColor = new Color3(0.3, 0.6, 1.0);
-    material.alpha = 0;
-    material.backFaceCulling = false;
-    
-    outline.material = material;
-    outline.parent = this._root;
-    outline.position.z = -0.02;
-    outline.setEnabled(false);
-    
-    return outline;
   }
 
   private createGUI(scene: Scene): {
@@ -207,14 +184,38 @@ export class MarkerWidget {
     return { guiTexture, titleText, iconContainer, backgroundRect };
   }
 
+  private brightenColor(color: Color3, factor: number): Color3 {
+    return new Color3(
+      Math.min(1, color.r * factor),
+      Math.min(1, color.g * factor),
+      Math.min(1, color.b * factor)
+    );
+  }
+
+  public setSelected(selected: boolean, outlineColor?: Color3): void {
+    if (this._isSelected === selected) return;
+    
+    this._isSelected = selected;
+    
+    if (selected) {
+      const brightColor = this.brightenColor(this._backgroundColor, 1.5);
+      this._backgroundRect.background = brightColor.toHexString();
+    } else {
+      this._backgroundRect.background = this._backgroundColor.toHexString();
+    }
+  }
+
   public updateScale(cameraPosition: Vector3): void {
     const distance = Vector3.Distance(this._root.position, cameraPosition);
-    const targetScale = Math.max(
-      this.MIN_SCALE,
-      Math.min(this.MAX_SCALE, distance / this.OPTIMAL_DISTANCE)
-    );
+    const OPTIMAL_DISTANCE = 20;
+    const MIN_SCALE = 0.5;
+    const MAX_SCALE = 2.5;
+    
+    let targetScale = distance / OPTIMAL_DISTANCE;
+    targetScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
     
     this._currentScale = this.lerp(this._currentScale, targetScale, 0.1);
+    
     this._root.scaling.setAll(this._currentScale);
   }
 
@@ -227,30 +228,12 @@ export class MarkerWidget {
     this._root.rotate(Vector3.Up(), Math.PI);
   }
 
-  public setSelected(selected: boolean, outlineColor: Color3): void {
-    this._isSelected = selected;
-    
-    if (this._outline) {
-      this._outline.setEnabled(selected);
-      
-      if (selected) {
-        const material = this._outline.material as StandardMaterial;
-        material.diffuseColor = outlineColor.clone();
-        material.alpha = 0.5;
-        this._backgroundRect.background = outlineColor.toHexString();
-      } else {
-        this._backgroundRect.background = this._backgroundColor.toHexString();
-      }
-    }
-  }
-
   public setTitle(title: string): void {
     const newWidth = this.calculateWidth(title);
     
     if (Math.abs(newWidth - this._currentWidth) > 10) {
       widgetLogger.debug(`Обновление размера маркера "${title}": ${newWidth}px`);
       this._currentWidth = newWidth;
-      // Здесь можно добавить логику пересоздания, если нужно
     }
     
     this._titleText.text = title;

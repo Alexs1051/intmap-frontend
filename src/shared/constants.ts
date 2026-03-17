@@ -19,7 +19,5 @@ export const GROUND_COLOR = new Color3(0.2, 0.2, 0.2);
 export const MARKER_CONFIG = {
   defaultSize: 1.5,
   hoverScale: 1.2,
-  selectedOutlineColor: new Color3(0.3, 0.6, 1.0),
-  outlineWidth: 2,
   focusDistance: 8
 } as const;

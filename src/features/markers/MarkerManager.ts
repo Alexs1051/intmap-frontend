@@ -24,9 +24,11 @@ export class MarkerManager {
   private _cameraManager: CameraManager | null = null;
   private _isInitialized: boolean = false;
   private _onMarkerSelectedCallback: ((marker: Marker | null) => void) | null = null;
+  private _raycasterActive: boolean = false;
 
   private constructor(scene: Scene) {
     this._scene = scene;
+    this.setupHoverDetection();
   }
 
   public static getInstance(scene: Scene): MarkerManager {
@@ -38,6 +40,52 @@ export class MarkerManager {
 
   public setCameraManager(cameraManager: CameraManager): void {
     this._cameraManager = cameraManager;
+  }
+
+  private setupHoverDetection(): void {
+    const canvas = this._scene.getEngine().getRenderingCanvas();
+    if (!canvas) return;
+
+    canvas.addEventListener('mousemove', (event) => {
+      if (this._raycasterActive) return;
+      this._raycasterActive = true;
+
+      requestAnimationFrame(() => {
+        this.checkHover(event);
+        this._raycasterActive = false;
+      });
+    });
+  }
+
+  private checkHover(event: MouseEvent): void {
+    const canvas = this._scene.getEngine().getRenderingCanvas();
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / canvas.width * canvas.width;
+    const y = (event.clientY - rect.top) / canvas.height * canvas.height;
+
+    const ray = this._scene.createPickingRay(x, y, null, this._cameraManager?.camera || null);
+    const pickResult = this._scene.pickWithRay(ray, (mesh) => mesh.metadata?.widget !== undefined);
+
+    let hoveredMarker: Marker | null = null;
+
+    if (pickResult?.hit) {
+      hoveredMarker = this.findMarkerByMesh(pickResult.pickedMesh);
+    }
+
+    if (this._hoveredMarker !== hoveredMarker) {
+      if (this._hoveredMarker) {
+        this._hoveredMarker.setHovered(false);
+      }
+      
+      this._hoveredMarker = hoveredMarker;
+      
+      if (this._hoveredMarker) {
+        this._hoveredMarker.setHovered(true);
+        markerLogger.debug(`Наведение на маркер: ${this._hoveredMarker.data.title}`);
+      }
+    }
   }
 
   public async initialize(onProgress?: (progress: number) => void): Promise<void> {
@@ -118,7 +166,7 @@ export class MarkerManager {
     ];
 
     testMarkers.forEach(data => this.createMarker(data));
-    markerLogger.info(`Создано ${testMarkers.length} тестовых маркеров с расширенными описаниями`);
+    markerLogger.info(`Создано ${testMarkers.length} тестовых маркеров`);
   }
 
   private handleMarkerClick(marker: Marker): void {
@@ -148,7 +196,6 @@ export class MarkerManager {
   public update(cameraPosition: Vector3): void {
     this._markers.forEach(marker => {
       marker.update(cameraPosition);
-      marker.updateScale(cameraPosition);
     });
   }
 
@@ -231,6 +278,10 @@ export class MarkerManager {
 
   public get selectedMarker(): Marker | null {
     return this._selectedMarker;
+  }
+
+  public get hoveredMarker(): Marker | null {
+    return this._hoveredMarker;
   }
 
   public get isInitialized(): boolean {
