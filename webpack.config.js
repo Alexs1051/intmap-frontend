@@ -5,7 +5,7 @@ const CopyPlugin = require('copy-webpack-plugin');
 module.exports = {
   entry: path.resolve(__dirname, "src/app.ts"),
   output: {
-    filename: "bundle.js", // Упростим: без папки js
+    filename: "bundle.js",
     path: path.resolve(__dirname, "dist"),
     clean: true,
     publicPath: '', // Пустой publicPath для относительных путей
@@ -41,7 +41,23 @@ module.exports = {
     }),
     new CopyPlugin({
       patterns: [
-        { from: "public/models", to: "models", noErrorOnMissing: true },
+        { 
+          from: "public/models", 
+          to: "models", // Скопирует в dist/models/
+          noErrorOnMissing: false, // Меняем на false, чтобы видеть ошибки
+        },
+        // Добавляем копирование самой модели, если она в корне public
+        {
+          from: "public/*.glb",
+          to: "[name][ext]",
+          noErrorOnMissing: true,
+        },
+        // Копируем все ресурсы, которые могут понадобиться
+        {
+          from: "public/**/*",
+          to: "[path][name][ext]",
+          noErrorOnMissing: true,
+        },
       ],
     }),
   ],
