@@ -20,10 +20,11 @@ class App {
   private _lastTime: number = performance.now();
 
   constructor() {
-    const baseUrl = window.location.hostname.includes('github.io') 
-      ? '/IntMap/models' 
-      : '/models';
-    this._modelUrl = `${baseUrl}/building.glb`;
+    if (window.location.hostname.includes('github.io')) {
+      this._modelUrl = '/IntMap/models/building.glb';
+    } else {
+      this._modelUrl = './models/building.glb';
+    }
 
     this._uiManager = UIManager.getInstance();
     this._connectionScreen = new ConnectionScreen();
