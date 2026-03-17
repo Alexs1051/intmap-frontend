@@ -2,62 +2,28 @@ const path = require("path");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const CopyPlugin = require('copy-webpack-plugin');
 
-const isProduction = process.env.NODE_ENV === 'production';
-const publicPath = isProduction ? '/IntMap/' : '/';
-
 module.exports = {
   entry: path.resolve(__dirname, "src/app.ts"),
   output: {
-    filename: "js/bundle.js",
+    filename: "bundle.js", // Упростим: без папки js
     path: path.resolve(__dirname, "dist"),
     clean: true,
-    publicPath: publicPath, // Динамический publicPath
+    publicPath: '', // Пустой publicPath для относительных путей
   },
   resolve: {
-    extensions: [".tsx", ".ts", ".js"],
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
+    extensions: [".ts", ".js"],
   },
   devServer: {
-    static: [
-      {
-        directory: path.resolve(__dirname, "public"),
-        publicPath: "/",
-      }
-    ],
+    static: path.resolve(__dirname, "public"),
     port: 8080,
     hot: true,
-    client: {
-      overlay: {
-        errors: true,
-        warnings: false,
-      },
-      logging: 'error',
-    },
   },
   module: {
     rules: [
       {
         test: /\.tsx?$/,
-        use: [
-          {
-            loader: "ts-loader",
-            options: {
-              transpileOnly: true,
-              compilerOptions: {
-                module: "esnext",
-              },
-            },
-          },
-        ],
+        use: "ts-loader",
         exclude: /node_modules/,
-      },
-      {
-        test: /\.js$/,
-        use: ["source-map-loader"],
-        enforce: "pre",
-        exclude: /node_modules\/@babylonjs/,
       },
       {
         test: /\.css$/,
@@ -67,26 +33,11 @@ module.exports = {
         test: /\.md$/,
         type: 'asset/source',
       },
-      {
-        test: /\.(png|svg|jpg|jpeg|gif|ico)$/,
-        type: 'asset/resource',
-        generator: {
-          filename: 'assets/images/[name][ext]',
-        },
-      },
     ],
   },
-  ignoreWarnings: [
-    {
-      module: /@babylonjs/,
-      message: /sourcemap/,
-    },
-  ],
   plugins: [
     new HtmlWebpackPlugin({
-      inject: true,
       template: path.resolve(__dirname, "public/index.html"),
-      filename: "index.html",
     }),
     new CopyPlugin({
       patterns: [
@@ -95,8 +46,5 @@ module.exports = {
     }),
   ],
   devtool: "source-map",
-  mode: isProduction ? "production" : "development",
-  performance: {
-    hints: false,
-  },
+  mode: "development",
 };
