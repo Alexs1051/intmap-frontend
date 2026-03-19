@@ -1,15 +1,16 @@
 import { Marker } from "../../markers/Marker";
-import { Color3 } from "@babylonjs/core";
 import { marked } from 'marked';
 import { logger } from "../../../core/logger/Logger";
+import { AnyMarkerData, MarkerType, RGBA } from "../../markers/types";
+import { rgbaToCss } from "../../markers/utils/iconUtils";
 import '../../../styles/components/marker-details-panel.css';
 
 marked.setOptions({
-  gfm: true, // GitHub Flavored Markdown
-  breaks: true, // Переносы строк
-  pedantic: false, // Не быть строгим
-  silent: false, // Показывать ошибки
-  async: false // Синхронный режим
+  gfm: true,
+  breaks: true,
+  pedantic: false,
+  silent: false,
+  async: false
 });
 
 const detailsLogger = logger.getLogger('MarkerDetailsPanel');
@@ -24,9 +25,45 @@ export class MarkerDetailsPanel {
   
   private _fromActive: boolean = false;
   private _toActive: boolean = false;
+  private _onFromToggle: ((marker: Marker, type: 'from') => void) | null = null;
+  private _onToToggle: ((marker: Marker, type: 'to') => void) | null = null;
 
   constructor() {
     this.createPanel();
+  }
+
+  public setRouteCallbacks(
+    onFromToggle: (marker: Marker, type: 'from') => void,
+    onToToggle: (marker: Marker, type: 'to') => void
+  ): void {
+    this._onFromToggle = onFromToggle;
+    this._onToToggle = onToToggle;
+  }
+
+  public updateFromState(active: boolean): void {
+    if (this._fromActive !== active) {
+      this._fromActive = active;
+      this.updateRouteButtons();
+    }
+  }
+
+  public updateToState(active: boolean): void {
+    if (this._toActive !== active) {
+      this._toActive = active;
+      this.updateRouteButtons();
+    }
+  }
+
+  private updateRouteButtons(): void {
+    // Обновляем только кнопки, не пересоздавая весь контент
+    const routeButtons = this._contentContainer.querySelector('.route-buttons');
+    if (routeButtons) {
+      const fromButton = routeButtons.children[0] as HTMLButtonElement;
+      const toButton = routeButtons.children[1] as HTMLButtonElement;
+      
+      fromButton.className = `route-button ${this._fromActive ? 'active' : ''}`;
+      toButton.className = `route-button ${this._toActive ? 'active' : ''}`;
+    }
   }
 
   private createPanel(): void {
@@ -59,12 +96,10 @@ export class MarkerDetailsPanel {
 
   public show(marker: Marker): void {
     this._currentMarker = marker;
-    this._fromActive = false;
-    this._toActive = false;
     this.updateContent(marker);
     this._container.classList.add('visible');
     this._isVisible = true;
-    detailsLogger.debug(`Показана панель для маркера: ${marker.data.title}`);
+    detailsLogger.debug(`Показана панель для маркера: ${marker.data.name}`);
   }
 
   public hide(): void {
@@ -76,7 +111,7 @@ export class MarkerDetailsPanel {
   }
 
   private updateContent(marker: Marker): void {
-    const data = marker.data;
+    const data = marker.data as AnyMarkerData;
     this._contentContainer.innerHTML = '';
 
     // Кнопки маршрута
@@ -85,12 +120,17 @@ export class MarkerDetailsPanel {
     // Кнопка фокуса
     this._contentContainer.appendChild(this.createFocusButton());
 
-    // Название с иконкой
+    // Название с иконкой справа
     this._contentContainer.appendChild(this.createTitleSection(data));
 
     // Описание с Markdown
-    if (data.description) {
+    if ('description' in data && data.description) {
       this._contentContainer.appendChild(this.createDescriptionSection(data.description));
+    }
+
+    // QR-код для FLAG
+    if (data.type === MarkerType.FLAG && 'qr' in data && data.qr) {
+      this._contentContainer.appendChild(this.createQRCodeSection(data.qr));
     }
 
     // Этаж
@@ -113,12 +153,28 @@ export class MarkerDetailsPanel {
     const fromButton = document.createElement('button');
     fromButton.className = `route-button ${this._fromActive ? 'active' : ''}`;
     fromButton.textContent = 'Отсюда';
-    fromButton.addEventListener('click', () => this.toggleFromButton());
+    fromButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      console.log('Clicked "Отсюда" button', this._currentMarker?.data.name);
+      if (this._currentMarker && this._onFromToggle) {
+        this._onFromToggle(this._currentMarker, 'from');
+      } else {
+        console.warn('Cannot toggle "Отсюда" - missing callback or marker');
+      }
+    });
 
     const toButton = document.createElement('button');
     toButton.className = `route-button ${this._toActive ? 'active' : ''}`;
     toButton.textContent = 'Сюда';
-    toButton.addEventListener('click', () => this.toggleToButton());
+    toButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      console.log('Clicked "Сюда" button', this._currentMarker?.data.name);
+      if (this._currentMarker && this._onToToggle) {
+        this._onToToggle(this._currentMarker, 'to');
+      } else {
+        console.warn('Cannot toggle "Сюда" - missing callback or marker');
+      }
+    });
 
     container.appendChild(fromButton);
     container.appendChild(toButton);
@@ -130,7 +186,8 @@ export class MarkerDetailsPanel {
     button.className = 'focus-button';
     button.innerHTML = '<i class="fa-solid fa-crosshairs"></i> Фокусироваться на метке';
 
-    button.addEventListener('click', () => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
       if (this._currentMarker && this._onFocusCallback) {
         this._onFocusCallback(this._currentMarker);
       }
@@ -139,12 +196,14 @@ export class MarkerDetailsPanel {
     return button;
   }
 
-  private createTitleSection(data: any): HTMLDivElement {
+  private createTitleSection(data: AnyMarkerData): HTMLDivElement {
     const container = document.createElement('div');
     container.className = 'title-section';
+    
+    container.style.borderLeftColor = rgbaToCss(data.backgroundColor);
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'title-wrapper';
+    const textContainer = document.createElement('div');
+    textContainer.className = 'title-text-container';
 
     const label = document.createElement('div');
     label.className = 'title-label';
@@ -152,19 +211,25 @@ export class MarkerDetailsPanel {
 
     const value = document.createElement('div');
     value.className = 'title-value';
-    value.textContent = data.title || 'Без названия';
+    value.textContent = data.name;
 
-    wrapper.appendChild(label);
-    wrapper.appendChild(value);
-    container.appendChild(wrapper);
+    textContainer.appendChild(label);
+    textContainer.appendChild(value);
 
-    if (data.icon) {
-      const icon = document.createElement('div');
-      icon.className = 'marker-icon';
-      icon.textContent = data.icon;
-      icon.style.borderColor = this.getColorAsRgb(data.backgroundColor || new Color3(0.2, 0.6, 0.3));
-      container.appendChild(icon);
-    }
+    const iconCircle = document.createElement('div');
+    iconCircle.className = 'title-icon-circle';
+    iconCircle.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+    
+    const icon = document.createElement('span');
+    icon.className = 'title-icon';
+    icon.textContent = data.iconName || 'location_on';
+    icon.style.color = rgbaToCss(data.textColor);
+    icon.style.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
+    
+    iconCircle.appendChild(icon);
+    
+    container.appendChild(textContainer);
+    container.appendChild(iconCircle);
 
     return container;
   }
@@ -177,7 +242,6 @@ export class MarkerDetailsPanel {
     label.className = 'description-label';
     label.textContent = 'Описание';
 
-    // Конвертируем Markdown в HTML
     const htmlContent = marked.parse(description) as string;
     
     const value = document.createElement('div');
@@ -186,6 +250,30 @@ export class MarkerDetailsPanel {
 
     container.appendChild(label);
     container.appendChild(value);
+    return container;
+  }
+
+  private createQRCodeSection(qr: string): HTMLDivElement {
+    const container = document.createElement('div');
+    container.className = 'qr-section';
+
+    const label = document.createElement('div');
+    label.className = 'qr-label';
+    label.textContent = 'QR-код';
+
+    const qrContainer = document.createElement('div');
+    qrContainer.className = 'qr-container';
+
+    const qrLink = document.createElement('a');
+    qrLink.href = qr;
+    qrLink.target = '_blank';
+    qrLink.textContent = 'Перейти по ссылке';
+    qrLink.className = 'qr-link';
+
+    qrContainer.appendChild(qrLink);
+    container.appendChild(label);
+    container.appendChild(qrContainer);
+
     return container;
   }
 
@@ -204,30 +292,6 @@ export class MarkerDetailsPanel {
     container.appendChild(label);
     container.appendChild(value);
     return container;
-  }
-
-  private toggleFromButton(): void {
-    this._fromActive = !this._fromActive;
-    if (this._fromActive) this._toActive = false;
-    this.updateContent(this._currentMarker!);
-    detailsLogger.debug(`Отсюда: ${this._fromActive}`);
-  }
-
-  private toggleToButton(): void {
-    this._toActive = !this._toActive;
-    if (this._toActive) this._fromActive = false;
-    this.updateContent(this._currentMarker!);
-    detailsLogger.debug(`Сюда: ${this._toActive}`);
-  }
-
-  private getColorAsRgb(color: Color3 | number[]): string {
-    if (color instanceof Color3) {
-      return `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
-    }
-    if (Array.isArray(color) && color.length >= 3) {
-      return `rgb(${Math.floor(color[0] * 255)}, ${Math.floor(color[1] * 255)}, ${Math.floor(color[2] * 255)})`;
-    }
-    return 'rgb(51, 153, 77)';
   }
 
   public setCloseCallback(callback: () => void): void {

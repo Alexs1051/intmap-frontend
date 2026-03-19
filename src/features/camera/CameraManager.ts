@@ -88,6 +88,170 @@ export class CameraManager {
     cameraLogger.info(`Камера готова, дистанция: ${this._camera.radius.toFixed(1)}`);
   }
 
+  /**
+   * Рассчитать оптимальную дистанцию для обзора всего маршрута
+   */
+  private calculateOptimalDistanceForRoute(positions: Vector3[]): number {
+    if (positions.length === 0) return 30;
+    
+    // Находим bounding box маршрута
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    
+    positions.forEach(pos => {
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxY = Math.max(maxY, pos.y);
+      minZ = Math.min(minZ, pos.z);
+      maxZ = Math.max(maxZ, pos.z);
+    });
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const depth = maxZ - minZ;
+    
+    // Центр маршрута
+    const center = new Vector3(
+      (minX + maxX) / 2,
+      (minY + maxY) / 2,
+      (minZ + maxZ) / 2
+    );
+    
+    this._targetPosition = center;
+    this._modeManager.setTarget(center);
+    
+    // Вычисляем необходимую дистанцию (по теореме Пифагора)
+    const maxDimension = Math.max(width, height, depth);
+    
+    // Добавляем запас 30% для комфортного обзора
+    const optimalDistance = Math.max(30, maxDimension * 1.3);
+    
+    cameraLogger.debug(`Маршрут: размеры ${width.toFixed(1)}x${height.toFixed(1)}x${depth.toFixed(1)}, дистанция: ${optimalDistance.toFixed(1)}`);
+    
+    return optimalDistance;
+  }
+
+  /**
+   * Плавный переход к обзору всего маршрута от текущей позиции камеры
+   */
+  public async focusOnRoute(positions: Vector3[], duration: number = 2.0): Promise<void> {
+      if (positions.length === 0) {
+        cameraLogger.warn("Нет точек для обзора маршрута");
+        return;
+      }
+      
+      // Рассчитываем оптимальную позицию
+      const optimal = this.calculateOptimalCameraPosition(positions);
+      
+      // Текущая позиция
+      const current = {
+        alpha: this._camera.alpha,
+        beta: this._camera.beta,
+        radius: this._camera.radius,
+        target: this._camera.target.clone()
+      };
+      
+      // Создаём промежуточную точку выше и дальше для плавности
+      const midTransform: CameraTransform = {
+        alpha: (current.alpha + optimal.transform.alpha) / 2,
+        beta: (current.beta + optimal.transform.beta) / 2,
+        radius: Math.max(current.radius, optimal.transform.radius) * 1.2,
+        target: Vector3.Lerp(current.target, optimal.center, 0.5)
+      };
+      
+      cameraLogger.info(`Плавный переход к маршруту (с промежуточной точкой)`);
+      
+      // Анимация до промежуточной точки (быстрее)
+      await this._animator.animateTo(midTransform, duration * 0.4);
+      
+      // Анимация до целевой точки (медленнее)
+      await this._animator.animateTo(optimal.transform, duration * 0.6);
+      
+      cameraLogger.info(`Фокус на маршрут завершён`);
+  }
+
+  /**
+   * Рассчитать оптимальную позицию камеры для обзора всего маршрута
+   */
+  private calculateOptimalCameraPosition(positions: Vector3[]): { transform: CameraTransform; center: Vector3 } {
+    if (positions.length === 0) {
+      return {
+        transform: {
+          alpha: this._camera.alpha,
+          beta: this._camera.beta,
+          radius: this._camera.radius,
+          target: this._camera.target.clone()
+        },
+        center: this._targetPosition.clone()
+      };
+    }
+    
+    // Находим bounding box маршрута
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    
+    positions.forEach(pos => {
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minY = Math.min(minY, pos.y);
+      maxY = Math.max(maxY, pos.y);
+      minZ = Math.min(minZ, pos.z);
+      maxZ = Math.max(maxZ, pos.z);
+    });
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const depth = maxZ - minZ;
+    
+    // Центр маршрута
+    const center = new Vector3(
+      (minX + maxX) / 2,
+      (minY + maxY) / 2,
+      (minZ + maxZ) / 2
+    );
+    
+    // Сохраняем центр для целевой позиции
+    this._targetPosition = center;
+    this._modeManager.setTarget(center);
+    
+    // Вычисляем необходимую дистанцию
+    const maxDimension = Math.max(width, height, depth);
+    
+    // Добавляем запас 40% для комфортного обзора (немного больше, чем при инициализации)
+    const optimalDistance = Math.max(30, maxDimension * 1.4);
+    
+    // Выбираем угол обзора в зависимости от соотношения размеров
+    let alpha = -Math.PI / 2.5; // По умолчанию
+    let beta = Math.PI / 3.5;   // По умолчанию
+    
+    // Если маршрут очень вытянут по горизонтали, корректируем угол
+    if (width > depth * 2) {
+      alpha = -Math.PI / 2; // Смотрим прямо вдоль X
+    } else if (depth > width * 2) {
+      alpha = 0; // Смотрим прямо вдоль Z
+    }
+    
+    // Если маршрут очень высокий, корректируем вертикальный угол
+    if (height > maxDimension * 0.7) {
+      beta = Math.PI / 2.5; // Смотрим больше сверху
+    }
+    
+    cameraLogger.debug(`Маршрут: размеры ${width.toFixed(1)}x${height.toFixed(1)}x${depth.toFixed(1)}, дистанция: ${optimalDistance.toFixed(1)}`);
+    
+    return {
+      transform: {
+        alpha,
+        beta,
+        radius: optimalDistance,
+        target: center.clone()
+      },
+      center
+    };
+  }
+
   public setTargetPosition(position: Vector3): void {
     this._targetPosition = position.clone();
     this._modeManager.setTarget(position);

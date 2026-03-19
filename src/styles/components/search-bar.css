@@ -75,13 +75,13 @@
 }
 
 .search-result-item {
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .search-result-item:hover {
@@ -89,28 +89,48 @@
 }
 
 .search-result-icon {
-  font-size: 20px;
-  width: 30px;
-  text-align: center;
+  font-size: 24px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Material Icons', 'Material Symbols Outlined';
 }
 
-.search-result-name {
+.search-result-text {
   flex: 1;
+}
+
+
+.search-result-name {
   color: white;
+  font-size: 14px;
   font-weight: 500;
+  margin-bottom: 4px;
 }
 
 .search-result-meta {
+  color: #aaa;
   font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-result-meta i {
+  font-size: 12px;
 }
 
 .search-no-results {
   padding: 20px;
   text-align: center;
-  color: var(--color-text-muted);
+  color: #aaa;
   font-style: italic;
+}
+
+.search-counter {
+  color: #aaa;
+  font-size: 12px;
+  margin-right: 8px;
 }

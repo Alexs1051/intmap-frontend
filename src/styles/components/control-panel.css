@@ -1,58 +1,95 @@
+/* Основной контейнер */
 .control-panel {
   position: fixed;
-  background: var(--color-bg-primary);
+  background: rgba(30, 30, 40, 0.8);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: var(--shadow-md);
-  z-index: var(--z-control-panel);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
+  
+  /* CSS переменные для размеров */
+  --btn-size: 50px;
+  --icon-size: 30px;
+  --gap: 6px;
+  --padding: 8px;
 }
 
+/* Ландшафтная ориентация (горизонтально) */
 .control-panel.landscape {
-  bottom: var(--spacing-xl);
-  right: var(--spacing-xl);
+  bottom: 20px;
+  right: 20px;
   display: flex;
   flex-direction: row;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-xl);
-  border-radius: var(--radius-full);
+  gap: var(--gap);
+  padding: var(--padding) calc(var(--padding) * 1.5);
+  border-radius: calc(var(--btn-size) * 1.2);
   max-width: calc(100vw - 40px);
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
 }
 
+/* Портретная ориентация (вертикально) */
 .control-panel.portrait {
-  bottom: var(--spacing-xl);
-  right: var(--spacing-xl);
+  bottom: 20px;
+  right: 20px;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md);
-  border-radius: var(--radius-full);
+  gap: var(--gap);
+  padding: calc(var(--padding) * 1.5) var(--padding);
+  border-radius: calc(var(--btn-size) * 1.2);
   max-height: calc(100vh - 40px);
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/* Стили для скроллбара */
+.control-panel::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.control-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.control-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.control-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Стили для всех кнопок (единые) */
 .control-panel-button {
-  width: 50px;
-  height: 50px;
-  border-radius: var(--radius-circle);
+  width: var(--btn-size);
+  height: var(--btn-size);
+  border-radius: 50%;
   border: none;
   background: rgba(60, 60, 80, 0.6);
-  color: white;
-  font-size: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
-  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   flex-shrink: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
+}
+
+.control-panel-button img {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  object-fit: contain;
+  filter: brightness(0.9);
+  transition: filter 0.2s ease;
 }
 
 .control-panel-button:hover {
@@ -60,22 +97,54 @@
   transform: scale(1.05);
 }
 
+.control-panel-button:hover img {
+  filter: brightness(1.2);
+}
+
 .control-panel-button.active {
   background: rgba(100, 100, 200, 0.9);
   box-shadow: 0 0 10px rgba(100, 100, 200, 0.5);
 }
 
-.control-panel-button.disabled {
-  opacity: 0.3;
-  pointer-events: none;
+.control-panel-button.active img {
+  filter: brightness(1.2);
 }
 
-.control-panel-button.floor-button {
-  opacity: 1;
-  pointer-events: auto;
+/* Мобильные устройства */
+@media (max-width: 768px) {
+  .control-panel {
+    --btn-size: 36px;
+    --icon-size: 28px;
+    --gap: 5px;
+    --padding: 6px;
+  }
+  
+  .control-panel.landscape {
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .control-panel.portrait {
+    bottom: 10px;
+    right: 10px;
+  }
 }
 
-.control-panel-button.floor-button:disabled {
-  opacity: 0.3;
-  pointer-events: none;
+@media (max-width: 480px) {
+  .control-panel {
+    --btn-size: 32px;
+    --icon-size: 24px;
+    --gap: 4px;
+    --padding: 5px;
+  }
+}
+
+/* Для очень маленьких экранов */
+@media (max-width: 360px) {
+  .control-panel {
+    --btn-size: 28px;
+    --icon-size: 20px;
+    --gap: 3px;
+    --padding: 4px;
+  }
 }

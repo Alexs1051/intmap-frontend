@@ -148,31 +148,53 @@
 .title-section {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 15px;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
   background: rgba(255, 255, 255, 0.03);
-  padding: 12px;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  border-left-width: 6px;
+  border-left-style: solid;
+  transition: all 0.2s ease;
 }
 
-.title-wrapper {
+.title-text-container {
   flex: 1;
 }
 
 .title-label {
-  font-size: 11px;
-  color: var(--color-text-secondary);
+  font-size: 12px;
+  color: #aaa; /* Фиксированный серый */
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: 500;
 }
 
 .title-value {
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 18px;
+  color: #fff; /* Фиксированный белый */
+  font-weight: 600;
   word-wrap: break-word;
-  color: #fff;
+}
+
+.title-icon-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  background-color: rgba(255, 255, 255, 0.15); /* Светлый полупрозрачный фон */
+}
+
+.title-icon {
+  font-size: 32px;
+  line-height: 1;
+  font-family: 'Material Icons', 'Material Symbols Outlined';
 }
 
 .marker-icon {
@@ -180,13 +202,68 @@
   background: rgba(255, 255, 255, 0.1);
   width: 48px;
   height: 48px;
-  border-radius: var(--radius-circle);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border: 2px solid;
+  border: 2px solid transparent; /* Убираем цветную рамку */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Стили для QR-кода */
+.qr-section {
+  margin-bottom: 15px;
+}
+
+.qr-label {
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.qr-container {
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.qr-link {
+  color: #00d2ff;
+  text-decoration: none;
+  font-size: 14px;
+  display: inline-block;
+  padding: 8px 16px;
+  background: rgba(0, 210, 255, 0.1);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.qr-link:hover {
+  background: rgba(0, 210, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.marker-icon-container {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.marker-icon-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 
 /* Секция описания с Markdown */

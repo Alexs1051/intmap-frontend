@@ -10,7 +10,9 @@ export enum UIEventType {
   VIEW_MODE_TOGGLE,
   WALLS_TRANSPARENCY_TOGGLE,
   NEXT_FLOOR,
-  PREVIOUS_FLOOR
+  PREVIOUS_FLOOR,
+  AUTH_TOGGLE,
+  TOGGLE_GRAPH
 }
 
 export interface UIEvent {

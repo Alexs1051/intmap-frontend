@@ -36,7 +36,7 @@ export class SceneManager {
     this._buildingManager = BuildingManager.getInstance(this._scene);
     this._markerManager = MarkerManager.getInstance(this._scene);
     
-    this._uiManager.initialize(this._scene, this._cameraManager, this._buildingManager);
+    this._uiManager.initialize(this._scene, this._cameraManager);
     
     this._markerManager.setCameraManager(this._cameraManager);
     this.setupInputHandling(engine.canvas);

@@ -1,5 +1,7 @@
 import { Marker } from "../../markers/Marker";
+import { MarkerType } from "../../markers/types";
 import { logger } from "../../../core/logger/Logger";
+import { rgbaToCss } from "../../markers/utils/iconUtils";
 import '../../../styles/components/search-bar.css';
 
 const searchLogger = logger.getLogger('SearchBar');
@@ -7,10 +9,12 @@ const searchLogger = logger.getLogger('SearchBar');
 export interface SearchResult {
   id: string;
   name: string;
-  type: string;
-  icon?: string;
+  type: MarkerType;
+  iconName: string;
   floor?: number;
-  marker?: Marker;
+  marker: Marker; // Обязательная ссылка на маркер
+  backgroundColor?: { r: number; g: number; b: number; a: number };
+  textColor?: { r: number; g: number; b: number; a: number };
 }
 
 export class SearchBar {
@@ -23,9 +27,17 @@ export class SearchBar {
   private _onCloseCallback: (() => void) | null = null;
   private _allMarkers: SearchResult[] = [];
   private readonly _maxResults: number = 50;
+  private _markerManager: any = null; // Ссылка на MarkerManager
 
   constructor() {
     this.createSearchBar();
+  }
+
+  /**
+   * Установить менеджер маркеров и загрузить данные
+   */
+  public setMarkerManager(markerManager: any): void {
+    this._markerManager = markerManager;
     this.loadAllMarkers();
   }
 
@@ -47,7 +59,7 @@ export class SearchBar {
 
     this._input = document.createElement('input');
     this._input.type = 'text';
-    this._input.placeholder = 'Поиск... (Esc для закрытия)';
+    this._input.placeholder = 'Поиск меток... (Esc для закрытия)';
     this._input.className = 'search-input';
 
     const counterSpan = document.createElement('span');
@@ -58,6 +70,7 @@ export class SearchBar {
     clearButton.addEventListener('click', () => {
       this._input.value = '';
       this.clearResults();
+      this._input.focus();
     });
 
     this._input.addEventListener('input', () => {
@@ -83,50 +96,68 @@ export class SearchBar {
     this._container.appendChild(searchContainer);
   }
 
+  /**
+   * Загрузить все маркеры из MarkerManager
+   */
   public loadAllMarkers(): void {
-    const markerManager = (window as any).markerManager;
-    if (markerManager) {
-      const markers = markerManager.getAllMarkers();
-      this._allMarkers = markers.map(m => ({
-        id: m.data.id,
-        name: m.data.title,
-        type: m.data.type || 'marker',
-        icon: m.data.icon,
-        floor: m.data.floor,
-        marker: m
-      }));
-    } else {
-      this._allMarkers = this.generateMockMarkers(100);
+    if (!this._markerManager) {
+      searchLogger.warn("MarkerManager не установлен");
+      this._allMarkers = [];
+      return;
     }
-    searchLogger.debug(`Загружено маркеров: ${this._allMarkers.length}`);
+
+    try {
+      const markers = this._markerManager.getAllMarkers();
+      this._allMarkers = markers.map((m: Marker) => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        iconName: m.iconName,
+        floor: m.floor,
+        marker: m,
+        backgroundColor: m.backgroundColor,
+        textColor: m.textColor
+      }));
+      
+      searchLogger.info(`Загружено ${this._allMarkers.length} маркеров для поиска`);
+    } catch (error) {
+      searchLogger.error("Ошибка загрузки маркеров", error);
+      this._allMarkers = [];
+    }
   }
 
-  private generateMockMarkers(count: number): SearchResult[] {
-    const types = ['marker', 'floor', 'building'];
-    const names = ['Вход', 'Выход', 'Лифт', 'Эскалатор', 'Туалет', 'Конференц-зал', 'Офис', 'Кафе', 'Парковка'];
-    
-    return Array.from({ length: count }, (_, i) => ({
-      id: `marker-${i}`,
-      name: `${names[i % names.length]} ${Math.floor(i / 10) + 1}`,
-      type: types[i % types.length],
-      icon: this.getIconForType(types[i % types.length]),
-      floor: Math.floor(Math.random() * 5) + 1
-    }));
-  }
-
-  private getIconForType(type: string): string {
-    const icons: Record<string, string> = { marker: '📍', floor: '📌', building: '🏢' };
-    return icons[type] || '📍';
+  /**
+   * Обновить список маркеров (вызывать при изменении)
+   */
+  public refreshMarkers(): void {
+    this.loadAllMarkers();
   }
 
   private performSearch(): void {
-    const query = this._input.value.toLowerCase();
+    const query = this._input.value.toLowerCase().trim();
+    
+    if (query.length < 1) {
+      this.clearResults();
+      return;
+    }
+
+    // Фильтруем маркеры по названию, типу и этажу
     const filtered = this._allMarkers
-      .filter(m => 
-        m.name.toLowerCase().includes(query) ||
-        m.type.toLowerCase().includes(query) ||
-        m.floor?.toString().includes(query)
-      )
+      .filter(m => {
+        // Поиск по названию
+        if (m.name.toLowerCase().includes(query)) return true;
+        
+        // Поиск по типу
+        if (m.type.toLowerCase().includes(query)) return true;
+        
+        // Поиск по этажу (как число)
+        if (m.floor && m.floor.toString().includes(query)) return true;
+        
+        // Поиск по ID (для отладки)
+        if (m.id.toLowerCase().includes(query)) return true;
+        
+        return false;
+      })
       .slice(0, this._maxResults);
     
     this.showResults(filtered);
@@ -148,7 +179,7 @@ export class SearchBar {
       (counter as HTMLElement).style.display = results.length ? 'inline' : 'none';
     }
 
-    if (!results.length) {
+    if (results.length === 0) {
       const noResults = document.createElement('div');
       noResults.className = 'search-no-results';
       noResults.textContent = 'Ничего не найдено';
@@ -159,26 +190,66 @@ export class SearchBar {
     results.forEach(result => {
       const item = document.createElement('div');
       item.className = 'search-result-item';
+      
+      // Добавляем цветовую индикацию типа маркера
+      if (result.backgroundColor) {
+        item.style.borderLeft = `4px solid ${rgbaToCss(result.backgroundColor)}`;
+      }
 
+      // Иконка
       const iconSpan = document.createElement('span');
       iconSpan.className = 'search-result-icon';
-      iconSpan.textContent = result.icon || '📍';
+      iconSpan.textContent = result.iconName || '📍';
+      iconSpan.style.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
+      if (result.textColor) {
+        iconSpan.style.color = rgbaToCss(result.textColor);
+      }
 
-      const nameSpan = document.createElement('span');
+      // Контейнер для текста
+      const textContainer = document.createElement('div');
+      textContainer.className = 'search-result-text';
+
+      // Название
+      const nameSpan = document.createElement('div');
       nameSpan.className = 'search-result-name';
       nameSpan.textContent = result.name;
 
-      const metaSpan = document.createElement('span');
+      // Мета-информация (тип и этаж)
+      const metaSpan = document.createElement('div');
       metaSpan.className = 'search-result-meta';
-      metaSpan.textContent = result.floor ? `${result.type} • ${result.floor} эт` : result.type;
+      
+      // Иконка типа
+      const typeIcon = this.getTypeIcon(result.type);
+      
+      if (result.floor) {
+        metaSpan.innerHTML = `${typeIcon} ${this.getTypeName(result.type)} • ${result.floor} этаж`;
+      } else {
+        metaSpan.innerHTML = `${typeIcon} ${this.getTypeName(result.type)}`;
+      }
+
+      textContainer.appendChild(nameSpan);
+      textContainer.appendChild(metaSpan);
 
       item.appendChild(iconSpan);
-      item.appendChild(nameSpan);
-      item.appendChild(metaSpan);
+      item.appendChild(textContainer);
+
+      // Добавляем эффект наведения
+      item.addEventListener('mouseenter', () => {
+        item.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+      });
+
+      item.addEventListener('mouseleave', () => {
+        item.style.backgroundColor = 'transparent';
+      });
 
       item.addEventListener('click', () => {
-        searchLogger.debug(`Выбран результат: ${result.name}`);
-        this._onResultClickCallback?.(result);
+        searchLogger.info(`Выбран маркер: ${result.name} (${result.id})`);
+        
+        // Вызываем колбэк с результатом
+        if (this._onResultClickCallback) {
+          this._onResultClickCallback(result);
+        }
+        
         this.hide();
       });
 
@@ -186,14 +257,52 @@ export class SearchBar {
     });
   }
 
+  /**
+   * Получить иконку для типа маркера
+   */
+  private getTypeIcon(type: MarkerType): string {
+    switch (type) {
+      case MarkerType.MARKER:
+        return '📍';
+      case MarkerType.FLAG:
+        return '🚩';
+      case MarkerType.WAYPOINT:
+        return '●';
+      default:
+        return '📍';
+    }
+  }
+
+  /**
+   * Получить название типа маркера
+   */
+  private getTypeName(type: MarkerType): string {
+    switch (type) {
+      case MarkerType.MARKER:
+        return 'Метка';
+      case MarkerType.FLAG:
+        return 'Флаг';
+      case MarkerType.WAYPOINT:
+        return 'Точка';
+      default:
+        return 'Метка';
+    }
+  }
+
   public toggle(): void {
     this._isVisible ? this.hide() : this.show();
   }
 
   public show(): void {
+    // Обновляем маркеры перед показом
+    this.refreshMarkers();
+    
     this._isVisible = true;
     this._container.style.display = 'block';
+    
+    // Показываем последние 50 маркеров (или все, если меньше)
     this.showResults(this._allMarkers.slice(0, this._maxResults));
+    
     setTimeout(() => this._input.focus(), 100);
   }
 

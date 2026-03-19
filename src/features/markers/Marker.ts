@@ -1,7 +1,7 @@
-import { Scene, Vector3, Mesh, Ray, TransformNode, ActionManager, SetValueAction } from "@babylonjs/core";
+import { Scene, Vector3, Mesh, Ray, TransformNode, ActionManager, SetValueAction, Color3 } from "@babylonjs/core";
 import { MarkerWidget } from "./components/MarkerWidget";
 import { MarkerAnimator } from "./MarkerAnimator";
-import { MarkerData, MarkerType } from "./types";
+import { AnyMarkerData, MarkerType, RGBA } from "./types";
 import { MARKER_CONFIG } from "../../shared/constants";
 import { logger } from "../../core/logger/Logger";
 
@@ -11,7 +11,7 @@ export class Marker {
   private readonly _id: string;
   private readonly _type: MarkerType;
   private readonly _widget: MarkerWidget;
-  private readonly _data: MarkerData;
+  private readonly _data: AnyMarkerData;
   private readonly _animator: MarkerAnimator;
   
   private _isSelected: boolean = false;
@@ -20,20 +20,30 @@ export class Marker {
   public onClick: (marker: Marker) => void = () => {};
   public onDoubleClick: (marker: Marker) => void = () => {};
 
-  constructor(scene: Scene, data: MarkerData) {
+  constructor(scene: Scene, data: AnyMarkerData) {
     this._id = data.id;
     this._type = data.type;
     this._data = data;
     this._animator = new MarkerAnimator(scene);
     
+    // Выбираем размер в зависимости от типа
+    let size: number = MARKER_CONFIG.defaultSize;
+    if (this._type === MarkerType.WAYPOINT) {
+      size = MARKER_CONFIG.waypointSize;
+    } else if (this._type === MarkerType.FLAG) {
+      size = MARKER_CONFIG.flagSize;
+    }
+
+    // Используем backgroundColor и textColor (вместо foregroundColor)
     this._widget = new MarkerWidget(
       scene,
       data.position,
-      data.backgroundColor,
-      data.foregroundColor,
-      data.icon || "📍",
-      data.title || "",
-      data.size || MARKER_CONFIG.defaultSize
+      data.backgroundColor, // RGBA
+      data.textColor,       // RGBA
+      this._type,
+      data.iconName,
+      data.name,
+      size
     );
 
     this.setupInteractivity(scene);
@@ -95,8 +105,6 @@ export class Marker {
     if (this._isSelected === selected) return;
     
     this._isSelected = selected;
-    
-    // Просто меняем яркость фона, outlineColor больше не нужен
     this._widget.setSelected(selected);
     
     const root = this._widget.root;
@@ -117,31 +125,12 @@ export class Marker {
     }
   }
 
-  public intersects(ray: Ray): boolean {
-    try {
-      const markerPos = this.position;
-      const toMarker = markerPos.subtract(ray.origin);
-      const t = Vector3.Dot(toMarker, ray.direction);
-      
-      if (t < 0) return false;
-      
-      const closestPoint = ray.origin.add(ray.direction.scale(t));
-      const distance = Vector3.Distance(markerPos, closestPoint);
-      const actualSize = this._widget.scale * (this._isSelected ? 2.0 : 1.0);
-      
-      return distance < actualSize;
-    } catch {
-      return false;
-    }
+  public hasQR(): boolean {
+    return this._type === MarkerType.FLAG && 'qr' in this._data;
   }
 
-  public intersectsWithScene(scene: Scene, ray: Ray): boolean {
-    try {
-      const pickResult = scene.pickWithRay(ray, (mesh) => mesh.parent === this._widget.root);
-      return pickResult?.hit || false;
-    } catch {
-      return false;
-    }
+  public getQR(): string | undefined {
+    return this._type === MarkerType.FLAG ? (this._data as any).qr : undefined;
   }
 
   public get position(): Vector3 {
@@ -156,8 +145,28 @@ export class Marker {
     return this._type;
   }
 
-  public get data(): MarkerData {
+  public get data(): AnyMarkerData {
     return this._data;
+  }
+
+  public get name(): string {
+    return this._data.name;
+  }
+
+  public get iconName(): string {
+    return this._data.iconName;
+  }
+
+  public get floor(): number {
+    return this._data.floor;
+  }
+
+  public get backgroundColor(): RGBA {
+    return this._data.backgroundColor;
+  }
+
+  public get textColor(): RGBA {
+    return this._data.textColor;
   }
 
   public get isSelected(): boolean {
@@ -174,5 +183,9 @@ export class Marker {
 
   public get mesh(): Mesh {
     return this._widget.mesh;
+  }
+
+  public setVisible(visible: boolean): void {
+    this._widget.setVisible(visible);
   }
 }

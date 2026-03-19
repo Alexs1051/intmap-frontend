@@ -5,25 +5,56 @@ const CopyPlugin = require('copy-webpack-plugin');
 module.exports = {
   entry: path.resolve(__dirname, "src/app.ts"),
   output: {
-    filename: "bundle.js",
+    filename: "js/bundle.js",
     path: path.resolve(__dirname, "dist"),
     clean: true,
-    publicPath: '', // Пустой publicPath - работаем с относительными путями
+    publicPath: '/',
   },
   resolve: {
-    extensions: [".ts", ".js"],
+    extensions: [".tsx", ".ts", ".js"],
+    alias: {
+      '@': path.resolve(__dirname, 'src'),
+    },
   },
   devServer: {
-    static: path.resolve(__dirname, "public"),
+    static: [
+      {
+        directory: path.resolve(__dirname, "public"),
+        publicPath: "/",
+      }
+    ],
     port: 8080,
     hot: true,
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false,
+      },
+      logging: 'error',
+    },
   },
   module: {
     rules: [
       {
         test: /\.tsx?$/,
-        use: "ts-loader",
+        use: [
+          {
+            loader: "ts-loader",
+            options: {
+              transpileOnly: true,
+              compilerOptions: {
+                module: "esnext",
+              },
+            },
+          },
+        ],
         exclude: /node_modules/,
+      },
+      {
+        test: /\.js$/,
+        use: ["source-map-loader"],
+        enforce: "pre",
+        exclude: /node_modules\/@babylonjs/,
       },
       {
         test: /\.css$/,
@@ -33,22 +64,37 @@ module.exports = {
         test: /\.md$/,
         type: 'asset/source',
       },
+      {
+        test: /\.(png|svg|jpg|jpeg|gif|ico)$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'assets/images/[name][ext]',
+        },
+      },
     ],
   },
+  ignoreWarnings: [
+    {
+      module: /@babylonjs/,
+      message: /sourcemap/,
+    },
+  ],
   plugins: [
     new HtmlWebpackPlugin({
+      inject: true,
       template: path.resolve(__dirname, "public/index.html"),
+      filename: "index.html",
     }),
     new CopyPlugin({
       patterns: [
-        { 
-          from: "public/models", 
-          to: "models", 
-          noErrorOnMissing: true,
-        },
+        { from: "public/models", to: "models", noErrorOnMissing: true },
+        { from: "public/icons", to: "icons", noErrorOnMissing: true }, // Копируем иконки
       ],
     }),
   ],
   devtool: "source-map",
   mode: "development",
+  performance: {
+    hints: false,
+  },
 };
