@@ -4,10 +4,11 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 // Определяем базовый путь для GitHub Pages
 const repoName = 'IntMap'; // Имя репозитория
-const publicPath = process.env.NODE_ENV === 'production' ? `/${repoName}/` : '/';
+const isProduction = process.env.NODE_ENV === 'production';
+const publicPath = isProduction ? `/${repoName}/` : '/';
 
 module.exports = {
-  mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+  mode: isProduction ? 'production' : 'development',
   entry: './src/app.ts',
   output: {
     filename: 'bundle.js',
@@ -64,9 +65,8 @@ module.exports = {
   plugins: [
     new webpack.DefinePlugin({
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-      'process.env.VERSION': JSON.stringify(require('./package.json').version),
-      'process.env.API_URL': JSON.stringify(process.env.API_URL || ''),
-      'process.env.LOG_SERVER_URL': JSON.stringify(process.env.LOG_SERVER_URL || '')
+      'process.env.PUBLIC_PATH': JSON.stringify(publicPath),
+      'process.env.VERSION': JSON.stringify(require('./package.json').version)
     }),
     new CopyWebpackPlugin({
       patterns: [
@@ -74,17 +74,19 @@ module.exports = {
           from: path.resolve(__dirname, 'public/index.html'),
           to: path.resolve(__dirname, 'dist/index.html'),
           transform: (content) => {
-            // ✅ Добавляем base в HTML при сборке
-            return content.toString().replace(
-              '</head>',
-              '<base href="/IntMap/">\n</head>'
-            );
+            if (isProduction) {
+              return content.toString().replace(
+                '</head>',
+                '<base href="/IntMap/">\n</head>'
+              );
+            }
+            return content;
           }
         },
         { 
           from: path.resolve(__dirname, 'public/models'),
           to: path.resolve(__dirname, 'dist/models'),
-          noErrorOnMissing: true
+          noErrorOnMissing: false
         },
         { 
           from: path.resolve(__dirname, 'public/icons'),
