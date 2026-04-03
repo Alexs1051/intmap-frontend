@@ -2,8 +2,7 @@ const path = require('path');
 const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
-// Определяем базовый путь для GitHub Pages
-const repoName = 'IntMap'; // Имя репозитория
+const repoName = 'IntMap';
 const isProduction = process.env.NODE_ENV === 'production';
 const publicPath = isProduction ? `/${repoName}/` : '/';
 
@@ -59,6 +58,10 @@ module.exports = {
       {
         test: /\.md$/,
         type: 'asset/source'
+      },
+      {
+        test: /\.(png|jpg|jpeg|gif|svg)$/i,
+        type: 'asset/resource'
       }
     ]
   },
@@ -86,12 +89,12 @@ module.exports = {
         { 
           from: path.resolve(__dirname, 'public/models'),
           to: path.resolve(__dirname, 'dist/models'),
-          noErrorOnMissing: false
+          noErrorOnMissing: true
         },
         { 
           from: path.resolve(__dirname, 'public/icons'),
           to: path.resolve(__dirname, 'dist/icons'),
-          noErrorOnMissing: true
+          noErrorOnMissing: false
         }
       ]
     })

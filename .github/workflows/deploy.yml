@@ -35,33 +35,16 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Copy assets to dist
+      - name: Verify assets in dist
         run: |
-          # Создаём директории
-          mkdir -p dist/models
-          mkdir -p dist/icons
-          
-          # Копируем модель
-          if [ -f "public/models/building.glb" ]; then
-            cp public/models/building.glb dist/models/
-            echo "✅ Model copied"
-          else
-            echo "⚠️ Model not found at public/models/building.glb"
-          fi
-          
-          # Копируем все иконки
-          if [ -d "public/icons" ]; then
-            cp -r public/icons/* dist/icons/
-            echo "✅ Icons copied: $(ls public/icons | wc -l) files"
-          else
-            echo "⚠️ Icons directory not found at public/icons"
-          fi
-          
-          # Выводим содержимое для отладки
-          echo "=== dist/models ==="
-          ls -la dist/models/ || echo "empty"
-          echo "=== dist/icons ==="
-          ls -la dist/icons/ || echo "empty"
+          echo "=== Checking dist contents ==="
+          ls -la dist/
+          echo "=== Checking models ==="
+          ls -la dist/models/ || echo "models directory not found"
+          echo "=== Checking icons ==="
+          ls -la dist/icons/ || echo "icons directory not found"
+          echo "=== Checking specific icons ==="
+          ls -la dist/icons/*.png || echo "No PNG icons found"
 
       - name: Create .nojekyll file
         run: touch dist/.nojekyll
