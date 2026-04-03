@@ -39,6 +39,8 @@ jobs:
           ls -la dist/
           echo "=== Contents of dist/models (if exists) ==="
           ls -la dist/models/ || echo "models directory not found"
+          echo "=== Contents of dist/icons (if exists) ==="
+          ls -la dist/icons/ || echo "icons directory not found"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

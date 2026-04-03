@@ -1,12 +1,13 @@
 const path = require('path');
 const webpack = require('webpack');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: 'development',
   entry: './src/app.ts',
   output: {
     filename: 'bundle.js',
-    path: path.resolve(__dirname, 'public'),
+    path: path.resolve(__dirname, 'dist'),
     publicPath: '/'
   },
   resolve: {
@@ -65,11 +66,30 @@ module.exports = {
       'process.env.VERSION': JSON.stringify(require('./package.json').version),
       'process.env.API_URL': JSON.stringify(process.env.API_URL || ''),
       'process.env.LOG_SERVER_URL': JSON.stringify(process.env.LOG_SERVER_URL || '')
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        { 
+          from: path.resolve(__dirname, 'public/models'),
+          to: path.resolve(__dirname, 'dist/models'),
+          noErrorOnMissing: true
+        },
+        { 
+          from: path.resolve(__dirname, 'public/icons'),
+          to: path.resolve(__dirname, 'dist/icons'),
+          noErrorOnMissing: true
+        },
+        {
+          from: path.resolve(__dirname, 'public/index.html'),
+          to: path.resolve(__dirname, 'dist/index.html'),
+          noErrorOnMissing: true
+        }
+      ]
     })
   ],
   devServer: {
     static: {
-      directory: path.join(__dirname, 'public'),
+      directory: path.join(__dirname, 'dist'),
     },
     port: 8080,
     hot: true,
