@@ -1,86 +1,108 @@
-import { Scene, Vector3, Ray } from "@babylonjs/core";
+import { Scene, Ray } from "@babylonjs/core";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { EventBus } from "../../core/events/EventBus";
+import { EventType } from "../../core/events/EventTypes";
+import { ConfigService } from "../../core/config/ConfigService";
 import { Marker } from "./Marker";
-import { AnyMarkerData, MarkerType, FocusOptions } from "./types";
+import { MarkerWidget } from "./components/MarkerWidget";
+import { MarkerAnimator } from "./MarkerAnimator";
 import { MarkerGraph } from "./graph/MarkerGraph";
 import { MarkerGraphRenderer } from "./graph/MarkerGraphRenderer";
 import { Pathfinder } from "./Pathfinder";
-import { MarkerTestData } from "./MarkerTestData";
-import { MARKER_CONFIG } from "../../shared/constants";
-import { CameraManager } from "../camera/CameraManager";
-import { CameraTransform } from "../camera/types";
-import { logger } from "../../core/logger/Logger";
+import { createTestMarkers, getTestMarkersStats } from "../../data/test/markers";
+import { MarkerType, AnyMarkerData, FocusOptions, PathResult } from "../../shared/types";
+import { ICameraManager, IMarkerManager } from "@shared/interfaces";
 
-const markerLogger = logger.getLogger('MarkerManager');
-
-export interface RouteResult {
-  path: Marker[];
-  totalDistance: number;
-  nodesVisited: number;
-}
-
-export class MarkerManager {
-  private static _instance: MarkerManager;
-  private _scene: Scene;
+/**
+ * Менеджер маркеров
+ */
+@injectable()
+export class MarkerManager implements IMarkerManager {
+  private logger: Logger;
+  private eventBus: EventBus;
+  private config: ConfigService;
+  private scene?: Scene;
+  private cameraManager?: ICameraManager;
+  
   private _markers: Map<string, Marker> = new Map();
   private _graph: MarkerGraph;
   private _graphRenderer: MarkerGraphRenderer;
   private _pathfinder: Pathfinder;
+  
   private _selectedMarker: Marker | null = null;
   private _hoveredMarker: Marker | null = null;
-  private _highlightedPath: Marker[] | null = null;
-  private _lastClickTime: number = 0;
-  private readonly _doubleClickThreshold: number = 300;
+  private _highlightedPath: string[] | null = null;
   private _graphVisible: boolean = false;
-  
-  private _cameraManager: CameraManager | null = null;
   private _isInitialized: boolean = false;
   private _onMarkerSelectedCallback: ((marker: Marker | null) => void) | null = null;
-  private _raycasterActive: boolean = false;
+  
+  private lastClickTime: number = 0;
+  private readonly doubleClickThreshold: number = 300;
+  private raycasterActive: boolean = false;
 
-  private constructor(scene: Scene) {
-    this._scene = scene;
-    this._graph = new MarkerGraph();
-    this._graphRenderer = new MarkerGraphRenderer(scene, this._graph);
-    this._pathfinder = new Pathfinder(this._graph);
+  constructor(
+    @inject(TYPES.Logger) logger: Logger,
+    @inject(TYPES.EventBus) eventBus: EventBus,
+    @inject(TYPES.ConfigService) configService: ConfigService,
+    @inject(TYPES.MarkerGraph) graph: MarkerGraph,
+    @inject(TYPES.MarkerGraphRenderer) graphRenderer: MarkerGraphRenderer,
+    @inject(TYPES.Pathfinder) pathfinder: Pathfinder
+  ) {
+    this.logger = logger.getLogger('MarkerManager');
+    this.eventBus = eventBus;
+    this.config = configService;
+    this._graph = graph;
+    this._graphRenderer = graphRenderer;
+    this._pathfinder = pathfinder;
+  }
+
+  /**
+   * Установить сцену
+   */
+  public setScene(scene: Scene): void {
+    this.scene = scene;
+    this._graphRenderer.initialize(scene, this._graph);
     this.setupHoverDetection();
   }
 
-  public static getInstance(scene: Scene): MarkerManager {
-    if (!MarkerManager._instance) {
-      MarkerManager._instance = new MarkerManager(scene);
-    }
-    return MarkerManager._instance;
-  }
-
-  public setCameraManager(cameraManager: CameraManager): void {
-    this._cameraManager = cameraManager;
+  /**
+   * Установить менеджер камеры
+   */
+  public setCameraManager(cameraManager: ICameraManager): void {
+    this.cameraManager = cameraManager;
   }
 
   private setupHoverDetection(): void {
-    const canvas = this._scene.getEngine().getRenderingCanvas();
+    if (!this.scene) return;
+    
+    const canvas = this.scene.getEngine().getRenderingCanvas();
     if (!canvas) return;
 
     canvas.addEventListener('mousemove', (event) => {
-      if (this._raycasterActive) return;
-      this._raycasterActive = true;
+      if (this.raycasterActive) return;
+      this.raycasterActive = true;
 
       requestAnimationFrame(() => {
         this.checkHover(event);
-        this._raycasterActive = false;
+        this.raycasterActive = false;
       });
     });
   }
 
   private checkHover(event: MouseEvent): void {
-    const canvas = this._scene.getEngine().getRenderingCanvas();
+    if (!this.scene) return;
+    
+    const canvas = this.scene.getEngine().getRenderingCanvas();
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left) / canvas.width * canvas.width;
     const y = (event.clientY - rect.top) / canvas.height * canvas.height;
 
-    const ray = this._scene.createPickingRay(x, y, null, this._cameraManager?.camera || null);
-    const pickResult = this._scene.pickWithRay(ray, (mesh) => mesh.metadata?.widget !== undefined);
+    const ray = this.scene.createPickingRay(x, y, null, this.cameraManager?.camera || null);
+    const pickResult = this.scene.pickWithRay(ray, (mesh) => mesh.metadata?.widget !== undefined);
 
     let hoveredMarker: Marker | null = null;
 
@@ -91,8 +113,6 @@ export class MarkerManager {
     if (this._hoveredMarker !== hoveredMarker) {
       if (this._hoveredMarker) {
         this._hoveredMarker.setHovered(false);
-        
-        // Если есть подсвеченный путь, не сбрасываем подсветку графа
         if (!this._highlightedPath) {
           this._graphRenderer.resetHighlight();
         }
@@ -102,175 +122,11 @@ export class MarkerManager {
       
       if (this._hoveredMarker) {
         this._hoveredMarker.setHovered(true);
-        
-        // Если граф видим, подсвечиваем связи
         if (this._graphVisible && !this._highlightedPath) {
           this._graphRenderer.highlightMarker(this._hoveredMarker.id);
         }
       }
     }
-  }
-
-  public async initialize(onProgress?: (progress: number) => void): Promise<void> {
-    markerLogger.debug("Инициализация MarkerManager");
-    
-    onProgress?.(0.1);
-    onProgress?.(0.3);
-    this.clearAllMarkers();
-    
-    onProgress?.(0.6);
-    this.createTestMarkers();
-    
-    onProgress?.(0.9);
-    this._isInitialized = true;
-    onProgress?.(1.0);
-    
-    const stats = MarkerTestData.getStats();
-    markerLogger.info(
-      `MarkerManager инициализирован. Маркеров: ${this._markers.size}, связей: ${this._graph.edgeCount}`
-    );
-    markerLogger.debug(
-      `Статистика: ${stats.total} всего ` +
-      `(${stats.waypoints} вейпоинтов, ${stats.markers} маркеров, ${stats.flags} флагов), ` +
-      `${stats.connections} связей`
-    );
-    
-    // Отрендерить граф (скрыто по умолчанию)
-    this._graphRenderer.renderAll();
-    this._graphRenderer.hide();
-    
-    // По умолчанию скрываем вейпоинты
-    this.setWaypointsVisible(false);
-  }
-
-  /**
-   * Показать/скрыть вейпоинты
-   */
-  public setWaypointsVisible(visible: boolean): void {
-    this.getAllMarkers().forEach(marker => {
-      if (marker.type === MarkerType.WAYPOINT) {
-        marker.setVisible(visible);
-      }
-    });
-    markerLogger.info(`Вейпоинты ${visible ? 'показаны' : 'скрыты'}`);
-  }
-
-  /**
-   * Очистить выделение
-   */
-  public clearSelection(): void {
-    if (this._selectedMarker) {
-      this._selectedMarker.setSelected(false);
-      this._selectedMarker = null;
-      this._onMarkerSelectedCallback?.(null);
-      
-      // Если есть подсвеченный путь, не сбрасываем его
-      if (!this._highlightedPath) {
-        this._graphRenderer.resetHighlight();
-      }
-    }
-  }
-
-  /**
-   * Очистить все маркеры
-   */
-  public clearAllMarkers(): void {
-    this._markers.clear();
-    this._selectedMarker = null;
-    this._hoveredMarker = null;
-    this._highlightedPath = null;
-    this._graphRenderer.clear();
-  }
-
-  /**
-   * Создать маркер
-   */
-  public createMarker(data: AnyMarkerData): Marker {
-    const marker = new Marker(this._scene, data);
-    marker.onClick = (m) => this.handleMarkerClick(m);
-    marker.onDoubleClick = (m) => this.handleMarkerDoubleClick(m);
-    
-    this._markers.set(data.id, marker);
-    this._graph.addNode(marker);
-    
-    // Добавляем связи из данных маркера
-    this._graph.addConnectionsFromMarker(marker);
-    
-    return marker;
-  }
-
-  private createTestMarkers(): void {
-    const testData = MarkerTestData.createAll();
-    
-    testData.forEach(data => {
-      this.createMarker(data);
-    });
-
-    const stats = MarkerTestData.getStats();
-    markerLogger.info(
-      `Создано тестовых маркеров: ${stats.waypoints} вейпоинтов, ` +
-      `${stats.markers} маркеров, ${stats.flags} флагов`
-    );
-  }
-
-  private handleMarkerClick(marker: Marker): void {
-    if (this._selectedMarker === marker) return;
-    
-    this._selectedMarker?.setSelected(false);
-    marker.setSelected(true);
-    this._selectedMarker = marker;
-    this._onMarkerSelectedCallback?.(marker);
-    
-    markerLogger.debug(`Клик по маркеру: ${marker.id} (${marker.name})`);
-  }
-
-  private handleMarkerDoubleClick(marker: Marker): void {
-    if (this._selectedMarker && this._selectedMarker !== marker) {
-      this._selectedMarker.setSelected(false);
-    }
-    
-    marker.setSelected(true);
-    this._selectedMarker = marker;
-    
-    this.focusOnMarker(marker, { distance: 8, duration: 1.2 });
-    markerLogger.debug(`Двойной клик по маркеру: ${marker.id} (${marker.name})`);
-  }
-
-  /**
-   * Обновить все маркеры (вызывается каждый кадр)
-   */
-  public update(cameraPosition: Vector3): void {
-    this._markers.forEach(marker => {
-      marker.update(cameraPosition);
-    });
-  }
-
-  /**
-   * Обработка клика по сцене
-   */
-  public handleScenePick(ray: Ray): boolean {
-    const pickResult = this._scene.pickWithRay(ray, (mesh) => mesh.metadata?.widget !== undefined);
-
-    if (pickResult?.hit) {
-      const hitMarker = this.findMarkerByMesh(pickResult.pickedMesh);
-      
-      if (hitMarker) {
-        const now = Date.now();
-        const timeSinceLast = now - this._lastClickTime;
-        
-        if (timeSinceLast < this._doubleClickThreshold) {
-          hitMarker.handleDoubleClick();
-          this._lastClickTime = 0;
-        } else {
-          hitMarker.handleClick();
-          this._lastClickTime = now;
-        }
-        return true;
-      }
-    }
-    
-    this.clearSelection();
-    return false;
   }
 
   private findMarkerByMesh(mesh: any): Marker | null {
@@ -282,124 +138,182 @@ export class MarkerManager {
     return null;
   }
 
-  /**
-   * Фокус на маркере
-   */
-  public async focusOnMarker(marker: Marker, options?: FocusOptions): Promise<void> {
-    if (!this._cameraManager) {
-      markerLogger.warn("CameraManager не установлен");
-      return;
-    }
+  public async load(onProgress?: (progress: number) => void): Promise<void> {
+    this.logger.debug("Loading markers");
+    onProgress?.(0.5);
+    onProgress?.(1.0);
+  }
 
-    if (this._cameraManager.isAnimating) {
-      return;
-    }
+  public async initialize(): Promise<void> {
+    this.logger.info("Initializing MarkerManager");
+    
+    this.clearAllMarkers();
+    
+    // Первый проход: создаём все маркеры без связей
+    const testData = createTestMarkers();
+    testData.forEach(data => {
+        this.createMarkerWithoutConnections(data);
+    });
+    
+    // Второй проход: добавляем все связи
+    this._markers.forEach(marker => {
+        this._graph.addConnectionsFromMarker(marker);
+    });
+    
+    this._graphRenderer.renderAll();
+    this._graphRenderer.hide();
+    this.setWaypointsVisible(false);
+    
+    this._isInitialized = true;
+    
+    const stats = getTestMarkersStats();
+    this.logger.info(`MarkerManager initialized: ${stats.total} markers, ${stats.connections} connections`);
+    this.eventBus.emit(EventType.MARKERS_LOADED, stats);
+}
 
-    const position = marker.position;
-    const distance = options?.distance || MARKER_CONFIG.focusDistance;
+private createMarkerWithoutConnections(data: AnyMarkerData): Marker {
+    if (!this.scene) {
+        throw new Error("Scene not set before creating marker");
+    }
+    
+    const widget = new MarkerWidget(this.logger);
+    const animator = new MarkerAnimator(this.logger, this.config);
+    
+    const marker = new Marker(
+        this.logger,
+        this.eventBus,
+        widget,
+        animator,
+        this.scene,
+        data
+    );
+    
+    marker.onClick = (m) => this.handleMarkerClick(m);
+    marker.onDoubleClick = (m) => this.handleMarkerDoubleClick(m);
+    
+    this._markers.set(data.id, marker);
+    this._graph.addNode(marker);
+    
+    this.eventBus.emit(EventType.MARKER_ADDED, { marker: marker.id });
+    return marker;
+}
+
+
+  public update(_deltaTime: number): void {
+    if (!this.cameraManager) return;
+    
+    const cameraPosition = this.cameraManager.camera.position;
+    this._markers.forEach(marker => {
+      marker.update(cameraPosition);
+    });
+  }
+
+
+  public createMarker(data: AnyMarkerData): Marker {
+    if (!this.scene) {
+      throw new Error("Scene not set before creating marker");
+    }
+    
+    const widget = new MarkerWidget(this.logger);
+    const animator = new MarkerAnimator(this.logger, this.config);
+    
+    const marker = new Marker(
+        this.logger,
+        this.eventBus,
+        widget,
+        animator,
+        this.scene,
+        data
+    );
+    
+    marker.onClick = (m) => this.handleMarkerClick(m);
+    marker.onDoubleClick = (m) => this.handleMarkerDoubleClick(m);
+    
+    this._markers.set(data.id, marker);
+    this._graph.addNode(marker);
+    
+    this.eventBus.emit(EventType.MARKER_ADDED, { marker: marker.id });
+    return marker;
+  }
+
+  private handleMarkerClick(marker: Marker): void {
+    if (this._selectedMarker === marker) return;
+    
+    this._selectedMarker?.setSelected(false);
+    marker.setSelected(true);
+    this._selectedMarker = marker;
+    this._onMarkerSelectedCallback?.(marker);
+    
+    this.logger.debug(`Marker clicked: ${marker.id} (${marker.name})`);
+    this.eventBus.emit(EventType.MARKER_SELECTED, { marker: marker.id });
+  }
+
+  private handleMarkerDoubleClick(marker: Marker): void {
+    if (this._selectedMarker && this._selectedMarker !== marker) {
+      this._selectedMarker.setSelected(false);
+    }
+    
+    marker.setSelected(true);
+    this._selectedMarker = marker;
+    
+    this.focusOnMarker(marker.id, { distance: 8, duration: 1.2 });
+    this.logger.debug(`Marker double-clicked: ${marker.id} (${marker.name})`);
+    this.eventBus.emit(EventType.MARKER_DOUBLE_CLICKED, { marker: marker.id });
+  }
+
+  public handleScenePick(ray: Ray): boolean {
+    if (!this.scene) return false;
+    
+    const pickResult = this.scene.pickWithRay(ray, (mesh) => mesh.metadata?.widget !== undefined);
+
+    if (pickResult?.hit) {
+      const hitMarker = this.findMarkerByMesh(pickResult.pickedMesh);
+      
+      if (hitMarker) {
+        const now = Date.now();
+        const timeSinceLast = now - this.lastClickTime;
+        
+        if (timeSinceLast < this.doubleClickThreshold) {
+          hitMarker.handleDoubleClick();
+          this.lastClickTime = 0;
+        } else {
+          hitMarker.handleClick();
+          this.lastClickTime = now;
+        }
+        return true;
+      }
+    }
+    
+    this.clearSelection();
+    return false;
+  }
+
+  public async focusOnMarker(markerId: string, options?: FocusOptions): Promise<void> {
+    const marker = this.getMarker(markerId);
+    if (!marker || !this.cameraManager) return;
+
+    if (this.cameraManager.isAnimating) return;
+
+    const distance = options?.distance || 8;
     const duration = options?.duration || 1.0;
     
-    const targetTransform: CameraTransform = {
-      alpha: this._cameraManager.camera.alpha,
-      beta: this._cameraManager.camera.beta,
-      radius: distance,
-      target: position.clone()
-    };
-
-    await this._cameraManager['_animator'].animateTo(targetTransform, duration);
-    this._cameraManager.camera.target = position.clone();
+    await this.cameraManager.focusOnPoint(marker.position, distance, duration);
   }
 
-  // ===== Методы для работы с графом =====
-
-  /**
-   * Переключить видимость графа
-   */
-  public toggleGraph(): void {
-    this._graphVisible = !this._graphVisible;
-    
-    // Показываем/скрываем граф
-    if (this._graphVisible) {
-      this._graphRenderer.show();
-    } else {
-      this._graphRenderer.hide();
-    }
-    
-    // Показываем/скрываем вейпоинты вместе с графом
-    this.setWaypointsVisible(this._graphVisible);
-    
-    markerLogger.info(`Граф и вейпоинты ${this._graphVisible ? 'показаны' : 'скрыты'}`);
-  }
-
-  /**
-   * Показать граф
-   */
-  public showGraph(): void {
-    if (!this._graphVisible) {
-      this.toggleGraph();
-    }
-  }
-
-  /**
-   * Скрыть граф
-   */
-  public hideGraph(): void {
-    if (this._graphVisible) {
-      this.toggleGraph();
-    }
-  }
-
-  /**
-   * Видимость графа
-   */
-  public get isGraphVisible(): boolean {
-    return this._graphVisible;
-  }
-
-  // ===== Методы для работы с маршрутами =====
-
-  /**
-   * Найти кратчайший путь между двумя маркерами
-   */
-  public findPath(fromMarker: Marker, toMarker: Marker): RouteResult | null {
-    const result = this._pathfinder.findShortestPath(fromMarker.id, toMarker.id);
-    
-    if (result) {
-      markerLogger.info(`Путь найден: ${result.path.length} узлов, ${result.totalDistance.toFixed(2)}м`);
-    } else {
-      markerLogger.warn(`Путь не найден между ${fromMarker.name} и ${toMarker.name}`);
-    }
-    
-    return result;
-  }
-
-  /**
-   * Найти путь по ID маркеров
-   */
-  public findPathByIds(fromId: string, toId: string): RouteResult | null {
+  public findPath(fromId: string, toId: string): PathResult | null {
     return this._pathfinder.findShortestPath(fromId, toId);
   }
 
-  /**
-   * Подсветить путь на графе
-   */
-  public highlightPath(path: Marker[]): void {
-    // Сначала сбрасываем предыдущую подсветку
+  public highlightPath(pathIds: string[]): void {
     this.clearPathHighlight();
+    this._highlightedPath = pathIds;
     
-    this._highlightedPath = path;
-    
-    if (path.length >= 2) {
-      const pathIds = path.map(m => m.id);
+    if (pathIds.length >= 2) {
       this._graphRenderer.highlightPath(pathIds);
-      
-      markerLogger.debug(`Подсвечен путь из ${path.length} точек`);
+      this.eventBus.emit(EventType.PATH_HIGHLIGHTED, { path: pathIds });
     }
   }
 
-  /**
-   * Очистить подсветку пути
-   */
   public clearPathHighlight(): void {
     this._highlightedPath = null;
     
@@ -408,19 +322,53 @@ export class MarkerManager {
     } else {
       this._graphRenderer.resetHighlight();
     }
-    
-    // Очищаем маршрут в рендерере
     this._graphRenderer.clearRoute();
   }
 
-  /**
-   * Получить подсвеченный путь
-   */
-  public get highlightedPath(): Marker[] | null {
-    return this._highlightedPath;
+  public setWaypointsVisible(visible: boolean): void {
+    this.getAllMarkers().forEach(marker => {
+      if (marker.type === MarkerType.WAYPOINT) {
+        marker.setVisible(visible);
+      }
+    });
+    this.logger.info(`Waypoints ${visible ? 'shown' : 'hidden'}`);
   }
 
-  // ===== Геттеры и основные методы =====
+  public toggleGraph(): void {
+    this._graphVisible = !this._graphVisible;
+    
+    if (this._graphVisible) {
+      this._graphRenderer.show();
+    } else {
+      this._graphRenderer.hide();
+    }
+    
+    this.setWaypointsVisible(this._graphVisible);
+    this.eventBus.emit(EventType.GRAPH_VISIBILITY_CHANGED, { visible: this._graphVisible });
+    this.logger.info(`Graph ${this._graphVisible ? 'shown' : 'hidden'}`);
+  }
+
+  public clearSelection(): void {
+    if (this._selectedMarker) {
+      this._selectedMarker.setSelected(false);
+      this._selectedMarker = null;
+      this._onMarkerSelectedCallback?.(null);
+      
+      if (!this._highlightedPath) {
+        this._graphRenderer.resetHighlight();
+      }
+    }
+  }
+
+  public clearAllMarkers(): void {
+    this._markers.forEach(marker => marker.dispose());
+    this._markers.clear();
+    this._graph.clear();
+    this._selectedMarker = null;
+    this._hoveredMarker = null;
+    this._highlightedPath = null;
+    this._graphRenderer.clear();
+  }
 
   public getMarker(id: string): Marker | undefined {
     return this._markers.get(id);
@@ -438,17 +386,43 @@ export class MarkerManager {
     const removed = this._markers.delete(id);
     if (removed) {
       this._graph.removeNode(id);
-      
-      // Если удалили маркер из подсвеченного пути, очищаем подсветку
-      if (this._highlightedPath?.some(m => m.id === id)) {
+      if (this._highlightedPath?.includes(id)) {
         this.clearPathHighlight();
       }
+      this.eventBus.emit(EventType.MARKER_REMOVED, { marker: id });
     }
     return removed;
   }
 
   public setOnMarkerSelected(callback: (marker: Marker | null) => void): void {
     this._onMarkerSelectedCallback = callback;
+  }
+
+  public setSelectedMarker(marker: Marker | null): void {
+    if (this._selectedMarker === marker) return;
+    
+    if (this._selectedMarker) {
+      this._selectedMarker.setSelected(false);
+    }
+    
+    this._selectedMarker = marker;
+    
+    if (marker) {
+      marker.setSelected(true);
+    }
+    
+    this._onMarkerSelectedCallback?.(marker);
+  }
+
+  public dispose(): void {
+    this.clearAllMarkers();
+    this._graphRenderer.clear();
+    this.logger.info("MarkerManager disposed");
+  }
+
+  // Геттеры для интерфейса IMarkerManager
+  public get markers(): Marker[] {
+    return this.getAllMarkers();
   }
 
   public get selectedMarker(): Marker | null {
@@ -459,22 +433,19 @@ export class MarkerManager {
     return this._hoveredMarker;
   }
 
-  public get isInitialized(): boolean {
-    return this._isInitialized;
+  public get graphVisible(): boolean {
+    return this._graphVisible;
   }
 
-  public get graph() {
+  public get graph(): MarkerGraph {
     return this._graph;
   }
 
-  public get pathfinder() {
+  public get pathfinder(): Pathfinder {
     return this._pathfinder;
   }
 
-  /**
-   * Получить позиции всех точек маршрута
-   */
-  public getRoutePositions(path: Marker[]): Vector3[] {
-    return path.map(m => m.position);
+  public get isInitialized(): boolean {
+    return this._isInitialized;
   }
 }

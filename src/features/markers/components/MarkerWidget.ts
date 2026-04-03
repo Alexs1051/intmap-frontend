@@ -14,87 +14,82 @@ import {
   Control,
   Grid
 } from "@babylonjs/gui";
-import { MarkerType, RGBA } from "../types";
-import { logger } from "../../../core/logger/Logger";
-import { rgbaToCss } from "../utils/iconUtils";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../../core/di/Container";
+import { Logger } from "../../../core/logger/Logger";
+import { MarkerType, RGBA } from "../../../shared/types";
+import { MARKER_WIDGET } from "../../../shared/constants";
 
-const widgetLogger = logger.getLogger('MarkerWidget');
-
+/**
+ * Виджет маркера (GUI элемент)
+ */
+@injectable()
 export class MarkerWidget {
-  private readonly _root: TransformNode;
-  private readonly _background: Mesh;
-  private readonly _guiTexture: AdvancedDynamicTexture;
-  private readonly _titleText: TextBlock | null = null; // Может быть null
-  private readonly _iconText: TextBlock;
-  private readonly _backgroundRect: Rectangle;
+  private logger: Logger;
+  private config: typeof MARKER_WIDGET;
   
-  private readonly _backgroundColor: RGBA;
-  private readonly _textColor: RGBA;
-  private readonly _type: MarkerType;
-  private readonly _iconName: string;
-  private readonly _title: string;
-  private readonly _showTitle: boolean; // Флаг для отображения текста
+  private _root!: TransformNode;
+  private _background!: Mesh;
+  private _guiTexture!: AdvancedDynamicTexture;
+  private _iconText!: TextBlock;
+  private _titleText: TextBlock | null = null;
+  private _backgroundRect!: Rectangle;
+  private _outlineMesh: Mesh | null = null;
   
-  private _currentWidth: number;
-  private _currentHeight: number;
+  private _backgroundColor!: Color3;
+  private _foregroundColor!: Color3;
+  private _type!: MarkerType;
+  private _iconName!: string;
+  private _title!: string;
+  
+  private _currentWidth!: number;
+  private _currentHeight!: number;
   private _currentScale: number = 1.0;
   private _isSelected: boolean = false;
-  
-  // Константы размеров
-  private readonly ICON_SIZE = 48;
-  private readonly PADDING = 16;
-  private readonly FONT_SIZE = 28;
-  private readonly ICON_FONT_SIZE = 40;
-  private readonly TEXTURE_SCALE = 100;
-  
-  // Маппинг типов маркеров на иконки из Material Icons
-  private readonly ICON_MAP = {
-    [MarkerType.MARKER]: 'location_on',
-    [MarkerType.FLAG]: 'flag',
-    [MarkerType.WAYPOINT]: 'trip_origin'
-  };
-  
-  // Разные размеры для разных типов
-  private readonly SIZE_MULTIPLIERS = {
-    [MarkerType.MARKER]: 1.0,
-    [MarkerType.FLAG]: 1.2,
-    [MarkerType.WAYPOINT]: 0.8
-  };
+  private _isFromMarker: boolean = false;
+  private _isToMarker: boolean = false;
+  private _isAnimating: boolean = false;
 
   constructor(
+    @inject(TYPES.Logger) logger: Logger  ) {
+    this.logger = logger.getLogger('MarkerWidget');
+    this.config = MARKER_WIDGET;
+  }
+
+  /**
+   * Преобразует RGBA в CSS строку
+   */
+  private rgbaToCss(color: RGBA): string {
+    return `rgba(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)}, ${color.a})`;
+  }
+
+  /**
+   * Инициализировать виджет
+   */
+  public initialize(
     scene: Scene,
     position: Vector3,
-    backgroundColor: RGBA,
-    textColor: RGBA,
+    backgroundColor: Color3,
+    foregroundColor: Color3,
     type: MarkerType,
     iconName: string,
-    title: string,
-    size: number = 1.5
-  ) {
+    title: string
+  ): void {
     this._backgroundColor = backgroundColor;
-    this._textColor = textColor;
+    this._foregroundColor = foregroundColor;
     this._type = type;
-    this._iconName = iconName || this.ICON_MAP[type] || 'circle';
+    this._iconName = iconName;
     this._title = title;
     
-    // Определяем, нужно ли показывать текст
-    this._showTitle = (type === MarkerType.MARKER);
+    const sizeMultiplier = this.config.SIZE_MULTIPLIERS[type] || 1.0;
     
-    const sizeMultiplier = this.SIZE_MULTIPLIERS[type] || 1.0;
-    
-    // Расчет ширины зависит от того, показываем ли мы текст
-    this._currentWidth = this.calculateOptimalWidth(title, this._showTitle) * sizeMultiplier;
-    
-    // Высота всегда одинаковая (иконка + отступы)
-    this._currentHeight = (this.ICON_SIZE + (this.PADDING * 2)) * sizeMultiplier;
-
-    widgetLogger.debug(`Создание маркера "${title}" типа ${type}`, {
-      width: this._currentWidth,
-      height: this._currentHeight,
-      position: position.toString(),
-      icon: this._iconName,
-      showTitle: this._showTitle
-    });
+    if (this._type === MarkerType.FLAG || this._type === MarkerType.WAYPOINT) {
+      this._currentWidth = (this.config.ICON_SIZE + (this.config.PADDING * 2)) * sizeMultiplier;
+      this._currentHeight = this._currentWidth;
+    } else {
+      this._currentWidth = this.calculateWidth(title) * sizeMultiplier;
+      this._currentHeight = (this.config.ICON_SIZE + (this.config.PADDING * 2)) * sizeMultiplier;
+    }
 
     this._root = new TransformNode("markerRoot", scene);
     this._root.position = position.clone();
@@ -108,92 +103,146 @@ export class MarkerWidget {
     );
     this._guiTexture.hasAlpha = true;
 
-    // Фоновый прямоугольник с RGBA
+    if (this._type === MarkerType.FLAG || this._type === MarkerType.WAYPOINT) {
+      this.createCircularLayout();
+    } else {
+      this.createRectangularLayout();
+    }
+
+    this.createOutlineWireframe(scene);
+    
+    this._background.metadata = { widget: this };
+    
+    this.logger.debug(`Widget initialized: ${title}`);
+  }
+
+  private createCircularLayout(): void {
     this._backgroundRect = new Rectangle("backgroundRect");
     this._backgroundRect.width = 1;
     this._backgroundRect.height = 1;
-    this._backgroundRect.background = rgbaToCss(this._backgroundColor);
+    this._backgroundRect.background = this.rgbaToCss({
+      r: this._backgroundColor.r,
+      g: this._backgroundColor.g,
+      b: this._backgroundColor.b,
+      a: this.config.BACKGROUND_ALPHA
+    });
     this._backgroundRect.thickness = 0;
-    this._backgroundRect.cornerRadius = 8;
+    this._backgroundRect.cornerRadius = 50;
     this._guiTexture.addControl(this._backgroundRect);
 
-    // Создаём сетку для контента
-    const contentGrid = new Grid("contentGrid");
-    contentGrid.width = 1;
-    contentGrid.height = 1;
-    
-    if (this._showTitle) {
-      // Если показываем текст - две колонки
-      contentGrid.addColumnDefinition(this.ICON_SIZE / this._currentWidth);
-      contentGrid.addColumnDefinition(1 - this.ICON_SIZE / this._currentWidth);
-    } else {
-      // Если только иконка - одна колонка по центру
-      contentGrid.addColumnDefinition(1);
-    }
-    contentGrid.addRowDefinition(1.0);
-    this._guiTexture.addControl(contentGrid);
+    const iconContainer = new Rectangle("iconContainer");
+    iconContainer.width = 1;
+    iconContainer.height = 1;
+    iconContainer.background = "";
+    iconContainer.thickness = 0;
+    iconContainer.paddingLeft = this.config.PADDING;
+    iconContainer.paddingRight = this.config.PADDING;
+    iconContainer.paddingTop = this.config.PADDING;
+    iconContainer.paddingBottom = this.config.PADDING;
+    this._guiTexture.addControl(iconContainer);
 
-    // Иконка (векторная) - всегда показываем
-    this.addVectorIcon(contentGrid);
-
-    // Текст заголовка (только для MARKER)
-    if (this._showTitle) {
-      const textContainer = new Rectangle("textContainer");
-      textContainer.width = 1;
-      textContainer.height = 1;
-      textContainer.background = "";
-      textContainer.thickness = 0;
-      textContainer.paddingLeft = this.PADDING;
-      textContainer.paddingRight = this.PADDING;
-      contentGrid.addControl(textContainer, 0, 1);
-
-      this._titleText = new TextBlock("titleText");
-      this._titleText.text = this._title;
-      this._titleText.color = rgbaToCss(this._textColor);
-      this._titleText.fontSize = this.FONT_SIZE;
-      this._titleText.fontFamily = "Arial";
-      this._titleText.fontWeight = "bold";
-      this._titleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-      this._titleText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-      this._titleText.resizeToFit = true;
-      this._titleText.textWrapping = false;
-      textContainer.addControl(this._titleText);
-    }
-
-    this._background.metadata = { widget: this };
+    this._iconText = new TextBlock("iconText");
+    this._iconText.text = this._iconName;
+    this._iconText.color = this.rgbaToCss({
+      r: this._foregroundColor.r,
+      g: this._foregroundColor.g,
+      b: this._foregroundColor.b,
+      a: 1
+    });
+    this._iconText.fontSize = this.config.ICON_FONT_SIZE;
+    this._iconText.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
+    this._iconText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this._iconText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    iconContainer.addControl(this._iconText);
   }
 
-  /**
-   * Оптимальный расчет ширины на основе длины текста и необходимости его отображения
-   */
-  private calculateOptimalWidth(text: string, showTitle: boolean): number {
-    if (!showTitle) {
-      // Если текст не показываем - ширина только под иконку
-      const iconOnlyWidth = this.ICON_SIZE + (this.PADDING * 2);
-      return Math.max(iconOnlyWidth, 100);
-    }
-    
-    // Базовая ширина: иконка + отступы слева и справа
-    const baseWidth = this.ICON_SIZE + (this.PADDING * 3);
-    
-    // Точный расчет ширины текста: каждый символ ~18px
-    const charWidth = 18;
+  private createRectangularLayout(): void {
+    this._backgroundRect = new Rectangle("backgroundRect");
+    this._backgroundRect.width = 1;
+    this._backgroundRect.height = 1;
+    this._backgroundRect.background = this.rgbaToCss({
+      r: this._backgroundColor.r,
+      g: this._backgroundColor.g,
+      b: this._backgroundColor.b,
+      a: this.config.BACKGROUND_ALPHA
+    });
+    this._backgroundRect.thickness = 0;
+    this._backgroundRect.cornerRadius = 6;
+    this._guiTexture.addControl(this._backgroundRect);
+
+    const grid = new Grid("markerGrid");
+    grid.width = 1;
+    grid.height = 1;
+    const iconColumnWidth = (this.config.ICON_SIZE + this.config.PADDING * 2) / this._currentWidth;
+    grid.addColumnDefinition(iconColumnWidth);
+    grid.addColumnDefinition(1 - iconColumnWidth);
+    grid.addRowDefinition(1.0);
+    this._guiTexture.addControl(grid);
+
+    const iconContainer = new Rectangle("iconContainer");
+    iconContainer.width = 1;
+    iconContainer.height = 1;
+    iconContainer.background = "";
+    iconContainer.thickness = 0;
+    iconContainer.paddingLeft = this.config.PADDING;
+    iconContainer.paddingRight = this.config.PADDING;
+    grid.addControl(iconContainer, 0, 0);
+
+    this._iconText = new TextBlock("iconText");
+    this._iconText.text = this._iconName;
+    this._iconText.color = this.rgbaToCss({
+      r: this._foregroundColor.r,
+      g: this._foregroundColor.g,
+      b: this._foregroundColor.b,
+      a: 1
+    });
+    this._iconText.fontSize = this.config.ICON_FONT_SIZE;
+    this._iconText.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
+    this._iconText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this._iconText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    iconContainer.addControl(this._iconText);
+
+    const textContainer = new Rectangle("textContainer");
+    textContainer.width = 1;
+    textContainer.height = 1;
+    textContainer.background = "";
+    textContainer.thickness = 0;
+    textContainer.paddingLeft = this.config.PADDING;
+    textContainer.paddingRight = this.config.PADDING;
+    grid.addControl(textContainer, 0, 1);
+
+    this._titleText = new TextBlock("titleText");
+    this._titleText.text = this._title;
+    this._titleText.color = this.rgbaToCss({
+      r: this._foregroundColor.r,
+      g: this._foregroundColor.g,
+      b: this._foregroundColor.b,
+      a: 1
+    });
+    this._titleText.fontSize = this.config.FONT_SIZE;
+    this._titleText.fontFamily = "Arial";
+    this._titleText.fontWeight = "bold";
+    this._titleText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
+    this._titleText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    this._titleText.resizeToFit = true;
+    this._titleText.textWrapping = false;
+    textContainer.addControl(this._titleText);
+  }
+
+  private calculateWidth(text: string): number {
+    const baseWidth = this.config.ICON_SIZE + (this.config.PADDING * 4);
+    const charWidth = 22;
     const textWidth = text.length * charWidth;
-    
-    // Добавляем небольшой запас
-    const totalWidth = baseWidth + textWidth + 10;
-    
-    // Минимальная и максимальная ширина
-    const minWidth = 200;
-    const maxWidth = 500;
-    
+    const totalWidth = baseWidth + textWidth;
+    const minWidth = 220;
+    const maxWidth = 550;
     return Math.min(Math.max(totalWidth, minWidth), maxWidth);
   }
 
   private createBackground(scene: Scene): Mesh {
     const bg = MeshBuilder.CreatePlane("markerBg", {
-      width: this._currentWidth / this.TEXTURE_SCALE,
-      height: this._currentHeight / this.TEXTURE_SCALE
+      width: this._currentWidth / this.config.TEXTURE_SCALE,
+      height: this._currentHeight / this.config.TEXTURE_SCALE
     }, scene);
     
     const material = new StandardMaterial("markerBgMat", scene);
@@ -206,71 +255,86 @@ export class MarkerWidget {
     bg.position.z = 0;
     bg.isPickable = true;
     bg.enablePointerMoveEvents = true;
+    bg.isVisible = true;
+    
+    this.logger.debug(`Background created for marker, isPickable: ${bg.isPickable}`);
     
     return bg;
   }
 
-  /**
-   * Добавить векторную иконку из Material Icons
-   */
-  private addVectorIcon(grid: Grid): void {
-    const iconContainer = new Rectangle("iconContainer");
-    iconContainer.width = 1;
-    iconContainer.height = 1;
-    iconContainer.background = "";
-    iconContainer.thickness = 0;
+  private createOutlineWireframe(scene: Scene): void {
+    const width = this._currentWidth / this.config.TEXTURE_SCALE;
+    const height = this._currentHeight / this.config.TEXTURE_SCALE;
     
-    if (this._showTitle) {
-      grid.addControl(iconContainer, 0, 0);
-    } else {
-      grid.addControl(iconContainer, 0, 0);
-      // Центрируем иконку
-      iconContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    }
-
-    this._iconText = new TextBlock("iconText");
-    this._iconText.text = this._iconName;
-    this._iconText.color = rgbaToCss(this._textColor);
-    this._iconText.fontSize = this.ICON_FONT_SIZE;
-    this._iconText.fontFamily = "Material Icons, Material Symbols Outlined";
-    this._iconText.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this._iconText.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    this._outlineMesh = MeshBuilder.CreatePlane("outlineWireframe", {
+      width: width * this.config.OUTLINE_SCALE,
+      height: height * this.config.OUTLINE_SCALE
+    }, scene);
     
-    iconContainer.addControl(this._iconText);
+    const outlineMaterial = new StandardMaterial("outlineMat", scene);
+    outlineMaterial.diffuseColor = new Color3(1, 0.8, 0.2);
+    outlineMaterial.wireframe = true;
+    outlineMaterial.alpha = 0.8;
+    outlineMaterial.backFaceCulling = false;
+    
+    this._outlineMesh.material = outlineMaterial;
+    this._outlineMesh.parent = this._root;
+    this._outlineMesh.position.z = -0.01;
+    this._outlineMesh.setEnabled(false);
   }
 
-  /**
-   * Увеличить яркость цвета (для выделения)
-   */
-  private brightenColor(color: RGBA, factor: number): RGBA {
-    return {
-      r: Math.min(1, color.r * factor),
-      g: Math.min(1, color.g * factor),
-      b: Math.min(1, color.b * factor),
-      a: color.a
-    };
+  private brightenColor(color: Color3, factor: number): Color3 {
+    return new Color3(
+      Math.min(1, color.r * factor),
+      Math.min(1, color.g * factor),
+      Math.min(1, color.b * factor)
+    );
   }
 
-  /**
-   * Установить состояние выделения
-   */
   public setSelected(selected: boolean): void {
     if (this._isSelected === selected) return;
     
     this._isSelected = selected;
     
-    if (selected) {
+    if (selected && this._type === MarkerType.MARKER) {
       const brightColor = this.brightenColor(this._backgroundColor, 1.3);
-      this._backgroundRect.background = rgbaToCss(brightColor);
-    } else {
-      this._backgroundRect.background = rgbaToCss(this._backgroundColor);
+      this._backgroundRect.background = this.rgbaToCss({
+        r: brightColor.r,
+        g: brightColor.g,
+        b: brightColor.b,
+        a: this.config.BACKGROUND_ALPHA
+      });
+    } else if (!this._isFromMarker && !this._isToMarker && this._type === MarkerType.MARKER) {
+      this._backgroundRect.background = this.rgbaToCss({
+        r: this._backgroundColor.r,
+        g: this._backgroundColor.g,
+        b: this._backgroundColor.b,
+        a: this.config.BACKGROUND_ALPHA
+      });
     }
   }
 
-  /**
-   * Обновить масштаб маркера
-   */
+  public setAsFromMarker(isFrom: boolean): void {
+    this._isFromMarker = isFrom;
+    if (isFrom) {
+      this._outlineMesh?.setEnabled(true);
+    } else if (!this._isToMarker) {
+      this._outlineMesh?.setEnabled(false);
+    }
+  }
+
+  public setAsToMarker(isTo: boolean): void {
+    this._isToMarker = isTo;
+    if (isTo) {
+      this._outlineMesh?.setEnabled(true);
+    } else if (!this._isFromMarker) {
+      this._outlineMesh?.setEnabled(false);
+    }
+  }
+
   public updateScale(cameraPosition: Vector3): void {
+    if (this._isAnimating) return;
+    
     const distance = Vector3.Distance(this._root.position, cameraPosition);
     const OPTIMAL_DISTANCE = 20;
     const MIN_SCALE = 0.5;
@@ -287,24 +351,30 @@ export class MarkerWidget {
     return start * (1 - amount) + end * amount;
   }
 
-  /**
-   * Обновить билборд (поворот к камере)
-   */
   public updateBillboard(cameraPosition: Vector3): void {
     this._root.lookAt(cameraPosition);
     this._root.rotate(Vector3.Up(), Math.PI);
   }
 
-  /**
-   * Установить заголовок
-   */
   public setTitle(title: string): void {
     if (this._titleText) {
       this._titleText.text = title;
     }
   }
 
-  // Геттеры
+  public setVisible(visible: boolean): void {
+    this._root.setEnabled(visible);
+  }
+
+  public dispose(): void {
+    this._background.dispose();
+    this._guiTexture.dispose();
+    if (this._outlineMesh) {
+      this._outlineMesh.dispose();
+    }
+    this._root.dispose();
+  }
+
   public get position(): Vector3 {
     return this._root.position.clone();
   }
@@ -325,7 +395,7 @@ export class MarkerWidget {
     return this._type;
   }
 
-  public setVisible(visible: boolean): void {
-    this._root.setEnabled(visible);
+  public setAnimating(animating: boolean): void {
+    this._isAnimating = animating;
   }
 }

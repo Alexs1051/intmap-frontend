@@ -1,102 +1,119 @@
-import { ArcRotateCamera, Vector3 } from "@babylonjs/core";
-import { CameraMode, CameraTransform, BuildingDimensions } from "./types";
-import { CAMERA_CONFIG } from "./constants";
-import { logger } from "../../core/logger/Logger";
+import { Vector3 } from "@babylonjs/core";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { CameraMode, CameraTransform, BuildingDimensions } from "../../shared/types";
+import { ICameraModeManager } from "@shared/interfaces";
 
-const modeLogger = logger.getLogger('CameraModeManager');
+@injectable()
+export class CameraModeManager implements ICameraModeManager {
+  private readonly logger: Logger;
+  private currentMode: CameraMode = CameraMode.ORBIT;
+  private _pivotPoint: Vector3 = Vector3.Zero();
+  private dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
 
-export class CameraModeManager {
-  private _currentCameraMode: CameraMode = CameraMode.MODE_3D;
-  private _target: Vector3 = Vector3.Zero();
-  private _saved3DState: CameraTransform | null = null;
-
-  constructor(
-    private readonly _camera: ArcRotateCamera,
-    private readonly _dimensions: BuildingDimensions
-  ) {
-    this.setupCamera();
+  constructor(@inject(TYPES.Logger) logger: Logger) {
+    this.logger = logger.getLogger('CameraModeManager');
   }
 
-  private setupCamera(): void {
-    this._camera.angularSensibilityX = 1000;
-    this._camera.angularSensibilityY = 1000;
-    this._camera.panningSensibility = CAMERA_CONFIG.panningSpeed;
-    this._camera.wheelPrecision = CAMERA_CONFIG.wheelPrecision;
-    this._camera.pinchPrecision = CAMERA_CONFIG.pinchPrecision;
-    this._camera.target = this._target;
-    this.applyConstraints();
+  public setPivotPoint(point: Vector3): void {
+    this._pivotPoint = point.clone();
   }
 
-  private applyConstraints(): void {
-    if (this._currentCameraMode === CameraMode.MODE_2D) {
-      this._camera.lowerBetaLimit = 0.1;
-      this._camera.upperBetaLimit = 0.1;
-      this._camera.lowerRadiusLimit = 20;
-      this._camera.upperRadiusLimit = 200;
-    } else {
-      this._camera.lowerBetaLimit = CAMERA_CONFIG.minBeta;
-      this._camera.upperBetaLimit = CAMERA_CONFIG.maxBeta;
-      this._camera.lowerRadiusLimit = CAMERA_CONFIG.minRadius;
-      this._camera.upperRadiusLimit = CAMERA_CONFIG.maxRadius;
-    }
+  public getPivotPoint(): Vector3 {
+    return this._pivotPoint;
   }
 
-  public setTarget(target: Vector3): void {
-    this._target = target.clone();
-    this._camera.target = this._target;
+  public setDimensions(dimensions: BuildingDimensions): void {
+    this.dimensions = dimensions;
   }
 
-  public get2DTransform(): CameraTransform {
-    const maxDimension = Math.max(this._dimensions.height, this._dimensions.width, this._dimensions.depth);
+  public getInitialTransform(): CameraTransform {
+    const maxDimension = this.getMaxDimension();
+    return {
+      alpha: -Math.PI / 1.5,
+      beta: Math.PI / 2.5,
+      radius: maxDimension * 3.5,
+      target: this._pivotPoint.clone()
+    };
+  }
+
+  public getResetTransform(): CameraTransform {
+    const maxDimension = this.getMaxDimension();
     return {
       alpha: -Math.PI / 2,
-      beta: 0.1,
-      radius: maxDimension * 2.5,
-      target: this._target.clone()
-    };
-  }
-
-  public get3DTransform(): CameraTransform {
-    const maxDimension = Math.max(this._dimensions.height, this._dimensions.width, this._dimensions.depth);
-    const defaultRadius = Math.max(30, maxDimension * 2.0);
-    
-    return this._saved3DState ?? {
-      alpha: -Math.PI / 2,
       beta: Math.PI / 3.5,
-      radius: defaultRadius,
-      target: this._target.clone()
+      radius: Math.max(30, maxDimension * 2),
+      target: this._pivotPoint.clone()
     };
   }
 
-  public toggleCameraMode(): CameraMode {
-    if (this._currentCameraMode === CameraMode.MODE_3D) {
-      this._saved3DState = {
-        alpha: this._camera.alpha,
-        beta: this._camera.beta,
-        radius: this._camera.radius,
-        target: this._camera.target.clone()
-      };
-    }
+  public getFocusTransform(point: Vector3, currentAlpha: number, currentBeta: number, distance: number): CameraTransform {
+    this._pivotPoint = point.clone();
+    return {
+      alpha: currentAlpha,
+      beta: currentBeta,
+      radius: distance,
+      target: point.clone()
+    };
+  }
 
-    this._currentCameraMode = this._currentCameraMode === CameraMode.MODE_3D 
-      ? CameraMode.MODE_2D 
-      : CameraMode.MODE_3D;
+  public get2DTransform(currentAlpha: number, currentRadius: number): CameraTransform {
+    const maxDimension = this.getMaxDimension();
+    return {
+      alpha: currentAlpha,
+      beta: 0.01,
+      radius: Math.max(currentRadius, maxDimension * 2.5),
+      target: this._pivotPoint.clone()
+    };
+  }
 
-    this.applyConstraints();
-    modeLogger.debug(`Режим камеры: ${this._currentCameraMode}`);
+  public get3DTransform(currentAlpha: number, currentBeta: number, currentRadius: number): CameraTransform {
+    const maxDimension = this.getMaxDimension();
+    const targetBeta = this.is2DMode ? Math.PI / 3.5 : currentBeta;
     
-    return this._currentCameraMode;
+    return {
+      alpha: currentAlpha,
+      beta: targetBeta,
+      radius: Math.max(currentRadius, maxDimension * 2),
+      target: this._pivotPoint.clone()
+    };
   }
 
-  public get cameraMode(): CameraMode {
-    return this._currentCameraMode;
+  public getConstraints(): { minBeta: number; maxBeta: number; minRadius: number } {
+    if (this.is2DMode) {
+      return { minBeta: 0.005, maxBeta: 0.05, minRadius: 15 };
+    }
+    return { minBeta: 0.1, maxBeta: Math.PI / 2, minRadius: 5 };
   }
 
-  public get target(): Vector3 {
-    return this._target;
+  public setMode(mode: CameraMode): void {
+    this.currentMode = mode;
+    this.logger.debug(`Camera mode set to: ${mode}`);
   }
 
-  public get camera(): ArcRotateCamera {
-    return this._camera;
+  private getMaxDimension(): number {
+    return Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
+  }
+
+  // Публичные геттеры для интерфейса
+  public get mode(): CameraMode {
+    return this.currentMode;
+  }
+
+  public get is2DMode(): boolean {
+    return this.currentMode === CameraMode.TOP_DOWN;
+  }
+
+  public get is3DMode(): boolean {
+    return this.currentMode === CameraMode.ORBIT;
+  }
+
+  public get pivotPoint(): Vector3 {
+    return this._pivotPoint;
+  }
+
+  public dispose(): void {
+    this.logger.info('CameraModeManager disposed');
   }
 }

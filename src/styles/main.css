@@ -11,7 +11,8 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #000;
 }
 
 canvas {
@@ -21,7 +22,6 @@ canvas {
   touch-action: none;
 }
 
-/* Скроллбары */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -41,11 +41,18 @@ canvas {
   background: rgba(255, 255, 255, 0.5);
 }
 
-/* Медиа-запросы для мобильных */
+button {
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
 @media (max-width: 768px) {
-  button {
-    width: 44px !important;
-    height: 44px !important;
-    font-size: 18px !important;
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
   }
 }

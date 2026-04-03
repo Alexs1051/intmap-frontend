@@ -1,162 +1,219 @@
 import { Scene, Color3, Color4, MeshBuilder, ShaderMaterial, Vector3 } from "@babylonjs/core";
-import { 
-  SKY_COLOR_TOP, 
-  SKY_COLOR_MIDDLE,
-  SKY_COLOR_BOTTOM,
-  SKY_GRADIENT_ENABLED
-} from "../../shared/constants";
-import { logger } from "../../core/logger/Logger";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { BACKGROUND } from "../../shared/constants";
+import { IBackgroundManager } from "@shared/interfaces";
 
-const bgLogger = logger.getLogger('BackgroundManager');
+@injectable()
+export class BackgroundManager implements IBackgroundManager {
+    private scene!: Scene;
+    private logger: Logger;
+    
+    private skySphere: any = null;
+    private shaderMaterial: ShaderMaterial | null = null;
+    private isInitialized: boolean = false;
+    private fogEnabled: boolean = BACKGROUND.FOG_ENABLED;
+    private gradientEnabled: boolean = BACKGROUND.GRADIENT_ENABLED;
+    
+    private skyTop: Color3 = BACKGROUND.SKY_TOP;
+    private skyMiddle: Color3 = BACKGROUND.SKY_MIDDLE;
+    private skyBottom: Color3 = BACKGROUND.SKY_BOTTOM;
 
-export class BackgroundManager {
-  private static _instance: BackgroundManager;
-  private _scene: Scene;
-  private _isInitialized: boolean = false;
-  private _skySphere: any;
-
-  private constructor(scene: Scene) {
-    this._scene = scene;
-  }
-
-  public static getInstance(scene: Scene): BackgroundManager {
-    if (!BackgroundManager._instance) {
-      BackgroundManager._instance = new BackgroundManager(scene);
+    constructor(@inject(TYPES.Logger) logger: Logger) {
+        this.logger = logger.getLogger('BackgroundManager');
     }
-    return BackgroundManager._instance;
-  }
 
-  public async initialize(onProgress?: (progress: number) => void): Promise<void> {
-    bgLogger.debug("Инициализация фона");
-    
-    onProgress?.(0.1);
-    onProgress?.(0.3);
-    this.createGradientSky();
-    
-    onProgress?.(0.6);
-    
-    onProgress?.(0.9);
-    this._isInitialized = true;
-    onProgress?.(1.0);
-    
-    bgLogger.info("Фон инициализирован");
-  }
-
-  private createGradientSky(): void {
-    if (SKY_GRADIENT_ENABLED) {
-      this.createGradientSphere();
-    } else {
-      const midColor = new Color3(
-        (SKY_COLOR_TOP.r + SKY_COLOR_BOTTOM.r) / 2,
-        (SKY_COLOR_TOP.g + SKY_COLOR_BOTTOM.g) / 2,
-        (SKY_COLOR_TOP.b + SKY_COLOR_BOTTOM.b) / 2
-      );
-      this._scene.clearColor = new Color4(midColor.r, midColor.g, midColor.b, 1.0);
+    public setScene(scene: Scene): void {
+        this.scene = scene;
+        this.logger.debug("Scene set");
     }
-  }
 
-  private createGradientSphere(): void {
-    // Создаём сферу для неба
-    this._skySphere = MeshBuilder.CreateSphere("skySphere", {
-      diameter: 1000,
-      segments: 32
-    }, this._scene);
-    
-    this._skySphere.isPickable = false;
-    
-    // Создаём шейдерный материал
-    const shaderMaterial = new ShaderMaterial(
-      "gradientShader",
-      this._scene,
-      {
-        vertexSource: `
-          precision highp float;
-          attribute vec3 position;
-          uniform mat4 worldViewProjection;
-          varying vec3 vPosition;
-          
-          void main() {
-            vPosition = position;
-            gl_Position = worldViewProjection * vec4(position, 1.0);
-          }
-        `,
-        fragmentSource: `
-          precision highp float;
-          varying vec3 vPosition;
-          uniform vec3 uTopColor;
-          uniform vec3 uMiddleColor;
-          uniform vec3 uBottomColor;
-          
-          void main() {
-            // Нормализуем Y координату от -1 до 1
-            float t = (vPosition.y / 500.0 + 1.0) / 2.0; // Преобразуем в диапазон 0-1
+    public async load(onProgress?: (progress: number) => void): Promise<void> {
+        this.logger.debug("Loading background manager");
+        
+        if (!this.scene) {
+            throw new Error("Scene not set");
+        }
+        
+        onProgress?.(0.3);
+        await this.createBackground();
+        onProgress?.(0.6);
+        this.setupFog();
+        onProgress?.(1.0);
+        
+        this.logger.info("Background manager loaded");
+    }
+
+    public async initialize(): Promise<void> {
+        this.logger.debug("Initializing background manager");
+        if (this.isInitialized) return;
+        
+        if (this.gradientEnabled) {
+            this.updateGradientSky();
+        }
+        
+        this.isInitialized = true;
+        this.logger.info("Background manager initialized");
+    }
+
+    public update(_deltaTime: number): void {}
+
+    private async createBackground(): Promise<void> {
+        if (this.gradientEnabled) {
+            this.createGradientSphere();
+        } else {
+            this.setSimpleSkyColor(this.skyMiddle);
+        }
+        this.logger.debug(`Background created: ${this.gradientEnabled ? 'gradient' : 'simple color'}`);
+    }
+
+    private createGradientSphere(): void {
+        if (this.skySphere) {
+            this.skySphere.dispose();
+        }
+        
+        this.skySphere = MeshBuilder.CreateSphere("skySphere", {
+            diameter: 1000,
+            segments: 64
+        }, this.scene);
+        
+        this.skySphere.isPickable = false;
+        
+        const vertexShader = `
+            precision highp float;
+            attribute vec3 position;
+            uniform mat4 worldViewProjection;
+            varying vec3 vPosition;
             
-            vec3 color;
-            if (t < 0.3) {
-              // Верхняя часть (чистый верхний цвет)
-              color = uTopColor;
-            } else if (t < 0.7) {
-              // Средняя часть (смешивание верхнего и среднего)
-              float localT = (t - 0.3) / 0.4;
-              color = mix(uTopColor, uMiddleColor, localT);
-            } else {
-              // Нижняя часть (смешивание среднего и нижнего)
-              float localT = (t - 0.7) / 0.3;
-              color = mix(uMiddleColor, uBottomColor, localT);
+            void main() {
+                vPosition = position;
+                gl_Position = worldViewProjection * vec4(position, 1.0);
             }
+        `;
+        
+        const fragmentShader = `
+            precision highp float;
+            varying vec3 vPosition;
+            uniform vec3 uTopColor;
+            uniform vec3 uMiddleColor;
+            uniform vec3 uBottomColor;
             
-            gl_FragColor = vec4(color, 1.0);
-          }
-        `
-      },
-      {
-        attributes: ["position"],
-        uniforms: ["worldViewProjection", "uTopColor", "uMiddleColor", "uBottomColor"]
-      }
-    );
-
-    // Устанавливаем цвета
-    shaderMaterial.setVector3("uTopColor", new Vector3(SKY_COLOR_TOP.r, SKY_COLOR_TOP.g, SKY_COLOR_TOP.b));
-    shaderMaterial.setVector3("uMiddleColor", new Vector3(SKY_COLOR_MIDDLE.r, SKY_COLOR_MIDDLE.g, SKY_COLOR_MIDDLE.b));
-    shaderMaterial.setVector3("uBottomColor", new Vector3(SKY_COLOR_BOTTOM.r, SKY_COLOR_BOTTOM.g, SKY_COLOR_BOTTOM.b));
-    
-    // Отключаем освещение и backface culling для сферы
-    shaderMaterial.backFaceCulling = false;
-    shaderMaterial.disableDepthWrite = true;
-    
-    this._skySphere.material = shaderMaterial;
-    
-    // Поворачиваем сферу для правильной ориентации
-    this._skySphere.rotation.x = Math.PI / 2;
-    
-    bgLogger.debug("Градиентная сфера создана через шейдер", {
-      top: this.color3ToCss(SKY_COLOR_TOP),
-      middle: this.color3ToCss(SKY_COLOR_MIDDLE),
-      bottom: this.color3ToCss(SKY_COLOR_BOTTOM)
-    });
-  }
-
-  private color3ToCss(color: Color3): string {
-    return `rgb(${Math.floor(color.r * 255)}, ${Math.floor(color.g * 255)}, ${Math.floor(color.b * 255)})`;
-  }
-
-  public update(_deltaTime: number): void {}
-
-  public setBackgroundColor(color: Color3): void {
-    if (!SKY_GRADIENT_ENABLED) {
-      this._scene.clearColor = new Color4(color.r, color.g, color.b, 1.0);
+            void main() {
+                float t = (vPosition.y / 500.0 + 1.0) / 2.0;
+                
+                vec3 color;
+                if (t < 0.3) {
+                    color = uTopColor;
+                } else if (t < 0.7) {
+                    float localT = (t - 0.3) / 0.4;
+                    color = mix(uTopColor, uMiddleColor, localT);
+                } else {
+                    float localT = (t - 0.7) / 0.3;
+                    color = mix(uMiddleColor, uBottomColor, localT);
+                }
+                
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+        
+        this.shaderMaterial = new ShaderMaterial(
+            "gradientShader",
+            this.scene,
+            {
+                vertexSource: vertexShader,
+                fragmentSource: fragmentShader
+            },
+            {
+                attributes: ["position"],
+                uniforms: ["worldViewProjection", "uTopColor", "uMiddleColor", "uBottomColor"]
+            }
+        );
+        
+        this.updateGradientColors();
+        
+        this.shaderMaterial.backFaceCulling = false;
+        this.shaderMaterial.disableDepthWrite = true;
+        
+        this.skySphere.material = this.shaderMaterial;
+        this.skySphere.rotation.x = Math.PI / 2;
     }
-  }
 
-  public setFogDensity(density: number): void {
-    this._scene.fogDensity = density;
-  }
+    private updateGradientColors(): void {
+        if (this.shaderMaterial) {
+            this.shaderMaterial.setVector3("uTopColor", new Vector3(this.skyTop.r, this.skyTop.g, this.skyTop.b));
+            this.shaderMaterial.setVector3("uMiddleColor", new Vector3(this.skyMiddle.r, this.skyMiddle.g, this.skyMiddle.b));
+            this.shaderMaterial.setVector3("uBottomColor", new Vector3(this.skyBottom.r, this.skyBottom.g, this.skyBottom.b));
+        }
+    }
 
-  public get isInitialized(): boolean {
-    return this._isInitialized;
-  }
+    private setSimpleSkyColor(color: Color3): void {
+        if (this.skySphere) {
+            this.skySphere.dispose();
+            this.skySphere = null;
+        }
+        this.scene.clearColor = new Color4(color.r, color.g, color.b, 1.0);
+    }
 
-  public get fogDensity(): number {
-    return this._scene.fogDensity;
-  }
+    private setupFog(): void {
+        if (this.fogEnabled) {
+            this.scene.fogMode = Scene.FOGMODE_EXP;
+            this.scene.fogDensity = BACKGROUND.FOG_DENSITY;
+            this.scene.fogColor = BACKGROUND.FOG_COLOR;
+        } else {
+            this.scene.fogMode = Scene.FOGMODE_NONE;
+        }
+    }
+
+    public setFogDensity(density: number): void {
+        this.scene.fogDensity = Math.max(0, Math.min(0.1, density));
+    }
+
+    public setSkyColor(color: Color3): void {
+        this.gradientEnabled = false;
+        this.skyMiddle = color;
+        this.setSimpleSkyColor(color);
+    }
+
+    public setGradientSky(top: Color3, middle: Color3, bottom: Color3): void {
+        this.gradientEnabled = true;
+        this.skyTop = top;
+        this.skyMiddle = middle;
+        this.skyBottom = bottom;
+        
+        if (this.isInitialized) {
+            if (!this.skySphere) {
+                this.createGradientSphere();
+            } else {
+                this.updateGradientColors();
+            }
+        }
+    }
+
+    private updateGradientSky(): void {
+        if (this.skySphere) {
+            this.updateGradientColors();
+        } else {
+            this.createGradientSphere();
+        }
+    }
+
+    public setFogEnabled(enabled: boolean): void {
+        this.fogEnabled = enabled;
+        if (enabled) {
+            this.scene.fogMode = Scene.FOGMODE_EXP;
+        } else {
+            this.scene.fogMode = Scene.FOGMODE_NONE;
+        }
+    }
+
+    public dispose(): void {
+        if (this.skySphere) {
+            this.skySphere.dispose();
+        }
+        if (this.shaderMaterial) {
+            this.shaderMaterial.dispose();
+        }
+        this.logger.info("BackgroundManager disposed");
+    }
 }

@@ -1,17 +1,111 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    /* Базовые настройки */
+    "target": "ES2020",
     "module": "ESNext",
-    "moduleResolution": "node",
-    "noResolve": false,
-    "noImplicitAny": false,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": false,
+    
+    /* Output */
+    "outDir": "./dist",
+    "rootDir": "./src",
     "sourceMap": true,
-    "preserveConstEnums": true,
-    "lib": ["dom", "es6"],
-    "rootDir": "src",
-    "outDir": "./dist/",
+    "declaration": true,
+    "declarationMap": true,
+    "removeComments": false,
+    "noEmitOnError": true,
+    
+    /* Strictness */
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    
+    /* Additional Checks */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
+    
+    /* Module Resolution */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "preserveSymlinks": false,
+    
     "skipLibCheck": true,
-    "allowSyntheticDefaultImports": true
+    
+    /* Decorators (для InversifyJS) */
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    
+    /* Path Mapping */
+    "baseUrl": ".",
+    "paths": {
+      /* Shared - общие ресурсы */
+      "@shared/*": ["./src/shared/*"],
+      "@shared/types": ["./src/shared/types/index.ts"],
+      "@shared/constants": ["./src/shared/constants/index.ts"],
+      "@shared/interfaces": ["./src/shared/interfaces/index.ts"],
+      "@shared/helpers": ["./src/shared/helpers/index.ts"],
+      "@shared/utils": ["./src/shared/utils/index.ts"],
+      "@shared/errors": ["./src/shared/errors/index.ts"],
+      
+      /* Core - ядро приложения */
+      "@core/*": ["./src/core/*"],
+      "@core/di/*": ["./src/core/di/*"],
+      "@core/engine/*": ["./src/core/engine/*"],
+      "@core/logger/*": ["./src/core/logger/*"],
+      "@core/events/*": ["./src/core/events/*"],
+      "@core/config/*": ["./src/core/config/*"],
+      "@core/assets/*": ["./src/core/assets/*"],
+      "@core/scene/*": ["./src/core/scene/*"],
+      "@core/ui/*": ["./src/core/ui/*"],
+      
+      /* Features - функциональные модули */
+      "@features/*": ["./src/features/*"],
+      "@features/camera/*": ["./src/features/camera/*"],
+      "@features/building/*": ["./src/features/building/*"],
+      "@features/markers/*": ["./src/features/markers/*"],
+      "@features/ui/*": ["./src/features/ui/*"],
+      "@features/background/*": ["./src/features/background/*"],
+      "@features/grid/*": ["./src/features/grid/*"],
+      "@features/lighting/*": ["./src/features/lighting/*"],
+      
+      /* Styles */
+      "@styles/*": ["./src/styles/*"]
+    },
+    
+    /* Types */
+    "types": ["node", "reflect-metadata"]
   },
-  "exclude": ["node_modules"]
+  
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts"
+  ],
+  
+  "exclude": [
+    "node_modules",
+    "dist",
+    "public",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/__tests__/**"
+  ]
 }

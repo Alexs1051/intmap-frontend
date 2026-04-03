@@ -1,100 +1,95 @@
-const path = require("path");
-const HtmlWebpackPlugin = require("html-webpack-plugin");
-const CopyPlugin = require('copy-webpack-plugin');
+const path = require('path');
+const webpack = require('webpack');
 
 module.exports = {
-  entry: path.resolve(__dirname, "src/app.ts"),
+  mode: 'development',
+  entry: './src/app.ts',
   output: {
-    filename: "js/bundle.js",
-    path: path.resolve(__dirname, "dist"),
-    clean: true,
-    publicPath: '/',
+    filename: 'bundle.js',
+    path: path.resolve(__dirname, 'public'),
+    publicPath: '/'
   },
   resolve: {
-    extensions: [".tsx", ".ts", ".js"],
+    extensions: ['.ts', '.tsx', '.js', '.jsx'],
     alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
-  },
-  devServer: {
-    static: [
-      {
-        directory: path.resolve(__dirname, "public"),
-        publicPath: "/",
-      }
-    ],
-    port: 8080,
-    hot: true,
-    client: {
-      overlay: {
-        errors: true,
-        warnings: false,
-      },
-      logging: 'error',
-    },
+      '@shared': path.resolve(__dirname, 'src/shared'),
+      '@core': path.resolve(__dirname, 'src/core'),
+      '@features': path.resolve(__dirname, 'src/features'),
+      '@styles': path.resolve(__dirname, 'src/styles'),
+      
+      '@shared/types': path.resolve(__dirname, 'src/shared/types'),
+      '@shared/constants': path.resolve(__dirname, 'src/shared/constants'),
+      '@shared/interfaces': path.resolve(__dirname, 'src/shared/interfaces'),
+      '@shared/helpers': path.resolve(__dirname, 'src/shared/helpers'),
+      '@shared/utils': path.resolve(__dirname, 'src/shared/utils'),
+      '@shared/errors': path.resolve(__dirname, 'src/shared/errors'),
+      
+      '@core/di': path.resolve(__dirname, 'src/core/di'),
+      '@core/engine': path.resolve(__dirname, 'src/core/engine'),
+      '@core/logger': path.resolve(__dirname, 'src/core/logger'),
+      '@core/events': path.resolve(__dirname, 'src/core/events'),
+      '@core/config': path.resolve(__dirname, 'src/core/config'),
+      '@core/assets': path.resolve(__dirname, 'src/core/assets'),
+      '@core/scene': path.resolve(__dirname, 'src/core/scene'),
+      '@core/ui': path.resolve(__dirname, 'src/core/ui'),
+      
+      '@features/camera': path.resolve(__dirname, 'src/features/camera'),
+      '@features/building': path.resolve(__dirname, 'src/features/building'),
+      '@features/markers': path.resolve(__dirname, 'src/features/markers'),
+      '@features/ui': path.resolve(__dirname, 'src/features/ui'),
+      '@features/background': path.resolve(__dirname, 'src/features/background'),
+      '@features/grid': path.resolve(__dirname, 'src/features/grid'),
+      '@features/lighting': path.resolve(__dirname, 'src/features/lighting'),
+    }
   },
   module: {
     rules: [
       {
-        test: /\.tsx?$/,
-        use: [
-          {
-            loader: "ts-loader",
-            options: {
-              transpileOnly: true,
-              compilerOptions: {
-                module: "esnext",
-              },
-            },
-          },
-        ],
-        exclude: /node_modules/,
-      },
-      {
-        test: /\.js$/,
-        use: ["source-map-loader"],
-        enforce: "pre",
-        exclude: /node_modules\/@babylonjs/,
+        test: /\.ts$/,
+        use: 'ts-loader',
+        exclude: /node_modules/
       },
       {
         test: /\.css$/,
-        use: ["style-loader", "css-loader"],
+        use: ['style-loader', 'css-loader']
       },
       {
         test: /\.md$/,
-        type: 'asset/source',
-      },
-      {
-        test: /\.(png|svg|jpg|jpeg|gif|ico)$/,
-        type: 'asset/resource',
-        generator: {
-          filename: 'assets/images/[name][ext]',
-        },
-      },
-    ],
+        type: 'asset/source'
+      }
+    ]
   },
+  plugins: [
+    new webpack.DefinePlugin({
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+      'process.env.VERSION': JSON.stringify(require('./package.json').version),
+      'process.env.API_URL': JSON.stringify(process.env.API_URL || ''),
+      'process.env.LOG_SERVER_URL': JSON.stringify(process.env.LOG_SERVER_URL || '')
+    })
+  ],
+  devServer: {
+    static: {
+      directory: path.join(__dirname, 'public'),
+    },
+    port: 8080,
+    hot: true,
+    open: true,
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false
+      }
+    }
+  },
+  devtool: 'source-map',
   ignoreWarnings: [
     {
-      module: /@babylonjs/,
-      message: /sourcemap/,
+      module: /node_modules\/@inversifyjs/,
+      message: /Failed to parse source map/
     },
-  ],
-  plugins: [
-    new HtmlWebpackPlugin({
-      inject: true,
-      template: path.resolve(__dirname, "public/index.html"),
-      filename: "index.html",
-    }),
-    new CopyPlugin({
-      patterns: [
-        { from: "public/models", to: "models", noErrorOnMissing: true },
-        { from: "public/icons", to: "icons", noErrorOnMissing: true }, // Копируем иконки
-      ],
-    }),
-  ],
-  devtool: "source-map",
-  mode: "development",
-  performance: {
-    hints: false,
-  },
+    {
+      module: /node_modules\/inversify/,
+      message: /Failed to parse source map/
+    }
+  ]
 };

@@ -1,104 +1,157 @@
 import { ArcRotateCamera, Scene, Vector3 } from "@babylonjs/core";
-import { CameraTransform } from "./types";
-import { logger } from "../../core/logger/Logger";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { CameraTransform } from "../../shared/types";
+import { CAMERA } from "../../shared/constants";
+import { ICameraAnimator } from "@shared/interfaces";
 
-const animatorLogger = logger.getLogger('CameraAnimator');
+@injectable()
+export class CameraAnimator implements ICameraAnimator {
+    private logger: Logger;
+    private _isAnimating: boolean = false;
+    private scene?: Scene;
+    private animationId: number | null = null;
 
-export class CameraAnimator {
-  private _isAnimating: boolean = false;
+    constructor(
+        @inject(TYPES.Logger) logger: Logger    ) {
+        this.logger = logger.getLogger('CameraAnimator');
+    }
 
-  constructor(
-    private readonly _camera: ArcRotateCamera,
-    private readonly _scene: Scene
-  ) {}
+    public setScene(scene: Scene): void {
+        this.scene = scene;
+    }
 
-  public async animateTo(
-    target: CameraTransform,
-    duration: number = 1.0
-  ): Promise<void> {
-    if (this._isAnimating) return;
-
-    const start: CameraTransform = {
-      alpha: this._camera.alpha,
-      beta: this._camera.beta,
-      radius: this._camera.radius,
-      target: this._camera.target.clone()
-    };
-
-    let elapsed = 0;
-    this._isAnimating = true;
-
-    return new Promise((resolve) => {
-      const observer = this._scene.onBeforeRenderObservable.add(() => {
-        elapsed += this._scene.getEngine().getDeltaTime() / 1000;
-
-        if (elapsed >= duration) {
-          this.applyTransform(target);
-          this._scene.onBeforeRenderObservable.remove(observer);
-          this._isAnimating = false;
-          resolve();
-          return;
+    public async animateTo(
+        camera: ArcRotateCamera,
+        target: CameraTransform,
+        duration: number = 1.0
+    ): Promise<void> {
+        if (this._isAnimating) {
+            this.stopAnimation();
+        }
+        if (!this.scene) {
+            this.logger.error('Scene not set');
+            return;
         }
 
-        const t = this.easeOutCubic(elapsed / duration);
-        this.interpolateTransform(start, target, t);
-      });
-    });
-  }
+        return new Promise((resolve) => {
+            const startAlpha = camera.alpha;
+            const startBeta = camera.beta;
+            const startRadius = camera.radius;
+            const startTarget = camera.target.clone();
+            
+            const startTime = performance.now();
+            const endTime = startTime + duration * 1000;
+            
+            const animate = (now: number) => {
+                if (now >= endTime) {
+                    camera.alpha = target.alpha;
+                    camera.beta = target.beta;
+                    camera.radius = target.radius;
+                    camera.target = target.target;
+                    this._isAnimating = false;
+                    this.animationId = null;
+                    resolve();
+                    return;
+                }
+                
+                const t = (now - startTime) / (duration * 1000);
+                const easedT = 1 - Math.pow(1 - t, 3);
+                
+                camera.alpha = startAlpha + (target.alpha - startAlpha) * easedT;
+                camera.beta = startBeta + (target.beta - startBeta) * easedT;
+                camera.radius = startRadius + (target.radius - startRadius) * easedT;
+                camera.target = Vector3.Lerp(startTarget, target.target, easedT);
+                
+                this.animationId = requestAnimationFrame(animate);
+            };
+            
+            this._isAnimating = true;
+            this.animationId = requestAnimationFrame(animate);
+        });
+    }
 
-  public async playIntroAnimation(
-    buildingHeight: number,
-    targetPosition: Vector3,
-    customStart?: CameraTransform,
-    customEnd?: CameraTransform
-  ): Promise<void> {
-    const targetHeight = targetPosition.y;
-    
-    const start: CameraTransform = customStart ?? {
-      alpha: Math.PI / 4,
-      beta: Math.PI / 4,
-      radius: buildingHeight * 1.5,
-      target: targetPosition.clone()
-    };
+    public async playIntroAnimation(
+        camera: ArcRotateCamera,
+        targetPosition: Vector3,
+        buildingHeight: number,
+        duration: number = CAMERA.INTRO_DURATION,
+        customStart?: CameraTransform,
+        customEnd?: CameraTransform
+    ): Promise<void> {
+        this.logger.info(`Playing intro animation, building height: ${buildingHeight}`);
 
-    const end: CameraTransform = customEnd ?? {
-      alpha: -Math.PI / 3,
-      beta: Math.PI / 3.5,
-      radius: buildingHeight * 1.2,
-      target: targetPosition.clone()
-    };
+        const start: CameraTransform = customStart ?? {
+            alpha: CAMERA.INTRO_ALPHA,
+            beta: CAMERA.INTRO_BETA,
+            radius: Math.max(30, buildingHeight * CAMERA.INTRO_RADIUS_MULTIPLIER),
+            target: targetPosition.clone()
+        };
 
-    this.applyTransform(start);
-    await this.animateTo(end, 2.0);
-  }
+        const end: CameraTransform = customEnd ?? {
+            alpha: CAMERA.FINAL_ALPHA,
+            beta: CAMERA.FINAL_BETA,
+            radius: Math.max(CAMERA.FINAL_RADIUS_MIN, buildingHeight * CAMERA.FINAL_RADIUS_MULTIPLIER),
+            target: targetPosition.clone()
+        };
 
-  private applyTransform(transform: CameraTransform): void {
-    this._camera.alpha = transform.alpha;
-    this._camera.beta = transform.beta;
-    this._camera.radius = transform.radius;
-    this._camera.target.copyFrom(transform.target);
-  }
+        this.logger.debug(`Start: alpha=${start.alpha.toFixed(3)}, beta=${start.beta.toFixed(3)}, radius=${start.radius.toFixed(1)}`);
+        this.logger.debug(`End: alpha=${end.alpha.toFixed(3)}, beta=${end.beta.toFixed(3)}, radius=${end.radius.toFixed(1)}`);
 
-  private interpolateTransform(
-    start: CameraTransform,
-    target: CameraTransform,
-    t: number
-  ): void {
-    this._camera.alpha = this.lerp(start.alpha, target.alpha, t);
-    this._camera.beta = this.lerp(start.beta, target.beta, t);
-    this._camera.radius = this.lerp(start.radius, target.radius, t);
-    this._camera.target.copyFrom(Vector3.Lerp(start.target, target.target, t));
-  }
+        camera.alpha = start.alpha;
+        camera.beta = start.beta;
+        camera.radius = start.radius;
+        camera.target = start.target;
 
-  private lerp(a: number, b: number, t: number): number {
-    return a + (b - a) * t;
-  }
+        await this.animateTo(camera, end, duration);
+        
+        this.logger.info('Intro animation complete');
+    }
 
-  private easeOutCubic(t: number): number {
-    return 1 - Math.pow(1 - t, 3);
-  }
+    public async animateZoom(
+        camera: ArcRotateCamera,
+        targetRadius: number,
+        duration: number = 0.2
+    ): Promise<void> {
+        if (this._isAnimating) return;
 
-  public get isAnimating(): boolean {
-    return this._isAnimating;
-  }
+        return new Promise((resolve) => {
+            const startRadius = camera.radius;
+            const startTime = performance.now();
+            
+            const animate = (now: number) => {
+                const elapsed = now - startTime;
+                const t = Math.min(1, elapsed / duration);
+                const easedT = 1 - Math.pow(1 - t, 3);
+                
+                camera.radius = startRadius + (targetRadius - startRadius) * easedT;
+                
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    camera.radius = targetRadius;
+                    resolve();
+                }
+            };
+            
+            requestAnimationFrame(animate);
+        });
+    }
+
+    public stopAnimation(): void {
+        if (this.animationId !== null) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+        this._isAnimating = false;
+    }
+
+    public get isAnimating(): boolean {
+        return this._isAnimating;
+    }
+
+    public dispose(): void {
+        this.stopAnimation();
+    }
 }

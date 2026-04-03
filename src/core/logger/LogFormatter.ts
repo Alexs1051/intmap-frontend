@@ -1,133 +1,106 @@
-import { LogLevel, LogLevelNames, LogLevelColors } from './LogLevel';
+import { LogLevel, LOG_LEVEL_META } from "@shared/types";
+import { ILogFormatter } from "@shared/interfaces";
 
-/**
- * Интерфейс для форматированного сообщения
- */
-export interface FormattedLog {
-  timestamp: string;
-  level: LogLevel;
-  levelName: string;
-  module: string;
-  message: string;
-  data?: any;
-  fullText: string;
-}
+export class LogFormatter implements ILogFormatter {
+    private static instance: LogFormatter;
+    
+    private constructor() {}
 
-/**
- * Форматтер логов
- */
-export class LogFormatter {
-  private static _instance: LogFormatter;
-  
-  private constructor() {}
-
-  public static getInstance(): LogFormatter {
-    if (!LogFormatter._instance) {
-      LogFormatter._instance = new LogFormatter();
+    public static getInstance(): LogFormatter {
+        if (!LogFormatter.instance) {
+            LogFormatter.instance = new LogFormatter();
+        }
+        return LogFormatter.instance;
     }
-    return LogFormatter._instance;
-  }
 
-  /**
-   * Форматировать лог для консоли (с цветами)
-   */
-  public formatConsole(
-    level: LogLevel,
-    module: string,
-    message: string,
-    data?: any
-  ): string[] {
-    const timestamp = this.getTimestamp();
-    const levelName = LogLevelNames[level];
-    const color = LogLevelColors[level];
-    
-    const prefix = `%c${timestamp} | ${levelName} | ${module} |`;
-    const style = `color: ${color}; font-weight: bold;`;
-    
-    if (data !== undefined) {
-      return [prefix, style, message, data];
+    public formatForConsole(
+        level: LogLevel,
+        module: string,
+        message: string,
+        data?: any
+    ): [string, string, string, any?] {
+        const timestamp = this.getFormattedTime();
+        const meta = LOG_LEVEL_META[level];
+        const prefix = `%c${timestamp} | ${meta.name} | ${module} |`;
+        const style = `color: ${meta.color}; font-weight: bold;`;
+        
+        if (data !== undefined) {
+            return [prefix, style, message, data];
+        }
+        
+        return [prefix, style, message];
     }
-    
-    return [prefix, style, message];
-  }
 
-  /**
-   * Форматировать лог для файла (без цветов)
-   */
-  public formatFile(
-    level: LogLevel,
-    module: string,
-    message: string,
-    data?: any
-  ): string {
-    const timestamp = this.getTimestamp();
-    const levelName = LogLevelNames[level];
-    
-    let result = `${timestamp} | ${levelName} | ${module} | ${message}`;
-    
-    if (data !== undefined) {
-      try {
-        const dataStr = typeof data === 'string' 
-          ? data 
-          : JSON.stringify(data, null, 2);
-        result += `\n${dataStr}`;
-      } catch (e) {
-        result += `\n[Circular or Non-serializable Data]`;
-      }
+    public formatForFile(
+        level: LogLevel,
+        module: string,
+        message: string,
+        data?: any
+    ): string {
+        const timestamp = this.getFormattedTime();
+        const meta = LOG_LEVEL_META[level];
+        
+        let result = `${timestamp} | ${meta.name} | ${module} | ${message}`;
+        
+        if (data !== undefined) {
+            const dataStr = this.serializeData(data);
+            result += `\n${dataStr}`;
+        }
+        
+        return result;
     }
-    
-    return result;
-  }
 
-  /**
-   * Форматировать лог для удалённого сервера (JSON)
-   */
-  public formatJSON(
-    level: LogLevel,
-    module: string,
-    message: string,
-    data?: any
-  ): object {
-    return {
-      timestamp: new Date().toISOString(),
-      level: LogLevelNames[level],
-      levelValue: level,
-      module,
-      message,
-      data: this.sanitizeData(data),
-      userAgent: navigator.userAgent,
-      url: window.location.href
-    };
-  }
-
-  /**
-   * Получить временную метку
-   */
-  private getTimestamp(): string {
-    const now = new Date();
-    const hours = now.getHours().toString().padStart(2, '0');
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    const seconds = now.getSeconds().toString().padStart(2, '0');
-    const ms = now.getMilliseconds().toString().padStart(3, '0');
-    
-    return `${hours}:${minutes}:${seconds}.${ms}`;
-  }
-
-  /**
-   * Очистить данные от циклических ссылок
-   */
-  private sanitizeData(data: any): any {
-    if (data === undefined || data === null) {
-      return data;
+    public formatForJSON(
+        level: LogLevel,
+        module: string,
+        message: string,
+        data?: any
+    ): Record<string, any> {
+        const meta = LOG_LEVEL_META[level];
+        
+        return {
+            timestamp: new Date().toISOString(),
+            level: meta.name,
+            levelValue: level,
+            module,
+            message,
+            data: this.sanitizeData(data),
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+            url: typeof window !== 'undefined' ? window.location.href : 'unknown'
+        };
     }
-    
-    try {
-      // Пробуем сериализовать
-      JSON.stringify(data);
-      return data;
-    } catch (e) {
-      // Если не получается, возвращаем строковое представление
-      return String(data);
+
+    public getFormattedTime(): string {
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const seconds = now.getSeconds().toString().padStart(2, '0');
+        const ms = now.getMilliseconds().toString().padStart(3, '0');
+        
+        return `${hours}:${minutes}:${seconds}.${ms}`;
     }
-  }
+
+    public serializeData(data: any): string {
+        try {
+            return JSON.stringify(data, null, 2);
+        } catch (e) {
+            return String(data);
+        }
+    }
+
+    public sanitizeData(data: any): any {
+        if (data === undefined || data === null) {
+            return data;
+        }
+        
+        try {
+            JSON.stringify(data);
+            return data;
+        } catch (e) {
+            return {
+                _error: 'Circular reference detected',
+                _stringValue: String(data)
+            };
+        }
+    }
 }

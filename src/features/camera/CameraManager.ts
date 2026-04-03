@@ -1,331 +1,450 @@
 import { Scene, ArcRotateCamera, Vector3 } from "@babylonjs/core";
-import { CameraModeManager } from "./CameraModeManager";
-import { CameraAnimator } from "./CameraAnimator";
-import { CameraInputHandler } from "./CameraInputHandler";
-import { CameraMode, CameraTransform, BuildingDimensions } from "./types";
-import { logger } from "../../core/logger/Logger";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { EventBus } from "../../core/events/EventBus";
+import { BabylonEngine } from "../../core/engine/BabylonEngine";
+import { CameraMode, CameraTransform, BuildingDimensions } from "../../shared/types";
+import { CAMERA } from "../../shared/constants";
+import { EventType } from "../../core/events/EventTypes";
+import type { ICameraAnimator, ICameraInputHandler, ICameraManager, ICameraModeManager } from "@shared/interfaces";
 
-const cameraLogger = logger.getLogger('CameraManager');
+@injectable()
+export class CameraManager implements ICameraManager {
+    private readonly logger: Logger;
+    private readonly eventBus: EventBus;
+    private scene: Scene;
+    private _camera: ArcRotateCamera;
+    
+    private readonly animator: ICameraAnimator;
+    private readonly modeManager: ICameraModeManager;
+    private readonly inputHandler: ICameraInputHandler;
+    
+    private dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
+    private isTransitioning: boolean = false;
+    private isInitialized: boolean = false;
+    private savedBeta: number = Math.PI / 3.5;
 
-export class CameraManager {
-  private static _instance: CameraManager;
-  private readonly _camera: ArcRotateCamera;
-  private readonly _modeManager: CameraModeManager;
-  private readonly _animator: CameraAnimator;
-  private readonly _inputHandler: CameraInputHandler;
-  private readonly _dimensions: BuildingDimensions;
-  
-  private _initialTransform: CameraTransform | null = null;
-  private _targetPosition: Vector3 = Vector3.Zero();
+    private initialTransform: CameraTransform | null = null;
 
-  private constructor(scene: Scene, canvas: HTMLCanvasElement) {
-    this._camera = new ArcRotateCamera(
-      "camera",
-      -Math.PI / 2,
-      Math.PI / 3,
-      40,
-      Vector3.Zero(),
-      scene
-    );
+    constructor(
+        @inject(TYPES.Logger) logger: Logger,
+        @inject(TYPES.EventBus) eventBus: EventBus,
+        @inject(TYPES.BabylonEngine) private readonly babylonEngine: BabylonEngine,
+        @inject(TYPES.CameraAnimator) animator: ICameraAnimator,
+        @inject(TYPES.CameraModeManager) modeManager: ICameraModeManager,
+        @inject(TYPES.CameraInputHandler) inputHandler: ICameraInputHandler
+    ) {
+        this.logger = logger.getLogger('CameraManager');
+        this.eventBus = eventBus;
+        this.animator = animator;
+        this.modeManager = modeManager;
+        this.inputHandler = inputHandler;
+        
+        this.scene = null as any; // Временно, будет установлен через setScene
+        this._camera = null as any; // Временно
+        
+        this.setupInputCallbacks();
+        
+        this.logger.info('CameraManager initialized');
+    }
 
-    this._camera.maxZ = 2000;
+    public setScene(scene: Scene): void {
+        this.scene = scene;
+        this._camera = this.initCamera();
+        this.animator.setScene(scene);
+        this.setupTargetSync();
+    }
+
+    private initCamera(): ArcRotateCamera {
+        const camera = new ArcRotateCamera(
+            "orbitCamera",
+            -Math.PI / 2,
+            Math.PI / 3.5,
+            40,
+            Vector3.Zero(),
+            this.scene
+        );
+        
+        camera.maxZ = 2000;
+        camera.upperRadiusLimit = CAMERA.MAX_RADIUS;
+        camera.lowerRadiusLimit = CAMERA.MIN_RADIUS;
+        camera.lowerBetaLimit = CAMERA.MIN_BETA;
+        camera.upperBetaLimit = CAMERA.MAX_BETA;
+        camera.panningSensibility = 50;
+        camera.wheelPrecision = CAMERA.WHEEL_PRECISION;
+        camera.pinchPrecision = CAMERA.PINCH_PRECISION;
+        
+        this.savedBeta = camera.beta;
+        
+        this.scene.activeCamera = camera;
+        return camera;
+    }
+
+    private setupInputCallbacks(): void {
+        this.inputHandler.setOrbitCallbacks(
+            (dx, dy) => this.handleRotate(dx, dy),
+            (dx, dy) => this.handlePan(dx, dy),
+            (delta) => this.handleZoom(delta)
+        );
+    }
+
+    private setupTargetSync(): void {
+        this.scene.onBeforeRenderObservable.add(() => {
+            if (!this.isTransitioning && !this.animator.isAnimating) {
+                this.modeManager.setPivotPoint(this._camera.target.clone());
+            }
+        });
+    }
+
+private handleRotate(deltaX: number, deltaY: number): void {
+    // ✅ Не обрабатываем вращение во время анимации
+    if (this.isTransitioning || this.animator.isAnimating) return;
+    
+    this._camera.alpha += deltaX * 0.005;
+    
+    if (this.modeManager.is2DMode) {
+        this._camera.beta = 0.01;
+    } else {
+        this._camera.beta += deltaY * 0.005;
+        this._camera.beta = Math.max(0.01, Math.min(Math.PI / 2, this._camera.beta));
+        // ✅ Сохраняем beta только в 3D режиме и не во время анимации
+        if (!this.isTransitioning && !this.animator.isAnimating) {
+            this.savedBeta = this._camera.beta;
+        }
+    }
+}
+
+private handlePan(deltaX: number, deltaY: number): void {
+    if (this.isTransitioning || this.animator.isAnimating) return;
+    
+    const moveSpeed = 0.005 * this._camera.radius / 10;
+    const right = this._camera.getDirection(new Vector3(-1, 0, 0));
+    const up = this._camera.getDirection(new Vector3(0, 1, 0));
+    
+    const pivot = this.modeManager.getPivotPoint();
+    pivot.x += right.x * deltaX * moveSpeed;
+    pivot.z += right.z * deltaX * moveSpeed;
+    
+    if (!this.modeManager.is2DMode) {
+        pivot.y += up.y * deltaY * moveSpeed;
+    }
+    
+    this.modeManager.setPivotPoint(pivot);
+    this._camera.target = pivot;
+}
+
+private handleZoom(_delta: number): void {
+
+}
+
+      public async initialize(customStart?: CameraTransform, customEnd?: CameraTransform): Promise<void> {
+        this.logger.info('Initializing camera manager');
+        
+        const canvas = this.babylonEngine.getCanvas();
+        if (canvas) {
+            this._camera.attachControl(canvas, true);
+        }
+        
+        const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
+        const center = this.modeManager.getPivotPoint();
+        
+        this.modeManager.setDimensions(this.dimensions);
+        this.modeManager.setPivotPoint(center);
+        
+        const start: CameraTransform = customStart ?? {
+            alpha: CAMERA.INTRO_ALPHA,
+            beta: CAMERA.INTRO_BETA,
+            radius: Math.max(30, maxDimension * CAMERA.INTRO_RADIUS_MULTIPLIER),
+            target: center.clone()
+        };
+        
+        const end: CameraTransform = customEnd ?? {
+            alpha: CAMERA.FINAL_ALPHA,
+            beta: CAMERA.FINAL_BETA,
+            radius: Math.max(CAMERA.FINAL_RADIUS_MIN, maxDimension * CAMERA.FINAL_RADIUS_MULTIPLIER),
+            target: center.clone()
+        };
+        
+        this.initialTransform = {
+            alpha: end.alpha,
+            beta: end.beta,
+            radius: end.radius,
+            target: end.target.clone()
+        };
+        
+        this._camera.alpha = start.alpha;
+        this._camera.beta = start.beta;
+        this._camera.radius = start.radius;
+        this._camera.target = start.target;
+        
+        await this.animator.animateTo(this._camera, end, 2.0);
+        
+        this.savedBeta = this._camera.beta;
+        
+        this.isInitialized = true;
+        this.eventBus.emit(EventType.SCENE_READY);
+        
+        this.logger.info(`Camera manager initialized, radius: ${this._camera.radius.toFixed(1)}`);
+    }
+
+    public async load(onProgress?: (progress: number) => void): Promise<void> {
+        onProgress?.(1);
+    }
+
+    public update(_deltaTime: number): void {}
+
+    public async toggleCameraMode(): Promise<void> {
+        this.stopAllMovements();
+        this.isTransitioning = true;
+        
+        try {
+            if (this.modeManager.is3DMode) {
+                await this.switchTo2DMode();
+            } else {
+                await this.switchTo3DMode();
+            }
+        } finally {
+            this.isTransitioning = false;
+        }
+    }
+
+    public async switchToMode(mode: CameraMode): Promise<void> {
+        if (this.modeManager.mode === mode) return;
+        this.stopAllMovements();
+        this.isTransitioning = true;
+        
+        try {
+            if (mode === CameraMode.TOP_DOWN) {
+                await this.switchTo2DMode();
+            } else {
+                await this.switchTo3DMode();
+            }
+        } finally {
+            this.isTransitioning = false;
+        }
+    }
+
+    private async switchTo2DMode(): Promise<void> {
+    const pivot = this.modeManager.getPivotPoint();
+    const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
+    
+    this.savedBeta = this._camera.beta;
+    
+    const target: CameraTransform = {
+        alpha: this._camera.alpha,
+        beta: 0.01,
+        radius: maxDimension * 2.5,
+        target: pivot
+    };
+    
+    await this.executeTransition(target, CameraMode.TOP_DOWN);
+}
+
+private async switchTo3DMode(): Promise<void> {
+    const pivot = this.modeManager.getPivotPoint();
+    const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
+    
+    // ✅ Используем сохранённую beta, если она не слишком маленькая
+    let targetBeta = this.savedBeta;
+    if (targetBeta < 0.1) {
+        targetBeta = Math.PI / 3.5;  // Значение по умолчанию
+    }
+    
+    const target: CameraTransform = {
+        alpha: this._camera.alpha,
+        beta: targetBeta,
+        radius: maxDimension * 2,
+        target: pivot
+    };
+    
+    await this.executeTransition(target, CameraMode.ORBIT);
+}
+    private async executeTransition(target: CameraTransform, mode: CameraMode): Promise<void> {
+    // ✅ Сохраняем текущие ограничения
+    
+    // ✅ Снимаем все ограничения на время анимации
+    this._camera.lowerBetaLimit = 0;
+    this._camera.upperBetaLimit = Math.PI / 2;
     this._camera.lowerRadiusLimit = 5;
     this._camera.upperRadiusLimit = 500;
-    this._camera.attachControl(canvas, true);
     
-    this._dimensions = {
-      height: 30,
-      width: 30,
-      depth: 30
-    };
+    // ✅ Анимируем
+    this._camera.target = target.target;
+    await this.animator.animateTo(this._camera, target, 0.8);
     
-    this._modeManager = new CameraModeManager(this._camera, this._dimensions);
-    this._animator = new CameraAnimator(this._camera, scene);
-    this._inputHandler = new CameraInputHandler(this._camera, canvas);
-    
-    scene.activeCamera = this._camera;
-    cameraLogger.info("CameraManager инициализирован");
-  }
-
-  public static getInstance(scene: Scene, canvas: HTMLCanvasElement): CameraManager {
-    if (!CameraManager._instance) {
-      CameraManager._instance = new CameraManager(scene, canvas);
-    }
-    return CameraManager._instance;
-  }
-
-  public async initialize(customStart?: CameraTransform, customEnd?: CameraTransform): Promise<void> {
-    const maxDimension = Math.max(this._dimensions.height, this._dimensions.width, this._dimensions.depth);
-    
-    const startTransform: CameraTransform = customStart ?? {
-      alpha: Math.PI / 3,
-      beta: Math.PI / 3.5,
-      radius: maxDimension * 3.5 * 2.0,
-      target: this._targetPosition.clone()
-    };
-
-    const endTransform: CameraTransform = customEnd ?? {
-      alpha: -Math.PI / 2.5,
-      beta: Math.PI / 4,
-      radius: maxDimension * 2.2 * 2.0,
-      target: this._targetPosition.clone()
-    };
-
-    this._camera.alpha = startTransform.alpha;
-    this._camera.beta = startTransform.beta;
-    this._camera.radius = startTransform.radius;
-    this._camera.target.copyFrom(startTransform.target);
-    
-    await this._animator.animateTo(endTransform, 2.0);
-    
-    this._initialTransform = {
-      alpha: this._camera.alpha,
-      beta: this._camera.beta,
-      radius: this._camera.radius,
-      target: this._camera.target.clone()
-    };
-    
-    cameraLogger.info(`Камера готова, дистанция: ${this._camera.radius.toFixed(1)}`);
-  }
-
-  /**
-   * Рассчитать оптимальную дистанцию для обзора всего маршрута
-   */
-  private calculateOptimalDistanceForRoute(positions: Vector3[]): number {
-    if (positions.length === 0) return 30;
-    
-    // Находим bounding box маршрута
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    let minZ = Infinity, maxZ = -Infinity;
-    
-    positions.forEach(pos => {
-      minX = Math.min(minX, pos.x);
-      maxX = Math.max(maxX, pos.x);
-      minY = Math.min(minY, pos.y);
-      maxY = Math.max(maxY, pos.y);
-      minZ = Math.min(minZ, pos.z);
-      maxZ = Math.max(maxZ, pos.z);
-    });
-    
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const depth = maxZ - minZ;
-    
-    // Центр маршрута
-    const center = new Vector3(
-      (minX + maxX) / 2,
-      (minY + maxY) / 2,
-      (minZ + maxZ) / 2
-    );
-    
-    this._targetPosition = center;
-    this._modeManager.setTarget(center);
-    
-    // Вычисляем необходимую дистанцию (по теореме Пифагора)
-    const maxDimension = Math.max(width, height, depth);
-    
-    // Добавляем запас 30% для комфортного обзора
-    const optimalDistance = Math.max(30, maxDimension * 1.3);
-    
-    cameraLogger.debug(`Маршрут: размеры ${width.toFixed(1)}x${height.toFixed(1)}x${depth.toFixed(1)}, дистанция: ${optimalDistance.toFixed(1)}`);
-    
-    return optimalDistance;
-  }
-
-  /**
-   * Плавный переход к обзору всего маршрута от текущей позиции камеры
-   */
-  public async focusOnRoute(positions: Vector3[], duration: number = 2.0): Promise<void> {
-      if (positions.length === 0) {
-        cameraLogger.warn("Нет точек для обзора маршрута");
-        return;
-      }
-      
-      // Рассчитываем оптимальную позицию
-      const optimal = this.calculateOptimalCameraPosition(positions);
-      
-      // Текущая позиция
-      const current = {
-        alpha: this._camera.alpha,
-        beta: this._camera.beta,
-        radius: this._camera.radius,
-        target: this._camera.target.clone()
-      };
-      
-      // Создаём промежуточную точку выше и дальше для плавности
-      const midTransform: CameraTransform = {
-        alpha: (current.alpha + optimal.transform.alpha) / 2,
-        beta: (current.beta + optimal.transform.beta) / 2,
-        radius: Math.max(current.radius, optimal.transform.radius) * 1.2,
-        target: Vector3.Lerp(current.target, optimal.center, 0.5)
-      };
-      
-      cameraLogger.info(`Плавный переход к маршруту (с промежуточной точкой)`);
-      
-      // Анимация до промежуточной точки (быстрее)
-      await this._animator.animateTo(midTransform, duration * 0.4);
-      
-      // Анимация до целевой точки (медленнее)
-      await this._animator.animateTo(optimal.transform, duration * 0.6);
-      
-      cameraLogger.info(`Фокус на маршрут завершён`);
-  }
-
-  /**
-   * Рассчитать оптимальную позицию камеры для обзора всего маршрута
-   */
-  private calculateOptimalCameraPosition(positions: Vector3[]): { transform: CameraTransform; center: Vector3 } {
-    if (positions.length === 0) {
-      return {
-        transform: {
-          alpha: this._camera.alpha,
-          beta: this._camera.beta,
-          radius: this._camera.radius,
-          target: this._camera.target.clone()
-        },
-        center: this._targetPosition.clone()
-      };
+    // ✅ Устанавливаем ограничения для нового режима
+    if (mode === CameraMode.TOP_DOWN) {
+        this._camera.lowerBetaLimit = 0.005;
+        this._camera.upperBetaLimit = 0.05;
+        this._camera.lowerRadiusLimit = 15;
+        this._camera.upperRadiusLimit = 200;
+        // ✅ Фиксируем бета в правильном положении после анимации
+        this._camera.beta = 0.01;
+    } else {
+        this._camera.lowerBetaLimit = CAMERA.MIN_BETA;
+        this._camera.upperBetaLimit = CAMERA.MAX_BETA;
+        this._camera.lowerRadiusLimit = CAMERA.MIN_RADIUS;
+        this._camera.upperRadiusLimit = CAMERA.MAX_RADIUS;
     }
     
-    // Находим bounding box маршрута
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    let minZ = Infinity, maxZ = -Infinity;
+    this.modeManager.setMode(mode);
     
-    positions.forEach(pos => {
-      minX = Math.min(minX, pos.x);
-      maxX = Math.max(maxX, pos.x);
-      minY = Math.min(minY, pos.y);
-      maxY = Math.max(maxY, pos.y);
-      minZ = Math.min(minZ, pos.z);
-      maxZ = Math.max(maxZ, pos.z);
-    });
+    this.logger.info(`Switched to ${mode === CameraMode.TOP_DOWN ? '2D' : '3D'} mode`);
+    this.eventBus.emit(EventType.CAMERA_MODE_CHANGED, { mode });
+}
+
+    // features/camera/CameraManager.ts
+
+public async focusOnPoint(point: Vector3, distance?: number, duration?: number): Promise<void> {
+    if (this.isTransitioning || this.animator.isAnimating) return;
     
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const depth = maxZ - minZ;
+    this.logger.debug(`Focusing on point: ${point.toString()}`);
+    this.isTransitioning = true;
     
-    // Центр маршрута
-    const center = new Vector3(
-      (minX + maxX) / 2,
-      (minY + maxY) / 2,
-      (minZ + maxZ) / 2
-    );
-    
-    // Сохраняем центр для целевой позиции
-    this._targetPosition = center;
-    this._modeManager.setTarget(center);
-    
-    // Вычисляем необходимую дистанцию
-    const maxDimension = Math.max(width, height, depth);
-    
-    // Добавляем запас 40% для комфортного обзора (немного больше, чем при инициализации)
-    const optimalDistance = Math.max(30, maxDimension * 1.4);
-    
-    // Выбираем угол обзора в зависимости от соотношения размеров
-    let alpha = -Math.PI / 2.5; // По умолчанию
-    let beta = Math.PI / 3.5;   // По умолчанию
-    
-    // Если маршрут очень вытянут по горизонтали, корректируем угол
-    if (width > depth * 2) {
-      alpha = -Math.PI / 2; // Смотрим прямо вдоль X
-    } else if (depth > width * 2) {
-      alpha = 0; // Смотрим прямо вдоль Z
+    try {
+        const targetDuration = duration || 1.0;
+        const targetDistance = distance || 8;
+        
+        // Сохраняем текущие значения
+        const currentAlpha = this._camera.alpha;
+        const currentBeta = this._camera.beta;
+        const currentRadius = this._camera.radius;
+        const currentTarget = this._camera.target.clone();
+        
+        // Этап 1: Отдаляемся, чтобы увидеть контекст
+        const farRadius = currentRadius * 1.5;
+        await this.animator.animateTo(this._camera, {
+            alpha: currentAlpha,
+            beta: currentBeta,
+            radius: farRadius,
+            target: currentTarget
+        }, targetDuration * 0.3);
+        
+        // Этап 2: Перемещаемся к точке
+        await this.animator.animateTo(this._camera, {
+            alpha: currentAlpha,
+            beta: currentBeta,
+            radius: farRadius,
+            target: point.clone()
+        }, targetDuration * 0.4);
+        
+        // Этап 3: Приближаемся
+        await this.animator.animateTo(this._camera, {
+            alpha: currentAlpha,
+            beta: currentBeta,
+            radius: targetDistance,
+            target: point.clone()
+        }, targetDuration * 0.3);
+        
+        this.modeManager.setPivotPoint(point);
+        
+        this.eventBus.emit(EventType.CAMERA_FOCUSED, { point });
+        
+    } finally {
+        this.isTransitioning = false;
     }
-    
-    // Если маршрут очень высокий, корректируем вертикальный угол
-    if (height > maxDimension * 0.7) {
-      beta = Math.PI / 2.5; // Смотрим больше сверху
+}
+
+    public async focusOnRoute(positions: Vector3[], duration?: number): Promise<void> {
+        if (positions.length === 0 || this.isTransitioning || this.animator.isAnimating) return;
+        
+        const center = positions.reduce((acc, pos) => acc.add(pos), Vector3.Zero()).scale(1 / positions.length);
+        let maxDistance = 0;
+        positions.forEach(pos => {
+            const dist = Vector3.Distance(center, pos);
+            maxDistance = Math.max(maxDistance, dist);
+        });
+        
+        const optimalDistance = Math.max(20, maxDistance * 2);
+        await this.focusOnPoint(center, optimalDistance, duration);
     }
-    
-    cameraLogger.debug(`Маршрут: размеры ${width.toFixed(1)}x${height.toFixed(1)}x${depth.toFixed(1)}, дистанция: ${optimalDistance.toFixed(1)}`);
-    
-    return {
-      transform: {
-        alpha,
-        beta,
-        radius: optimalDistance,
-        target: center.clone()
-      },
-      center
-    };
-  }
 
-  public setTargetPosition(position: Vector3): void {
-    this._targetPosition = position.clone();
-    this._modeManager.setTarget(position);
-  }
-
-  public setDimensions(dimensions: BuildingDimensions): void {
-    this._dimensions.height = dimensions.height;
-    this._dimensions.width = dimensions.width;
-    this._dimensions.depth = dimensions.depth ?? dimensions.width;
-    cameraLogger.debug(`Размеры здания установлены: ${JSON.stringify(this._dimensions)}`);
-  }
-
-  public async toggleCameraMode(): Promise<void> {
-    const oldMode = this._modeManager.cameraMode;
-    this._modeManager.toggleCameraMode();
-    
-    const transform = oldMode === CameraMode.MODE_3D 
-      ? this._modeManager.get2DTransform()
-      : this._modeManager.get3DTransform();
-      
-    await this._animator.animateTo(transform, 1.0);
-  }
-
-  public async resetCamera(): Promise<void> {
-    if (!this._initialTransform) {
-      cameraLogger.warn("Позиция для сброса не сохранена");
-      return;
+    public async resetCamera(): Promise<void> {
+        if (this.isTransitioning || this.animator.isAnimating) return;
+        
+        this.isTransitioning = true;
+        try {
+            if (!this.initialTransform) {
+                this.logger.warn('No initial transform saved, using default');
+                const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
+                this.initialTransform = {
+                    alpha: CAMERA.FINAL_ALPHA,
+                    beta: CAMERA.FINAL_BETA,
+                    radius: Math.max(CAMERA.FINAL_RADIUS_MIN, maxDimension * CAMERA.FINAL_RADIUS_MULTIPLIER),
+                    target: this.modeManager.getPivotPoint()
+                };
+            }
+            
+            const targetTransform: CameraTransform = {
+                alpha: this.initialTransform.alpha,
+                beta: this.initialTransform.beta,
+                radius: this.initialTransform.radius,
+                target: this.modeManager.getPivotPoint()
+            };
+            
+            await this.animator.animateTo(this._camera, targetTransform, 0.8);
+            
+            this.savedBeta = this._camera.beta;
+            
+            if (this.modeManager.is2DMode) {
+                this.modeManager.setMode(CameraMode.ORBIT);
+                this._camera.lowerBetaLimit = CAMERA.MIN_BETA;
+                this._camera.upperBetaLimit = CAMERA.MAX_BETA;
+                this._camera.lowerRadiusLimit = CAMERA.MIN_RADIUS;
+                this._camera.upperRadiusLimit = CAMERA.MAX_RADIUS;
+            }
+            
+            this.logger.info(`Camera reset to initial position, radius: ${this._camera.radius.toFixed(1)}`);
+            
+        } finally {
+            this.isTransitioning = false;
+        }
     }
-    
-    if (this._modeManager.cameraMode === CameraMode.MODE_2D) {
-      this._modeManager.toggleCameraMode();
+
+    private stopAllMovements(): void {
+        if (this.animator.isAnimating) {
+            this.animator.stopAnimation();
+        }
     }
-    
-    await this._animator.animateTo(this._initialTransform, 1.0);
-    cameraLogger.debug("Камера сброшена");
-  }
 
-  public async focusOnPoint(point: Vector3, distance: number = 8, duration: number = 1.0): Promise<void> {
-    const targetTransform: CameraTransform = {
-      alpha: this._camera.alpha,
-      beta: this._camera.beta,
-      radius: distance,
-      target: point.clone()
-    };
-    
-    await this._animator.animateTo(targetTransform, duration);
-    this._modeManager.setTarget(point);
-  }
+    public canInteractWithUI(): boolean {
+        return !this.isTransitioning && !this.animator.isAnimating;
+    }
 
-  public canInteractWithUI(): boolean {
-    return !this._animator.isAnimating;
-  }
+    public setDimensions(dimensions: BuildingDimensions): void {
+        this.dimensions = dimensions;
+        this.modeManager.setDimensions(dimensions);
+    }
 
-  public get camera(): ArcRotateCamera {
-    return this._camera;
-  }
+    public setTargetPosition(position: Vector3): void {
+        this.modeManager.setPivotPoint(position);
+        if (this.isInitialized && this.modeManager.is3DMode && !this.isTransitioning) {
+            this._camera.target = position;
+        }
+    }
 
-  public get modeManager(): CameraModeManager {
-    return this._modeManager;
-  }
+    public dispose(): void {
+        this.stopAllMovements();
+        this.animator.dispose();
+        this.modeManager.dispose();
+        this.inputHandler.dispose();
+        this._camera.dispose();
+    }
 
-  public get isAnimating(): boolean {
-    return this._animator.isAnimating;
-  }
+    public get camera(): ArcRotateCamera {
+        return this._camera;
+    }
 
-  public get cameraMode(): CameraMode {
-    return this._modeManager.cameraMode;
-  }
+    public get isAnimating(): boolean {
+        return this.isTransitioning || this.animator.isAnimating;
+    }
 
-  public get dimensions(): BuildingDimensions {
-    return this._dimensions;
-  }
+    public get cameraMode(): CameraMode {
+        return this.modeManager.mode;
+    }
 
-  public get targetPosition(): Vector3 {
-    return this._targetPosition;
-  }
+    public get targetPosition(): Vector3 {
+        return this.modeManager.getPivotPoint();
+    }
 }

@@ -1,135 +1,205 @@
 import { Scene, TransformNode } from "@babylonjs/core";
-import { BuildingElement, FloorData } from "./types";
-import { WallManager } from "./WallManager";
-import { logger } from "../../core/logger/Logger";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { EventBus } from "../../core/events/EventBus";
+import { EventType } from "../../core/events/EventTypes";
+import { BuildingElement, FloorData } from "../../shared/types";
+import { FLOOR_CONFIG } from "../../shared/constants";
+import { IFloorManager, IWallManager } from "@shared/interfaces";
 
-const floorLogger = logger.getLogger('FloorManager');
-
-export class FloorManager {
-  private static _instance: FloorManager;
-  private readonly _floors: Map<number, FloorData> = new Map();
-  private readonly _floorNodes: Map<number, TransformNode> = new Map();
-  private _currentFloor: number = 1;
-  private _wallManager: WallManager;
-
-  private constructor(private readonly _scene: Scene) {
-    this._wallManager = WallManager.getInstance(_scene);
-  }
-
-  public static getInstance(scene: Scene): FloorManager {
-    if (!FloorManager._instance) {
-      FloorManager._instance = new FloorManager(scene);
-    }
-    return FloorManager._instance;
-  }
-
-  public addFloor(element: BuildingElement, floorNode?: TransformNode): void {
-    const floorNumber = element.floorNumber;
-    if (!floorNumber) {
-      floorLogger.warn(`Элемент ${element.name} не имеет номера этажа`);
-      return;
-    }
-
-    if (!this._floors.has(floorNumber)) {
-      this._floors.set(floorNumber, {
-        number: floorNumber,
-        elements: [],
-        isVisible: false
-      });
-    }
-
-    element.mesh.renderingGroupId = 0;
-    element.mesh.metadata ??= {};
-    element.mesh.metadata.originalPosition = element.mesh.position.clone();
+@injectable()
+export class FloorManager implements IFloorManager {
+    private readonly logger: Logger;
+    private readonly eventBus: EventBus;
+    private wallManager?: IWallManager;
     
-    this._floors.get(floorNumber)!.elements.push(element);
-    
-    if (floorNode && !this._floorNodes.has(floorNumber)) {
-      this._floorNodes.set(floorNumber, floorNode);
-      floorNode.setEnabled(true);
-    }
-    
-    floorLogger.debug(`Добавлен этаж ${floorNumber}, всего этажей: ${this._floors.size}`);
-  }
+    private readonly floors: Map<number, FloorData> = new Map();
+    private readonly floorNodes: Map<number, TransformNode> = new Map();
+    private currentFloorNum: number = FLOOR_CONFIG.DEFAULT_FLOOR;
+    private viewMode: 'single' | 'all' = 'all';
 
-  public showFloor(floorNumber: number): void {
-    if (!this._floors.has(floorNumber)) {
-      floorLogger.warn(`Этаж ${floorNumber} не существует. Доступны: ${this.getFloorNumbers().join(', ')}`);
-      return;
+    constructor(
+        @inject(TYPES.Logger) logger: Logger,
+        @inject(TYPES.EventBus) eventBus: EventBus
+    ) {
+        this.logger = logger.getLogger('FloorManager');
+        this.eventBus = eventBus;
     }
 
-    floorLogger.debug(`Показать этаж ${floorNumber}`);
+    public setScene(_scene: Scene): void {
+    }
 
-    this._floorNodes.forEach(node => node.setEnabled(true));
-    this._wallManager.showWallsForFloor(floorNumber);
+    public async initialize(): Promise<void> {
+        this.logger.debug("FloorManager initialized");
+    }
 
-    this._floors.forEach((floor, num) => {
-      const visible = num === floorNumber;
-      floor.elements.forEach(element => {
-        if (element.type !== 'wall') {
-          element.mesh.isVisible = visible;
-          element.isVisible = visible;
+    public update(_deltaTime: number): void {
+        // Не требует обновления
+    }
+
+    public dispose(): void {
+        this.floors.clear();
+        this.floorNodes.clear();
+        this.logger.info("FloorManager disposed");
+    }
+
+    public setWallManager(wallManager: IWallManager): void {
+        this.wallManager = wallManager;
+    }
+
+    public addFloor(element: BuildingElement, floorNode?: TransformNode): void {
+        const floorNumber = element.floorNumber;
+        if (floorNumber === undefined || floorNumber === null) {
+            this.logger.warn(`Element ${element.name} has no floor number`);
+            return;
         }
-      });
-      floor.isVisible = visible;
-    });
-    
-    this._currentFloor = floorNumber;
-  }
 
-  public showAllFloors(): void {
-    floorLogger.debug("Показать все этажи");
-    
-    this._floorNodes.forEach(node => node.setEnabled(true));
-    this._wallManager.showAllWalls();
+        if (!this.floors.has(floorNumber)) {
+            this.floors.set(floorNumber, {
+                number: floorNumber,
+                elements: [],
+                isVisible: false
+            });
+            this.logger.debug(`Created floor ${floorNumber}`);
+        }
 
-    this._floors.forEach(floor => {
-      floor.elements.forEach(element => {
-        element.mesh.setEnabled(true);
-        element.mesh.isVisible = true;
-        element.isVisible = true;
-      });
-      floor.isVisible = true;
-    });
-  }
+        const floor = this.floors.get(floorNumber);
+        if (floor) {
+            floor.elements.push(element);
+            this.logger.debug(`Added element ${element.name} to floor ${floorNumber}`);
+        }
+        
+        if (floorNode && !this.floorNodes.has(floorNumber)) {
+            this.floorNodes.set(floorNumber, floorNode);
+            this.logger.debug(`Stored floor node for floor ${floorNumber}`);
+        }
+    }
 
-  public hideAllFloors(): void {
-    this._floors.forEach(floor => {
-      floor.elements.forEach(element => {
-        element.mesh.isVisible = false;
-        element.isVisible = false;
-      });
-      floor.isVisible = false;
-    });
-  }
+    public showFloor(floorNumber: number): void {
+        if (!this.floors.has(floorNumber)) {
+            this.logger.warn(`Floor ${floorNumber} does not exist. Available: ${this.floorNumbers.join(', ')}`);
+            return;
+        }
 
-  public getFloorNumbers(): number[] {
-    return Array.from(this._floors.keys()).sort((a, b) => a - b);
-  }
+        this.logger.info(`Showing floor ${floorNumber}`);
 
-  public get minFloor(): number {
-    const floors = this.getFloorNumbers();
-    return floors.length > 0 ? floors[0] : 1;
-  }
+        this.floorNodes.forEach(node => node.setEnabled(true));
+        this.wallManager?.showWallsForFloor(floorNumber);
 
-  public get maxFloor(): number {
-    const floors = this.getFloorNumbers();
-    return floors.length > 0 ? floors[floors.length - 1] : 1;
-  }
+        for (const [num, floor] of this.floors.entries()) {
+            const visible = num === floorNumber;
+            for (const element of floor.elements) {
+                if (element.type !== 'wall') {
+                    element.mesh.isVisible = visible;
+                    element.isVisible = visible;
+                }
+            }
+            floor.isVisible = visible;
+        }
 
-  public hasFloor(floorNumber: number): boolean {
-    return this._floors.has(floorNumber);
-  }
+        this.currentFloorNum = floorNumber;
+        
+        if (this.viewMode === 'single') {
+            this.hideOtherFloors(floorNumber);
+        }
+        
+        this.eventBus.emit(EventType.FLOOR_CHANGED, { floor: floorNumber, mode: this.viewMode });
+    }
 
-  public get currentFloor(): number {
-    return this._currentFloor;
-  }
+    public showAllFloors(): void {
+        this.logger.info("Showing all floors");
 
-  public get floorCount(): number {
-    return this._floors.size;
-  }
+        this.floorNodes.forEach(node => node.setEnabled(true));
+        this.wallManager?.showAllWalls();
 
-  public get floors(): Map<number, FloorData> {
-    return this._floors;
-  }
+        for (const floor of this.floors.values()) {
+            for (const element of floor.elements) {
+                element.mesh.isVisible = true;
+                element.isVisible = true;
+            }
+            floor.isVisible = true;
+        }
+        
+        this.eventBus.emit(EventType.FLOOR_CHANGED, { floor: 'all', mode: this.viewMode });
+    }
+
+    public hideAllFloors(): void {
+        for (const floor of this.floors.values()) {
+            for (const element of floor.elements) {
+                element.mesh.isVisible = false;
+                element.isVisible = false;
+            }
+            floor.isVisible = false;
+        }
+        this.wallManager?.hideAllWalls();
+        this.eventBus.emit(EventType.FLOOR_HIDDEN);
+    }
+
+    private hideOtherFloors(floorNumber: number): void {
+        for (const [num, floor] of this.floors.entries()) {
+            if (num !== floorNumber) {
+                for (const element of floor.elements) {
+                    if (element.type !== 'wall') {
+                        element.mesh.isVisible = false;
+                        element.isVisible = false;
+                    }
+                }
+                floor.isVisible = false;
+            }
+        }
+    }
+
+    public getViewMode(): 'single' | 'all' {
+        return this.viewMode;
+    }
+
+    public setViewMode(mode: 'single' | 'all'): void {
+        if (this.viewMode === mode) return;
+        
+        this.viewMode = mode;
+        this.logger.info(`View mode set to: ${mode}`);
+        
+        if (mode === 'single') {
+            this.showFloor(this.currentFloorNum);
+        } else {
+            this.showAllFloors();
+        }
+        
+        this.eventBus.emit(EventType.VIEW_MODE_CHANGED, { mode, floor: this.currentFloorNum });
+    }
+
+    public toggleViewMode(): void {
+        this.setViewMode(this.viewMode === 'all' ? 'single' : 'all');
+    }
+
+    public hasFloor(floorNumber: number): boolean {
+        return this.floors.has(floorNumber);
+    }
+
+    public get currentFloor(): number {
+        return this.currentFloorNum;
+    }
+
+    public get floorNumbers(): number[] {
+        return Array.from(this.floors.keys()).sort((a, b) => a - b);
+    }
+
+    public get floorCount(): number {
+        return this.floors.size;
+    }
+
+    public get minFloor(): number {
+        const floors = this.floorNumbers;
+        if (floors.length === 0) return 1;
+        const first = floors[0];
+        return first !== undefined ? first : 1;
+    }
+
+    public get maxFloor(): number {
+        const floors = this.floorNumbers;
+        if (floors.length === 0) return 1;
+        const last = floors[floors.length - 1];
+        return last !== undefined ? last : 1;
+    }
 }

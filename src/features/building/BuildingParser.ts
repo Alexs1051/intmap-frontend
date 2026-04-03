@@ -1,145 +1,185 @@
 import { AbstractMesh, TransformNode } from "@babylonjs/core";
-import { BuildingElement, ElementType, ParseResult } from "./types";
-import { logger } from "../../core/logger/Logger";
+import { injectable } from "inversify";
+import { Logger } from "../../core/logger/Logger";
+import { BuildingElement, ElementType, BuildingParseResult } from "../../shared/types";
+import { BUILDING_PARSER } from "../../shared/constants";
+import { IBuildingParser } from "@shared/interfaces";
 
-const parserLogger = logger.getLogger('BuildingParser');
+@injectable()
+export class BuildingParser implements IBuildingParser {
+    private logger: Logger;
+    private config = BUILDING_PARSER;
 
-export class BuildingParser {
-  public parseMeshes(meshes: AbstractMesh[]): ParseResult {
-    parserLogger.debug(`Парсинг ${meshes.length} мешей`);
+    constructor() {
+        this.logger = Logger.getInstance().getLogger('BuildingParser');
+    }
 
-    const elements = new Map<string, BuildingElement>();
-    const floors = new Map<number, BuildingElement[]>();
-    const floorNodes = new Map<number, TransformNode>();
-    const walls: BuildingElement[] = [];
-    const windows: BuildingElement[] = [];
-    const doors: BuildingElement[] = [];
-    const stairs: BuildingElement[] = [];
+    public parseMeshes(meshes: AbstractMesh[]): BuildingParseResult {
+        this.logger.debug(`Parsing ${meshes.length} meshes`);
 
-    this.findFloorNodes(meshes, floorNodes);
-    this.processMeshes(meshes, {
-      elements, floors, floorNodes, walls, windows, doors, stairs
-    });
+        const result: BuildingParseResult = {
+            elements: new Map(),
+            floors: new Map(),
+            floorNodes: new Map(),
+            walls: [],
+            windows: [],
+            doors: [],
+            stairs: []
+        };
 
-    parserLogger.info(`Парсинг завершён: ${elements.size} элементов, ${floors.size} этажей, ${walls.length} стен`);
-    
-    return { elements, floors, floorNodes, walls, windows, doors, stairs };
-  }
+        this.findFloorNodes(meshes, result.floorNodes);
+        const floorNodeMap = this.createFloorNodeMap(result.floorNodes);
+        this.processMeshes(meshes, result, floorNodeMap);
 
-  private findFloorNodes(meshes: AbstractMesh[], floorNodes: Map<number, TransformNode>): void {
-    meshes.forEach(mesh => {
-      if (mesh.name.startsWith("SM_Floor_")) {
-        const floorNum = this.extractFloorNumber(mesh.name);
-        if (floorNum && mesh instanceof TransformNode) {
-          floorNodes.set(floorNum, mesh);
-          parserLogger.debug(`Найдена нода этажа ${floorNum}: ${mesh.name}`);
+        this.logger.info(`Parsing complete: ${result.elements.size} elements, ${result.floors.size} floors, ${result.walls.length} walls`);
+        
+        if (result.floors.size > 0) {
+            this.logger.info(`Floor numbers: ${Array.from(result.floors.keys()).join(', ')}`);
         }
-      }
-    });
-  }
 
-  private processMeshes(
-    meshes: AbstractMesh[],
-    containers: {
-      elements: Map<string, BuildingElement>;
-      floors: Map<number, BuildingElement[]>;
-      floorNodes: Map<number, TransformNode>;
-      walls: BuildingElement[];
-      windows: BuildingElement[];
-      doors: BuildingElement[];
-      stairs: BuildingElement[];
+        return result;
     }
-  ): void {
-    meshes.forEach(mesh => {
-      const type = this.determineType(mesh.name);
-      const floorNum = this.findFloorNumber(mesh);
-      
-      mesh.renderingGroupId = type === 'wall' ? 1 : 0;
 
-      const element: BuildingElement = {
-        name: mesh.name,
-        mesh,
-        type,
-        floorNumber: floorNum,
-        isVisible: false,
-        originalMaterial: mesh.material,
-        originalPosition: mesh.position.clone(),
-        originalRotation: mesh.rotation.clone(),
-        originalScaling: mesh.scaling.clone(),
-        renderingGroupId: mesh.renderingGroupId
-      };
-
-      containers.elements.set(mesh.name, element);
-      this.categorizeElement(element, containers);
-      mesh.isVisible = false;
-
-      if (mesh.getChildMeshes) {
-        this.processMeshes(mesh.getChildMeshes(), containers);
-      }
-    });
-  }
-
-  private findFloorNumber(mesh: AbstractMesh): number | undefined {
-    let parent = mesh.parent;
-    while (parent) {
-      if (parent.name.startsWith("SM_Floor_")) {
-        return this.extractFloorNumber(parent.name);
-      }
-      parent = parent.parent;
+    private findFloorNodes(meshes: AbstractMesh[], floorNodes: Map<number, TransformNode>): void {
+        meshes.forEach(mesh => {
+            if (mesh.name.startsWith(this.config.FLOOR_PREFIX) && mesh instanceof TransformNode) {
+                const floorNum = this.extractFloorNumber(mesh.name);
+                if (floorNum !== null) {
+                    floorNodes.set(floorNum, mesh);
+                    this.logger.debug(`Found floor node ${floorNum}: ${mesh.name}`);
+                }
+            }
+        });
     }
-    return this.extractFloorNumber(mesh.name);
-  }
 
-  private determineType(name: string): ElementType {
-    if (name.startsWith("SM_Floor_")) return 'floor';
-    if (name.startsWith("SM_Wall_")) return 'wall';
-    if (name.startsWith("SM_Window_")) return 'window';
-    if (name.startsWith("SM_Door_")) return 'door';
-    if (name.startsWith("SM_Stair_")) return 'stair';
-    
-    if (name.includes("Window")) return 'window';
-    if (name.includes("Door")) return 'door';
-    if (name.includes("Stair")) return 'stair';
-    if (name.includes("Wall")) return 'wall';
-    
-    return 'other';
-  }
-
-  private extractFloorNumber(name: string): number | undefined {
-    const match = name.match(/_(\d+)(?:_|\.|$)/);
-    return match ? parseInt(match[1], 10) : undefined;
-  }
-
-  private categorizeElement(
-    element: BuildingElement,
-    containers: {
-      floors: Map<number, BuildingElement[]>;
-      walls: BuildingElement[];
-      windows: BuildingElement[];
-      doors: BuildingElement[];
-      stairs: BuildingElement[];
+    private createFloorNodeMap(floorNodes: Map<number, TransformNode>): Map<AbstractMesh, number> {
+        const map = new Map<AbstractMesh, number>();
+        floorNodes.forEach((node, floorNum) => {
+            map.set(node as AbstractMesh, floorNum);
+        });
+        return map;
     }
-  ): void {
-    switch (element.type) {
-      case 'floor':
-        if (element.floorNumber) {
-          const floorElements = containers.floors.get(element.floorNumber) || [];
-          floorElements.push(element);
-          containers.floors.set(element.floorNumber, floorElements);
+
+    private processMeshes(
+        meshes: AbstractMesh[],
+        result: BuildingParseResult,
+        floorNodeMap: Map<AbstractMesh, number>
+    ): void {
+        meshes.forEach(mesh => {
+            const isFloorNode = mesh.name.startsWith(this.config.FLOOR_PREFIX) && mesh instanceof TransformNode;
+            
+            let floorNumber: number | null = null;
+            
+            if (isFloorNode) {
+                floorNumber = this.extractFloorNumber(mesh.name);
+            } else {
+                floorNumber = this.findFloorNumberInHierarchy(mesh, floorNodeMap);
+            }
+            
+            const type = this.determineType(mesh.name);
+            const isFloorElement = type === 'floor' && !isFloorNode;
+
+            const element: BuildingElement = {
+                name: mesh.name,
+                mesh,
+                type,
+                floorNumber: floorNumber !== null ? floorNumber : undefined,
+                isVisible: false,
+                originalMaterial: mesh.material as any,
+                originalPosition: mesh.position.clone(),
+                originalRotation: mesh.rotation.clone(),
+                originalScaling: mesh.scaling.clone(),
+                metadata: {}
+            };
+
+            result.elements.set(mesh.name, element);
+            this.categorizeElement(element, result, floorNumber);
+            
+            if (isFloorElement && floorNumber !== null) {
+                const floorElements = result.floors.get(floorNumber) || [];
+                floorElements.push(element);
+                result.floors.set(floorNumber, floorElements);
+            }
+            
+            if (mesh.getChildMeshes?.().length) {
+                this.processMeshes(mesh.getChildMeshes(), result, floorNodeMap);
+            }
+        });
+    }
+
+    private findFloorNumberInHierarchy(mesh: AbstractMesh, floorNodeMap: Map<AbstractMesh, number>): number | null {
+        let current: any = mesh;
+        while (current) {
+            if (floorNodeMap.has(current)) return floorNodeMap.get(current)!;
+            current = current.parent;
         }
-        break;
-      case 'wall':
-        containers.walls.push(element);
-        break;
-      case 'window':
-        containers.windows.push(element);
-        break;
-      case 'door':
-        containers.doors.push(element);
-        break;
-      case 'stair':
-        containers.stairs.push(element);
-        break;
+        
+        const fromName = this.extractFloorNumber(mesh.name);
+        if (fromName !== null) return fromName;
+        
+        this.logger.warn(`Element ${mesh.name} has no floor assignment`);
+        return null;
     }
-  }
+
+    private determineType(name: string): ElementType {
+        if (name.startsWith(this.config.FLOOR_PREFIX)) return 'floor';
+        if (name.startsWith(this.config.WALL_PREFIX)) return 'wall';
+        if (name.startsWith(this.config.WINDOW_PREFIX)) return 'window';
+        if (name.startsWith(this.config.DOOR_PREFIX)) return 'door';
+        if (name.startsWith(this.config.STAIR_PREFIX)) return 'stair';
+
+        const lowerName = name.toLowerCase();
+        if (lowerName.includes('window')) return 'window';
+        if (lowerName.includes('door')) return 'door';
+        if (lowerName.includes('stair')) return 'stair';
+        if (lowerName.includes('wall')) return 'wall';
+        if (lowerName.includes('floor')) return 'floor';
+
+        return 'other' as ElementType;
+    }
+
+    private extractFloorNumber(name: string): number | null {
+        const match = name.match(/_(\d+)(?:_|\.|$)/);
+        if (match && match[1]) {
+            const parsed = parseInt(match[1], 10);
+            return isNaN(parsed) ? null : parsed;
+        }
+        return null;
+    }
+
+    private categorizeElement(element: BuildingElement, result: BuildingParseResult, floorNumber: number | null): void {
+        switch (element.type) {
+            case 'floor':
+                if (floorNumber !== null) {
+                    const floorElements = result.floors.get(floorNumber) || [];
+                    floorElements.push(element);
+                    result.floors.set(floorNumber, floorElements);
+                }
+                break;
+            case 'wall':
+                result.walls.push(element);
+                if (floorNumber !== null && element.floorNumber === undefined) {
+                    element.floorNumber = floorNumber;
+                }
+                break;
+            case 'window':
+                result.windows.push(element);
+                if (floorNumber !== null && element.floorNumber === undefined) {
+                    element.floorNumber = floorNumber;
+                }
+                break;
+            case 'door':
+                result.doors.push(element);
+                if (floorNumber !== null && element.floorNumber === undefined) {
+                    element.floorNumber = floorNumber;
+                }
+                break;
+            case 'stair':
+                result.stairs.push(element);
+                if (floorNumber !== null && element.floorNumber === undefined) {
+                    element.floorNumber = floorNumber;
+                }
+                break;
+        }
+    }
 }

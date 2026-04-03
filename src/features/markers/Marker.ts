@@ -1,63 +1,118 @@
-import { Scene, Vector3, Mesh, Ray, TransformNode, ActionManager, SetValueAction, Color3 } from "@babylonjs/core";
+import { Scene, Vector3, Mesh, ActionManager, SetValueAction, Color3, ExecuteCodeAction } from "@babylonjs/core";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { EventBus } from "../../core/events/EventBus";
+import { EventType } from "../../core/events/EventTypes";
 import { MarkerWidget } from "./components/MarkerWidget";
 import { MarkerAnimator } from "./MarkerAnimator";
-import { AnyMarkerData, MarkerType, RGBA } from "./types";
-import { MARKER_CONFIG } from "../../shared/constants";
-import { logger } from "../../core/logger/Logger";
+import type { RGBA, AnyMarkerData } from "../../shared/types";
+import { MarkerType } from "../../shared/types";
+import { IMarker } from "@shared/interfaces";
 
-const markerLogger = logger.getLogger('Marker');
+const DEFAULT_BG_COLOR: RGBA = { r: 0.2, g: 0.5, b: 0.8, a: 0.9 };
+const DEFAULT_TEXT_COLOR: RGBA = { r: 1, g: 1, b: 1, a: 1 };
+const DEFAULT_ICON_NAME: string = '📍';
 
-export class Marker {
-  private readonly _id: string;
-  private readonly _type: MarkerType;
-  private readonly _widget: MarkerWidget;
-  private readonly _data: AnyMarkerData;
-  private readonly _animator: MarkerAnimator;
+/**
+ * Маркер на карте
+ */
+@injectable()
+export class Marker implements IMarker {
+  private logger: Logger;
+  private eventBus: EventBus;
+  private widget: MarkerWidget;
+  private animator: MarkerAnimator;
   
+  private _id: string;
+  private _type: MarkerType;
+  private _data: AnyMarkerData;
   private _isSelected: boolean = false;
   private _isHovered: boolean = false;
+  private _isFromMarker: boolean = false;
+  private _isToMarker: boolean = false;
 
   public onClick: (marker: Marker) => void = () => {};
   public onDoubleClick: (marker: Marker) => void = () => {};
 
-  constructor(scene: Scene, data: AnyMarkerData) {
+  constructor(
+    @inject(TYPES.Logger) logger: Logger,
+    @inject(TYPES.EventBus) eventBus: EventBus,
+    @inject(TYPES.MarkerWidget) widget: MarkerWidget,
+    @inject(TYPES.MarkerAnimator) animator: MarkerAnimator,
+    scene: Scene,
+    data: AnyMarkerData
+  ) {
+    this.logger = logger.getLogger('Marker');
+    this.eventBus = eventBus;
+    this.widget = widget;
+    this.animator = animator;
+    
     this._id = data.id;
     this._type = data.type;
     this._data = data;
-    this._animator = new MarkerAnimator(scene);
     
-    // Выбираем размер в зависимости от типа
-    let size: number = MARKER_CONFIG.defaultSize;
-    if (this._type === MarkerType.WAYPOINT) {
-      size = MARKER_CONFIG.waypointSize;
-    } else if (this._type === MarkerType.FLAG) {
-      size = MARKER_CONFIG.flagSize;
-    }
-
-    // Используем backgroundColor и textColor (вместо foregroundColor)
-    this._widget = new MarkerWidget(
+    const bgColorData = data.backgroundColor ?? DEFAULT_BG_COLOR;
+    const textColorData = data.textColor ?? DEFAULT_TEXT_COLOR;
+    const iconName = data.iconName ?? this.getDefaultIconForType(data.type);
+    
+    const bgColor = new Color3(bgColorData.r, bgColorData.g, bgColorData.b);
+    const fgColor = new Color3(textColorData.r, textColorData.g, textColorData.b);
+    
+    this.widget.initialize(
       scene,
       data.position,
-      data.backgroundColor, // RGBA
-      data.textColor,       // RGBA
+      bgColor,
+      fgColor,
       this._type,
-      data.iconName,
-      data.name,
-      size
+      iconName,
+      data.name
     );
-
+    
     this.setupInteractivity(scene);
     this.playSpawnAnimation();
+    
+    this.logger.debug(`Marker created: ${data.id} (${data.name})`);
+  }
+
+  private getDefaultIconForType(type: MarkerType): string {
+    switch (type) {
+      case MarkerType.MARKER:
+        return '📍';
+      case MarkerType.FLAG:
+        return '🚩';
+      case MarkerType.WAYPOINT:
+        return '🔘';
+      default:
+        return DEFAULT_ICON_NAME;
+    }
   }
 
   private setupInteractivity(scene: Scene): void {
-    const mesh = this._widget.mesh;
-    if (!mesh) return;
+    const mesh = this.widget.mesh;
+    if (!mesh) {
+      this.logger.warn(`No mesh for marker ${this._id}`);
+      return;
+    }
 
     mesh.isPickable = true;
     mesh.enablePointerMoveEvents = true;
     
     mesh.actionManager = new ActionManager(scene);
+    
+    mesh.actionManager.registerAction(
+      new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
+        console.log(`Marker clicked: ${this._id}`);
+        this.handleClick();
+      })
+    );
+    
+    mesh.actionManager.registerAction(
+      new ExecuteCodeAction(ActionManager.OnDoublePickTrigger, () => {
+        console.log(`Marker double-clicked: ${this._id}`);
+        this.handleDoubleClick();
+      })
+    );
     
     mesh.actionManager.registerAction(
       new SetValueAction(
@@ -79,38 +134,38 @@ export class Marker {
   }
 
   private async playSpawnAnimation(): Promise<void> {
-    const root = this._widget.root;
+    const root = this.widget.root;
     if (root) {
-      await this._animator.playSpawnAnimation(root);
+      await this.animator.playSpawnAnimation(root);
     }
   }
 
   public update(cameraPosition: Vector3): void {
-    this._widget.updateBillboard(cameraPosition);
-  }
-
-  public updateScale(cameraPosition: Vector3): void {
-    this._widget.updateScale(cameraPosition);
+    this.widget.updateBillboard(cameraPosition);
+    this.widget.updateScale(cameraPosition);
   }
 
   public handleClick(): void {
     this.onClick(this);
+    this.eventBus.emit(EventType.MARKER_SELECTED, { marker: this });
   }
 
   public handleDoubleClick(): void {
     this.onDoubleClick(this);
+    this.eventBus.emit(EventType.MARKER_DOUBLE_CLICKED, { marker: this });
   }
 
   public setSelected(selected: boolean): void {
     if (this._isSelected === selected) return;
     
     this._isSelected = selected;
-    this._widget.setSelected(selected);
+    this.widget.setSelected(selected);
     
-    const root = this._widget.root;
+    const root = this.widget.root;
     if (root) {
-      this._animator.playSelectionAnimation(root, selected)
-        .catch(err => markerLogger.error('Ошибка анимации выделения', err));
+      this.animator.playSelectionAnimation(root, selected).catch(err => {
+        this.logger.error('Selection animation error', err);
+      });
     }
   }
 
@@ -119,10 +174,29 @@ export class Marker {
     
     this._isHovered = hovered;
     
-    const root = this._widget.root;
+    const root = this.widget.root;
     if (root) {
-      this._animator.playHoverAnimation(root, hovered, this._isSelected);
+      this.animator.playHoverAnimation(root, hovered, this._isSelected);
     }
+  }
+
+  public setAsFromMarker(isFrom: boolean): void {
+    this._isFromMarker = isFrom;
+    this.widget.setAsFromMarker(isFrom);
+  }
+
+  public setAsToMarker(isTo: boolean): void {
+    this._isToMarker = isTo;
+    this.widget.setAsToMarker(isTo);
+  }
+
+  public setVisible(visible: boolean): void {
+    this.widget.setVisible(visible);
+  }
+
+  public dispose(): void {
+    this.widget.dispose();
+    this.logger.debug(`Marker disposed: ${this._id}`);
   }
 
   public hasQR(): boolean {
@@ -133,10 +207,7 @@ export class Marker {
     return this._type === MarkerType.FLAG ? (this._data as any).qr : undefined;
   }
 
-  public get position(): Vector3 {
-    return this._widget.position.clone();
-  }
-
+  // Геттеры
   public get id(): string {
     return this._id;
   }
@@ -154,19 +225,23 @@ export class Marker {
   }
 
   public get iconName(): string {
-    return this._data.iconName;
+    return this._data.iconName ?? this.getDefaultIconForType(this._type);
   }
 
   public get floor(): number {
-    return this._data.floor;
+    return this._data.floor ?? 1;
   }
 
   public get backgroundColor(): RGBA {
-    return this._data.backgroundColor;
+    return this._data.backgroundColor ?? DEFAULT_BG_COLOR;
   }
 
   public get textColor(): RGBA {
-    return this._data.textColor;
+    return this._data.textColor ?? DEFAULT_TEXT_COLOR;
+  }
+
+  public get position(): Vector3 {
+    return this.widget.position;
   }
 
   public get isSelected(): boolean {
@@ -177,15 +252,19 @@ export class Marker {
     return this._isHovered;
   }
 
-  public get root(): TransformNode | null {
-    return this._widget.root;
+  public get isFromMarker(): boolean {
+    return this._isFromMarker;
+  }
+
+  public get isToMarker(): boolean {
+    return this._isToMarker;
+  }
+
+  public get root() {
+    return this.widget.root;
   }
 
   public get mesh(): Mesh {
-    return this._widget.mesh;
-  }
-
-  public setVisible(visible: boolean): void {
-    this._widget.setVisible(visible);
+    return this.widget.mesh;
   }
 }

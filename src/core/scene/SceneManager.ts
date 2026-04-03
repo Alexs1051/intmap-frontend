@@ -1,217 +1,411 @@
-import { Scene, Vector3 } from "@babylonjs/core";
+import { Scene, ArcRotateCamera, Vector3 } from "@babylonjs/core";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../di/Container";
 import { BabylonEngine } from "../engine/BabylonEngine";
-import { GridManager } from "../../features/grid/GridManager";
-import { BackgroundManager } from "../../features/background/BackgroundManager";
-import { LightingManager } from "../../features/lighting/LightingManager";
-import { CameraManager } from "../../features/camera/CameraManager";
-import { UIManager } from "../../features/ui/UIManager";
-import { BuildingManager } from "../../features/building/BuildingManager";
-import { MarkerManager } from "../../features/markers/MarkerManager";
-import { logger } from "../logger/Logger";
+import { Logger } from "../logger/Logger";
+import { EventBus } from "../events/EventBus";
+import { EventType } from "../events/EventTypes";
+import { container } from "../di/Container";
+import { 
+    IBuildingManager, 
+    ICameraManager, 
+    ILoadableComponent, 
+    IMarkerManager, 
+    ISceneManager, 
+    IUIManager,
+    ISceneComponent
+} from "@shared/interfaces";
 
-const sceneLogger = logger.getLogger('SceneManager');
-
-export class SceneManager {
-  private static _instance: SceneManager;
-  private _scene: Scene;
-  private _gridManager: GridManager;
-  private _backgroundManager: BackgroundManager;
-  private _lightingManager: LightingManager;
-  private _cameraManager: CameraManager;
-  private _uiManager: UIManager;
-  private _buildingManager: BuildingManager;
-  private _markerManager: MarkerManager;
-  
-  private _isLoading: boolean = false;
-
-  private constructor(uiManager: UIManager) {
-    const engine = BabylonEngine.getInstance();
-    this._scene = new Scene(engine.engine);
-    this._uiManager = uiManager;
-
-    this._backgroundManager = BackgroundManager.getInstance(this._scene);
-    this._lightingManager = LightingManager.getInstance(this._scene);
-    this._gridManager = GridManager.getInstance(this._scene);
-    this._cameraManager = CameraManager.getInstance(this._scene, engine.canvas);
-    this._buildingManager = BuildingManager.getInstance(this._scene);
-    this._markerManager = MarkerManager.getInstance(this._scene);
+@injectable()
+export class SceneManager implements ISceneManager {
+    private _scene: Scene;
+    private components: Map<string, ISceneComponent> = new Map();
+    private loadableComponents: Map<string, ILoadableComponent> = new Map();
+    private isLoadingFlag: boolean = false;
+    private logger: Logger;
+    private isDisposed: boolean = false;
     
-    this._uiManager.initialize(this._scene, this._cameraManager);
+    public cameraManager?: ICameraManager;
+    public buildingManager?: IBuildingManager;
+    public markerManager?: IMarkerManager;
+    public uiManager?: IUIManager;
     
-    this._markerManager.setCameraManager(this._cameraManager);
-    this.setupInputHandling(engine.canvas);
 
-    sceneLogger.info("SceneManager инициализирован");
-  }
-
-  public static getInstance(uiManager: UIManager): SceneManager {
-    if (!SceneManager._instance) {
-      SceneManager._instance = new SceneManager(uiManager);
+    constructor(
+        @inject(TYPES.BabylonEngine) private engine: BabylonEngine,
+        @inject(TYPES.Logger) logger: Logger,
+        @inject(TYPES.EventBus) private eventBus: EventBus
+    ) {
+        this.logger = logger.getLogger('SceneManager');
+        
+        const babylonEngine = engine.getEngine();
+        const existingScene = babylonEngine.scenes?.[0];
+        
+        if (existingScene) {
+            this._scene = existingScene;
+        } else {
+            this._scene = new Scene(babylonEngine);
+        }
+        
+        this.registerComponents();
+        this.logger.info("SceneManager initialized");
     }
-    return SceneManager._instance;
-  }
 
-  private setupInputHandling(canvas: HTMLCanvasElement): void {
-    canvas.addEventListener('click', (event) => {
-      if (this._cameraManager.isAnimating) return;
-      
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      
-      const ray = this._scene.createPickingRay(x, y, null, this._cameraManager.camera);
-      this._markerManager.handleScenePick(ray);
-    });
-  }
+    private registerComponents(): void {
+        const componentConfigs = [
+            { name: 'camera', type: TYPES.CameraManager, setScene: true, isLoadable: true },
+            { name: 'background', type: TYPES.BackgroundManager, setScene: true, isLoadable: true },
+            { name: 'grid', type: TYPES.GridManager, setScene: true, isLoadable: true },
+            { name: 'lighting', type: TYPES.LightingManager, setScene: true, isLoadable: true },
+            { name: 'building', type: TYPES.BuildingManager, setScene: true, isLoadable: true },
+            { name: 'markers', type: TYPES.MarkerManager, setScene: true, isLoadable: true }
+        ];
 
-  public async loadAll(modelUrl: string): Promise<void> {
-    if (this._isLoading) return;
-    this._isLoading = true;
+        for (const config of componentConfigs) {
+            try {
+                if (container.isBound(config.type)) {
+                    const component = container.get<any>(config.type);
+                    
+                    if (config.setScene && component && typeof component.setScene === 'function') {
+                        component.setScene(this._scene);
+                    }
+                    
+                    this.registerComponent(config.name, component as ISceneComponent);
+                    
+                    // Сохраняем ссылки на менеджеры
+                    switch (config.name) {
+                        case 'camera':
+                            this.cameraManager = component;
+                            break;
+                        case 'building':
+                            this.buildingManager = component;
+                            break;
+                        case 'markers':
+                            this.markerManager = component;
+                            break;
+                        case 'background':
+                            break;
+                        case 'grid':
+                            break;
+                        case 'lighting':
+                            break;
+                    }
+                    
+                    this.logger.info(`${config.name} registered`);
+                }
+            } catch (error) {
+                this.logger.error(`Failed to register ${config.name}`, error);
+            }
+        }
 
-    try {
-      sceneLogger.info("Начинаем загрузку всех ресурсов");
-      
-      // Этап 1: Сцена (0% - 20%)
-      this._uiManager.updateLoadingProgress(0.0, "Загрузка сцены...");
-      await this.loadScene();
-      
-      // Этап 2: Здание (20% - 70%)
-      this._uiManager.updateLoadingProgress(0.2, "Загрузка здания...");
-      await this.loadBuilding(modelUrl);
-      
-      // Этап 3: Маркеры (70% - 90%)
-      this._uiManager.updateLoadingProgress(0.7, "Создание маркеров...");
-      await this.loadMarkers();
-      
-      // Финализация (90% - 100%)
-      this._uiManager.updateLoadingProgress(0.9, "Финализация...");
-      await this.finalize();
-      
-      sceneLogger.info("Все ресурсы загружены");
-    } catch (error) {
-      sceneLogger.error("Ошибка загрузки", error);
-      throw error;
-    } finally {
-      this._isLoading = false;
+        try {
+            if (container.isBound(TYPES.CameraAnimator)) {
+                const cameraAnimator = container.get<any>(TYPES.CameraAnimator);
+                if (cameraAnimator && typeof cameraAnimator.setScene === 'function') {
+                    cameraAnimator.setScene(this._scene);
+                }
+            }
+        } catch (error) {
+            this.logger.error("Failed to setup CameraAnimator", error);
+        }
+
+        try {
+            if (container.isBound(TYPES.UIManager)) {
+                this.uiManager = container.get<IUIManager>(TYPES.UIManager);
+                this.logger.info("UIManager obtained from container");
+            }
+        } catch (error) {
+            this.logger.error("Failed to get UIManager", error);
+        }
+        
+        if (this.markerManager && this.cameraManager) {
+            this.markerManager.setCameraManager(this.cameraManager);
+        }
     }
-  }
 
-  private async loadScene(): Promise<void> {
-    sceneLogger.debug("Этап 1: Загрузка сцены");
-    
-    await Promise.all([
-      this._backgroundManager.initialize((progress) => {
-        this._uiManager.updateLoadingProgress(0.0 + progress * 0.05, "Создание фона...");
-      }),
-      this._lightingManager.initialize((progress) => {
-        this._uiManager.updateLoadingProgress(0.05 + progress * 0.05, "Настройка освещения...");
-      }),
-      this._gridManager.initialize((progress) => {
-        this._uiManager.updateLoadingProgress(0.10 + progress * 0.05, "Создание сетки...");
-      })
-    ]);
-    
-    this._uiManager.updateLoadingProgress(0.15, "Настройка камеры...");
-    sceneLogger.debug("Этап 1 завершён");
-  }
+    public registerComponent(name: string, component: ISceneComponent): void {
+        this.components.set(name, component);
+        
+        if (this.isLoadableComponent(component)) {
+            this.loadableComponents.set(name, component);
+        }
+        
+        this.logger.debug(`Component registered: ${name}`);
+    }
 
-  private async loadBuilding(modelUrl: string): Promise<void> {
-    sceneLogger.debug("Этап 2: Загрузка здания");
-    
-    await this._buildingManager.loadBuilding(modelUrl, (progress) => {
-      this._uiManager.updateLoadingProgress(0.2 + progress * 0.5, "Загрузка модели здания...");
-    });
-    
-    const dimensions = this._buildingManager.getBuildingDimensions();
-    const center = this._buildingManager.getBuildingCenter();
-    
-    this._cameraManager.setDimensions(dimensions);
-    this._cameraManager.setTargetPosition(center);
-    
-    sceneLogger.debug(`Этап 2 завершён, размеры здания: ${JSON.stringify(dimensions)}`);
-  }
+    private isLoadableComponent(component: ISceneComponent): component is ILoadableComponent {
+        return component && 'load' in component && typeof (component as any).load === 'function';
+    }
 
-  private async loadMarkers(): Promise<void> {
-    sceneLogger.debug("Этап 3: Создание маркеров");
-    
-    await this._markerManager.initialize((progress) => {
-      const totalProgress = 0.7 + progress * 0.2;
-      
-      let status: string;
-      if (progress < 0.3) {
-        status = "Инициализация маркеров...";
-      } else if (progress < 0.6) {
-        status = "Создание маркеров...";
-      } else {
-        status = "Настройка маркеров...";
-      }
-      
-      this._uiManager.updateLoadingProgress(totalProgress, status);
-    });
-    
-    sceneLogger.debug("Этап 3 завершён");
-  }
+    public async loadAll(modelUrl: string): Promise<void> {
+        if (this.isLoadingFlag) {
+            this.logger.warn("Loading already in progress");
+            return;
+        }
+        
+        this.isLoadingFlag = true;
+        this.eventBus.emit(EventType.LOADING_START, { modelUrl });
+        
+        try {
+            const components = Array.from(this.loadableComponents.entries());
+            const normalComponents = components.filter(([name]) => name !== 'building');
+            let completedNormal = 0;
+            const totalNormal = normalComponents.length;
+            
+            this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                component: 'environment',
+                progress: 0,
+                overall: 0
+            });
+            
+            await this.delay(100);
+            
+            for (const [name, component] of normalComponents) {
+                this.logger.debug(`Loading component: ${name}`);
+                
+                this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                    component: name,
+                    progress: 0,
+                    overall: (completedNormal / totalNormal) * 0.3
+                });
+                
+                await component.load((progress) => {
+                    const componentStart = completedNormal / totalNormal;
+                    const componentEnd = (completedNormal + 1) / totalNormal;
+                    const overallProgress = (componentStart + (progress * (componentEnd - componentStart))) * 0.3;
+                    this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                        component: name,
+                        progress,
+                        overall: overallProgress
+                    });
+                });
+                
+                completedNormal++;
+                
+                this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                    component: name,
+                    progress: 1,
+                    overall: (completedNormal / totalNormal) * 0.3
+                });
+                
+                await this.delay(50);
+            }
+            
+            if (this.buildingManager) {
+                this.logger.debug("Loading building model...");
+                
+                this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                    component: 'building',
+                    progress: 0,
+                    overall: 0.3
+                });
+                
+                await this.delay(100);
+                
+                await this.buildingManager.loadBuilding(modelUrl, (progress: number) => {
+                    const overallProgress = 0.3 + (progress * 0.7);
+                    this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                        component: 'building',
+                        progress,
+                        overall: overallProgress
+                    });
+                });
+                
+                this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                    component: 'building',
+                    progress: 1,
+                    overall: 1
+                });
+                
+                await this.delay(100);
+            }
+            
+            await this.initializeComponents();
+            
+            this.logger.info("All resources loaded successfully");
+            
+        } catch (error) {
+            this.logger.error("Failed to load resources", error);
+            this.eventBus.emit(EventType.LOADING_ERROR, { error });
+            throw error;
+        } finally {
+            this.isLoadingFlag = false;
+            this.eventBus.emit(EventType.LOADING_COMPLETE);
+        }
+    }
 
-  private async finalize(): Promise<void> {
-    sceneLogger.debug("Финализация");
-    
-    this._uiManager.updateLoadingProgress(0.90, "Подготовка к анимации...");
-    this._uiManager.updateLoadingProgress(0.95, "Готово!");
-    
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    this._uiManager.updateLoadingProgress(1.0, "Загрузка завершена!");
-  }
+    private delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
 
-  public async showScene(): Promise<void> {
-    sceneLogger.info("Запуск анимаций");
-    
-    await Promise.all([
-      this._cameraManager.initialize(),
-      this._buildingManager.animateConstruction()
-    ]);
-    
-    sceneLogger.info("Все анимации завершены");
-  }
+    private async initializeComponents(): Promise<void> {
+        this.logger.debug("Initializing components");
+        
+        if (this.uiManager && this.cameraManager && this.buildingManager && this.markerManager) {
+            try {
+                this.uiManager.initialize(this._scene, {
+                    cameraManager: this.cameraManager,
+                    buildingManager: this.buildingManager,
+                    markerManager: this.markerManager,
+                    scene: this._scene
+                });
+                this.logger.info("UIManager initialized");
+            } catch (error) {
+                this.logger.error("Error initializing UIManager", error);
+            }
+        }
+        
+        const initPromises = Array.from(this.components.values())
+            .filter(component => component && typeof component.initialize === 'function')
+            .map(component => {
+                try {
+                    return component.initialize();
+                } catch (error) {
+                    this.logger.error("Error initializing component", error);
+                    return Promise.resolve();
+                }
+            });
+        
+        await Promise.all(initPromises);
+        
+        this.setupMarkerClickHandler();
+        
+        this.logger.debug(`Initialized ${initPromises.length} components`);
+        
+        if (!this._scene.activeCamera) {
+            this.logger.error("No active camera after initialization!");
+            this.createEmergencyCamera();
+        } else {
+            this.logger.info(`Active camera: ${this._scene.activeCamera.name}`);
+        }
+    }
 
-  public render(deltaTime: number): void {
-    if (this._cameraManager.camera) {
-      this._markerManager.update(this._cameraManager.camera.position);
+    private setupMarkerClickHandler(): void {
+        if (!this._scene || !this.markerManager) {
+            this.logger.warn("Cannot setup marker click handler: scene or markerManager not ready");
+            return;
+        }
+        
+        const canvas = this._scene.getEngine().getRenderingCanvas();
+        if (!canvas) {
+            this.logger.warn("Cannot setup marker click handler: canvas not found");
+            return;
+        }
+        
+        canvas.addEventListener('click', (event) => {
+            if (!this.markerManager) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+            const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+            const ray = this._scene.createPickingRay(x, y, null, this._scene.activeCamera);
+            
+            this.markerManager.handleScenePick(ray);
+        });
+        
+        this.logger.info("Marker click handler setup complete");
     }
     
-    this._backgroundManager.update(deltaTime);
-    this._lightingManager.update(deltaTime);
-    this._gridManager.update(deltaTime);
-    
-    this._scene.render();
-  }
+    private createEmergencyCamera(): void {
+        this.logger.warn("Creating emergency camera");
+        
+        const emergencyCamera = new ArcRotateCamera(
+            "emergencyCamera",
+            -Math.PI / 2,
+            Math.PI / 3,
+            40,
+            Vector3.Zero(),
+            this._scene
+        );
+        
+        emergencyCamera.maxZ = 2000;
+        emergencyCamera.lowerRadiusLimit = 5;
+        emergencyCamera.upperRadiusLimit = 500;
+        
+        const canvas = this.engine.getCanvas();
+        if (canvas) {
+            emergencyCamera.attachControl(canvas, true);
+        }
+        
+        this._scene.activeCamera = emergencyCamera;
+        this.logger.info("Emergency camera created");
+    }
 
-  public dispose(): void {
-    this._scene.dispose();
-    sceneLogger.info("SceneManager уничтожен");
-  }
+    public async showScene(): Promise<void> {
+        this.logger.info("Showing scene");
+        await new Promise(resolve => setTimeout(resolve, 100));
+        this.eventBus.emit(EventType.SCENE_READY);
+    }
 
-  public get scene(): Scene {
-    return this._scene;
-  }
+    public render(deltaTime: number): void {
+        if (this.isDisposed) return;
+        
+        this.eventBus.emit(EventType.SCENE_BEFORE_RENDER, { deltaTime });
+        
+        this.components.forEach(component => {
+            try {
+                if (component && typeof component.update === 'function') {
+                    component.update(deltaTime);
+                }
+            } catch (error) {
+                this.logger.error("Error updating component", error);
+            }
+        });
+        
+        this._scene.render();
+        
+        if (this.uiManager) {
+            this.uiManager.updateFPS();
+        }
+        
+        this.eventBus.emit(EventType.SCENE_AFTER_RENDER, { deltaTime });
+    }
 
-  public get cameraManager(): CameraManager {
-    return this._cameraManager;
-  }
+    public dispose(): void {
+        if (this.isDisposed) return;
+        
+        this.components.forEach(component => {
+            try {
+                if (component && typeof component.dispose === 'function') {
+                    component.dispose();
+                }
+            } catch (error) {
+                this.logger.error("Error disposing component", error);
+            }
+        });
+        
+        this.components.clear();
+        this.loadableComponents.clear();
+        
+        if (this._scene) {
+            this._scene.dispose();
+        }
+        
+        this.isDisposed = true;
+        this.logger.info("SceneManager disposed");
+    }
 
-  public get buildingManager(): BuildingManager {
-    return this._buildingManager;
-  }
+    public get scene(): Scene {
+        return this._scene;
+    }
 
-  public get uiManager(): UIManager {
-    return this._uiManager;
-  }
+    public get isLoading(): boolean {
+        return this.isLoadingFlag;
+    }
 
-  public get markerManager(): MarkerManager {
-    return this._markerManager;
-  }
+    public getCameraManager(): ICameraManager | undefined {
+        return this.cameraManager;
+    }
 
-  public get isLoading(): boolean {
-    return this._isLoading;
-  }
+    public getBuildingManager(): IBuildingManager | undefined {
+        return this.buildingManager;
+    }
+
+    public getMarkerManager(): IMarkerManager | undefined {
+        return this.markerManager;
+    }
+
+    public getUIManager(): IUIManager | undefined {
+        return this.uiManager;
+    }
 }

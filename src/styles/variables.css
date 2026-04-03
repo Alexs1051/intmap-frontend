@@ -1,25 +1,27 @@
 :root {
-  /* Цвета */
   --color-bg-primary: rgba(30, 30, 40, 0.95);
   --color-bg-secondary: rgba(255, 255, 255, 0.05);
   --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg-card: rgba(30, 30, 40, 0.8);
+  --color-bg-card-hover: rgba(50, 50, 70, 0.9);
   
-  --color-text-primary: white;
-  --color-text-secondary: #aaa;
-  --color-text-muted: #888;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #aaaaaa;
+  --color-text-muted: #888888;
+  --color-text-disabled: #666666;
   
   --color-accent-primary: #00d2ff;
   --color-accent-secondary: #3a7bd5;
+  --color-accent-hover: #33dbff;
   
   --color-success: #44ff44;
   --color-warning: #ffaa44;
   --color-error: #ff4444;
+  --color-info: #00d2ff;
   
-  /* Градиенты */
   --gradient-accent: linear-gradient(90deg, var(--color-accent-primary) 0%, var(--color-accent-secondary) 100%);
   --gradient-loading: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   
-  /* Размеры */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 12px;
@@ -27,30 +29,95 @@
   --spacing-xl: 20px;
   --spacing-xxl: 30px;
   
-  /* Радиусы */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-2xl: 16px;
   --radius-full: 50px;
   --radius-circle: 50%;
   
-  /* Тени */
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-hover: 0 8px 20px rgba(0, 0, 0, 0.4);
   
-  /* Анимации */
   --transition-fast: 0.2s ease;
   --transition-normal: 0.3s ease;
   --transition-slow: 0.5s ease;
   
-  /* Z-indexes */
   --z-fps-counter: 1000;
   --z-control-panel: 1000;
+  --z-building-title: 1500;
   --z-marker-details: 1500;
+  --z-popup: 2000;
   --z-search-overlay: 1999;
-  --z-loading-screen: 2000;
   --z-connection-screen: 2500;
-  --z-popup: 3000;
+  --z-auth-popup: 2600;
+  
+  --btn-size: 50px;
+  --icon-size: 30px;
+  --panel-gap: 6px;
+  --panel-padding: 8px;
+  
+  --color-button-bg: rgba(255, 255, 255, 0.1);
+  --color-button-bg-hover: rgba(255, 255, 255, 0.15);
+  --color-input-bg: rgba(255, 255, 255, 0.05);
+  --color-input-border: rgba(255, 255, 255, 0.1);
+  --color-markdown-text: #ddd;
+  --color-markdown-code-bg: rgba(0, 0, 0, 0.3);
+  --color-markdown-blockquote: #aaa;
+  --color-markdown-table-header: rgba(255, 255, 255, 0.05);
+  --color-markdown-table-border: rgba(255, 255, 255, 0.1);
+}
+
+.theme-light {
+  --color-bg-primary: rgba(245, 245, 250, 0.98);
+  --color-bg-secondary: rgba(0, 0, 0, 0.05);
+  --color-bg-overlay: rgba(0, 0, 0, 0.3);
+  --color-bg-card: rgba(245, 245, 250, 0.95);
+  --color-bg-card-hover: rgba(235, 235, 245, 0.98);
+  
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #4a4a5a;
+  --color-text-muted: #6a6a7a;
+  --color-text-disabled: #9a9aaa;
+  
+  --color-accent-primary: #0066cc;
+  --color-accent-secondary: #2a5a9a;
+  --color-accent-hover: #3388dd;
+  
+  --color-success: #22aa22;
+  --color-warning: #dd8800;
+  --color-error: #dd3333;
+  --color-info: #0066cc;
+  
+  --color-button-bg: rgba(0, 0, 0, 0.05);
+  --color-button-bg-hover: rgba(0, 0, 0, 0.1);
+  --color-input-bg: rgba(0, 0, 0, 0.03);
+  --color-input-border: rgba(0, 0, 0, 0.1);
+  --color-markdown-text: #2c2c3a;
+  --color-markdown-code-bg: rgba(0, 0, 0, 0.05);
+  --color-markdown-blockquote: #6a6a7a;
+  --color-markdown-table-header: rgba(0, 0, 0, 0.05);
+  --color-markdown-table-border: rgba(0, 0, 0, 0.1);
+  
+  --gradient-loading: linear-gradient(135deg, #e8e8f0 0%, #d8d8e8 100%);
+  
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.15);
+  --shadow-hover: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.theme-light ::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.theme-light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }

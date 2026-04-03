@@ -1,199 +1,200 @@
-import { LogLevel } from './LogLevel';
-import { FormattedLog, LogFormatter } from './LogFormatter';
+import { LogLevel, LOG_LEVEL_META, IFormattedLog, ITransportConfig } from "@shared/types";
+import { ILogTransport } from "@shared/interfaces";
+import { LogFormatter } from "./LogFormatter";
 
-/**
- * Интерфейс транспорта логов
- */
-export interface ILogTransport {
-  log(level: LogLevel, module: string, message: string, data?: any): void;
-  setLevel(level: LogLevel): void;
-  getLevel(): LogLevel;
+export abstract class BaseTransport implements ILogTransport {
+    protected level: LogLevel;
+    protected formatter: LogFormatter;
+
+    constructor(config?: ITransportConfig) {
+        this.level = config?.level ?? LogLevel.DEBUG;
+        this.formatter = LogFormatter.getInstance();
+    }
+
+    public abstract log(level: LogLevel, module: string, message: string, data?: any): void;
+
+    public setLevel(level: LogLevel): void {
+        this.level = level;
+    }
+
+    public getLevel(): LogLevel {
+        return this.level;
+    }
+
+    protected shouldLog(level: LogLevel): boolean {
+        return level >= this.level && this.level !== LogLevel.NONE;
+    }
 }
 
-/**
- * Транспорт для вывода в консоль
- */
-export class ConsoleTransport implements ILogTransport {
-  private _level: LogLevel = LogLevel.DEBUG;
-  private _formatter = LogFormatter.getInstance();
+export class ConsoleTransport extends BaseTransport {
+    public log(level: LogLevel, module: string, message: string, data?: any): void {
+        if (!this.shouldLog(level)) return;
 
-  constructor(level: LogLevel = LogLevel.DEBUG) {
-    this._level = level;
-  }
-
-  public log(level: LogLevel, module: string, message: string, data?: any): void {
-    if (level < this._level) return;
-
-    const formatted = this._formatter.formatConsole(level, module, message, data);
-    
-    switch (level) {
-      case LogLevel.DEBUG:
-        console.debug(formatted[0], formatted[1], formatted[2], formatted[3] || '');
-        break;
-      case LogLevel.INFO:
-        console.info(formatted[0], formatted[1], formatted[2], formatted[3] || '');
-        break;
-      case LogLevel.WARN:
-        console.warn(formatted[0], formatted[1], formatted[2], formatted[3] || '');
-        break;
-      case LogLevel.ERROR:
-        console.error(formatted[0], formatted[1], formatted[2], formatted[3] || '');
-        break;
+        const formatted = this.formatter.formatForConsole(level, module, message, data);
+        
+        const consoleMethod = LOG_LEVEL_META[level]?.consoleMethod || 'log';
+        
+        switch (consoleMethod) {
+            case 'debug':
+                console.debug(formatted[0], formatted[1], formatted[2], formatted[3] || '');
+                break;
+            case 'info':
+                console.info(formatted[0], formatted[1], formatted[2], formatted[3] || '');
+                break;
+            case 'warn':
+                console.warn(formatted[0], formatted[1], formatted[2], formatted[3] || '');
+                break;
+            case 'error':
+                console.error(formatted[0], formatted[1], formatted[2], formatted[3] || '');
+                break;
+            default:
+                console.log(formatted[0], formatted[1], formatted[2], formatted[3] || '');
+        }
     }
-  }
-
-  public setLevel(level: LogLevel): void {
-    this._level = level;
-  }
-
-  public getLevel(): LogLevel {
-    return this._level;
-  }
 }
 
-/**
- * Транспорт для сохранения в память (для отправки на сервер)
- */
-export class MemoryTransport implements ILogTransport {
-  private _level: LogLevel = LogLevel.INFO;
-  private _logs: FormattedLog[] = [];
-  private _maxLogs: number = 1000;
-  private _formatter = LogFormatter.getInstance();
+export class MemoryTransport extends BaseTransport {
+    private logs: IFormattedLog[] = [];
+    private maxLogs: number;
 
-  constructor(level: LogLevel = LogLevel.INFO, maxLogs: number = 1000) {
-    this._level = level;
-    this._maxLogs = maxLogs;
-  }
-
-  public log(level: LogLevel, module: string, message: string, data?: any): void {
-    if (level < this._level) return;
-
-    const formatted = this._formatter.formatFile(level, module, message, data);
-    
-    this._logs.push({
-      timestamp: new Date().toISOString(),
-      level,
-      levelName: this.getLevelName(level),
-      module,
-      message,
-      data,
-      fullText: formatted
-    });
-
-    // Ограничиваем размер
-    if (this._logs.length > this._maxLogs) {
-      this._logs.shift();
+    constructor(maxLogs: number = 1000, config?: ITransportConfig) {
+        super(config);
+        this.maxLogs = maxLogs;
     }
-  }
 
-  public setLevel(level: LogLevel): void {
-    this._level = level;
-  }
+    public log(level: LogLevel, module: string, message: string, data?: any): void {
+        if (!this.shouldLog(level)) return;
 
-  public getLevel(): LogLevel {
-    return this._level;
-  }
+        const formatted = this.formatter.formatForFile(level, module, message, data);
+        const meta = LOG_LEVEL_META[level];
+        
+        this.logs.push({
+            timestamp: new Date().toISOString(),
+            timestampISO: new Date().toISOString(),
+            level,
+            levelName: meta.name,
+            module,
+            message,
+            data,
+            fullText: formatted
+        });
 
-  /**
-   * Получить все логи
-   */
-  public getLogs(): FormattedLog[] {
-    return [...this._logs];
-  }
-
-  /**
-   * Очистить логи
-   */
-  public clear(): void {
-    this._logs = [];
-  }
-
-  /**
-   * Получить логи в формате JSON для отправки
-   */
-  public getJSON(): object[] {
-    return this._logs.map(log => this._formatter.formatJSON(
-      log.level,
-      log.module,
-      log.message,
-      log.data
-    ));
-  }
-
-  private getLevelName(level: LogLevel): string {
-    switch (level) {
-      case LogLevel.DEBUG: return 'DEBUG';
-      case LogLevel.INFO: return 'INFO';
-      case LogLevel.WARN: return 'WARN';
-      case LogLevel.ERROR: return 'ERROR';
-      default: return 'UNKNOWN';
+        if (this.logs.length > this.maxLogs) {
+            this.logs.shift();
+        }
     }
-  }
+
+    public getLogs(): IFormattedLog[] {
+        return [...this.logs];
+    }
+
+    public getJSON(): Record<string, any>[] {
+        return this.logs.map(log => this.formatter.formatForJSON(
+            log.level,
+            log.module,
+            log.message,
+            log.data
+        ));
+    }
+
+    public clear(): void {
+        this.logs = [];
+    }
 }
 
-/**
- * Транспорт для отправки на сервер
- */
-export class ServerTransport implements ILogTransport {
-  private _level: LogLevel = LogLevel.ERROR;
-  private _url: string;
-  private _batchSize: number = 10;
-  private _batch: any[] = [];
-  private _timeout: number = 5000; // ms
-  private _timer: any = null;
-  private _formatter = LogFormatter.getInstance();
+export interface IServerTransportConfig extends ITransportConfig {
+    url: string;
+    batchSize?: number;
+    flushInterval?: number;
+    retryCount?: number;
+}
 
-  constructor(url: string, level: LogLevel = LogLevel.ERROR) {
-    this._url = url;
-    this._level = level;
-  }
+export class ServerTransport extends BaseTransport {
+    private url: string;
+    private batchSize: number;
+    private flushInterval: number;
+    private retryCount: number;
+    private batch: Record<string, any>[] = [];
+    private timer: ReturnType<typeof setTimeout> | null = null;
+    private isFlushing: boolean = false;
 
-  public log(level: LogLevel, module: string, message: string, data?: any): void {
-    if (level < this._level) return;
-
-    const logData = this._formatter.formatJSON(level, module, message, data);
-    this._batch.push(logData);
-
-    if (this._batch.length >= this._batchSize) {
-      this.flush();
-    } else if (!this._timer) {
-      this._timer = setTimeout(() => this.flush(), this._timeout);
-    }
-  }
-
-  public setLevel(level: LogLevel): void {
-    this._level = level;
-  }
-
-  public getLevel(): LogLevel {
-    return this._level;
-  }
-
-  /**
-   * Отправить накопленные логи на сервер
-   */
-  private async flush(): Promise<void> {
-    if (this._timer) {
-      clearTimeout(this._timer);
-      this._timer = null;
+    constructor(config: IServerTransportConfig) {
+        super(config);
+        this.url = config.url;
+        this.batchSize = config.batchSize ?? 10;
+        this.flushInterval = config.flushInterval ?? 5000;
+        this.retryCount = config.retryCount ?? 3;
+        
+        this.startTimer();
     }
 
-    if (this._batch.length === 0) return;
+    public log(level: LogLevel, module: string, message: string, data?: any): void {
+        if (!this.shouldLog(level)) return;
 
-    const logsToSend = [...this._batch];
-    this._batch = [];
+        const logData = this.formatter.formatForJSON(level, module, message, data);
+        this.batch.push(logData);
 
-    try {
-      await fetch(this._url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ logs: logsToSend })
-      });
-    } catch (e) {
-      // Не используем логгер чтобы избежать цикла
-      console.error('Failed to send logs to server:', e);
+        if (this.batch.length >= this.batchSize) {
+            this.flush();
+        }
     }
-  }
+
+    public async flush(): Promise<void> {
+        if (this.isFlushing || this.batch.length === 0) return;
+
+        this.isFlushing = true;
+        const logsToSend = [...this.batch];
+        this.batch = [];
+
+        try {
+            await this.sendWithRetry(logsToSend);
+        } catch (error) {
+            console.error('Failed to send logs:', error);
+            this.batch.unshift(...logsToSend);
+        } finally {
+            this.isFlushing = false;
+        }
+    }
+
+    private async sendWithRetry(logs: Record<string, any>[], attempt: number = 1): Promise<void> {
+        try {
+            const response = await fetch(this.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ logs, timestamp: Date.now() })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            if (attempt < this.retryCount) {
+                const delay = Math.pow(2, attempt) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return this.sendWithRetry(logs, attempt + 1);
+            }
+            throw error;
+        }
+    }
+
+    private startTimer(): void {
+        this.timer = setInterval(() => {
+            if (this.batch.length > 0) {
+                this.flush();
+            }
+        }, this.flushInterval);
+    }
+
+    public dispose(): void {
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+        
+        if (this.batch.length > 0) {
+            this.flush();
+        }
+    }
 }

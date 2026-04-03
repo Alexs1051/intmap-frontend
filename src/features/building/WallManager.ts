@@ -1,128 +1,139 @@
-import { Scene, AbstractMesh, StandardMaterial, PBRMaterial, Color3 } from "@babylonjs/core";
-import { BuildingElement } from "./types";
-import { logger } from "../../core/logger/Logger";
+import { Scene, StandardMaterial, PBRMaterial, Material } from "@babylonjs/core";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { EventBus } from "../../core/events/EventBus";
+import { EventType } from "../../core/events/EventTypes";
+import { BuildingElement } from "../../shared/types";
+import { WALL_CONFIG } from "../../shared/constants";
+import { IWallManager } from "@shared/interfaces";
 
-const wallLogger = logger.getLogger('WallManager');
+@injectable()
+export class WallManager implements IWallManager {
+    private readonly logger: Logger;
+    private readonly eventBus: EventBus;
+    
+    private walls: BuildingElement[] = [];
+    private wallsByFloor: Map<number, BuildingElement[]> = new Map();
+    private transparent: boolean = WALL_CONFIG.DEFAULT_TRANSPARENT;
+    private readonly transparentAlpha: number = WALL_CONFIG.TRANSPARENT_ALPHA;
 
-export class WallManager {
-  private static _instance: WallManager;
-  private readonly _walls: BuildingElement[] = [];
-  private readonly _wallsByFloor: Map<number, BuildingElement[]> = new Map();
-  private _transparent: boolean = false;
-
-  private constructor(private readonly _scene: Scene) {}
-
-  public static getInstance(scene: Scene): WallManager {
-    if (!WallManager._instance) {
-      WallManager._instance = new WallManager(scene);
+    constructor(
+        @inject(TYPES.Logger) logger: Logger,
+        @inject(TYPES.EventBus) eventBus: EventBus
+    ) {
+        this.logger = logger.getLogger('WallManager');
+        this.eventBus = eventBus;
     }
-    return WallManager._instance;
-  }
 
-  public addWall(element: BuildingElement): void {
-    this._walls.push(element);
-    
-    if (element.floorNumber) {
-      const walls = this._wallsByFloor.get(element.floorNumber) || [];
-      walls.push(element);
-      this._wallsByFloor.set(element.floorNumber, walls);
+    public setScene(_scene: Scene): void {
     }
-    
-    if (element.mesh.material && !element.originalMaterial) {
-      element.originalMaterial = element.mesh.material;
+
+    public async initialize(): Promise<void> {
+        this.logger.debug("WallManager initialized");
     }
-    
-    element.mesh.renderingGroupId = 0;
-  }
 
-  public showWallsForFloor(floorNumber: number): void {
-    this.hideAllWalls();
-    
-    const walls = this._wallsByFloor.get(floorNumber);
-    walls?.forEach(wall => {
-      wall.mesh.isVisible = true;
-      wall.isVisible = true;
-    });
-    
-    this.applyTransparency();
-  }
-
-  public showAllWalls(): void {
-    this._walls.forEach(wall => {
-      wall.mesh.setEnabled(true);
-      wall.mesh.isVisible = true;
-      wall.isVisible = true;
-    });
-    
-    this.applyTransparency();
-  }
-
-  public hideAllWalls(): void {
-    this._walls.forEach(wall => {
-      wall.mesh.isVisible = false;
-      wall.isVisible = false;
-    });
-  }
-
-  public toggleTransparency(): void {
-    this._transparent = !this._transparent;
-    this.applyTransparency();
-  }
-
-  public setTransparency(transparent: boolean): void {
-    if (this._transparent !== transparent) {
-      this._transparent = transparent;
-      this.applyTransparency();
+    public update(_deltaTime: number): void {
+        // Не требует обновления
     }
-  }
 
-  private applyTransparency(): void {
-    this._walls.forEach(wall => {
-      if (!wall.mesh.isVisible || !wall.mesh.material) return;
+    public dispose(): void {
+        this.walls = [];
+        this.wallsByFloor.clear();
+        this.logger.info("WallManager disposed");
+    }
 
-      const alpha = this._transparent ? 0.5 : 1.0;
-      const material = wall.mesh.material;
+    public addWall(element: BuildingElement): void {
+        this.walls.push(element);
 
-      if (material instanceof StandardMaterial) {
-        material.alpha = alpha;
-        material.alphaMode = this._transparent ? 2 : 0;
-        material.transparencyMode = this._transparent ? 2 : 0;
-        material.backFaceCulling = !this._transparent;
-        material.needDepthPrePass = this._transparent;
-        
-        if (!this._transparent && wall.originalMaterial instanceof StandardMaterial) {
-          material.diffuseColor = wall.originalMaterial.diffuseColor.clone();
+        if (element.floorNumber) {
+            const walls = this.wallsByFloor.get(element.floorNumber) || [];
+            walls.push(element);
+            this.wallsByFloor.set(element.floorNumber, walls);
         }
-      } else if (material instanceof PBRMaterial) {
-        material.alpha = alpha;
-        material.alphaMode = this._transparent ? 2 : 0;
-        material.transparencyMode = this._transparent ? 2 : 0;
-        material.backFaceCulling = !this._transparent;
-        material.needDepthPrePass = this._transparent;
-        
-        if (!this._transparent && wall.originalMaterial instanceof PBRMaterial) {
-          material.albedoColor = wall.originalMaterial.albedoColor.clone();
+
+        if (element.mesh.material && !element.originalMaterial) {
+            element.originalMaterial = element.mesh.material as any;
         }
-      }
-    });
-  }
+    }
 
-  public setVisible(visible: boolean): void {
-    this._walls.forEach(wall => {
-      wall.mesh.isVisible = visible;
-      wall.isVisible = visible;
-    });
-  }
+    public showWallsForFloor(floorNumber: number): void {
+        this.hideAllWalls();
 
-  public get walls(): BuildingElement[] {
-    return this._walls;
-  }
+        const walls = this.wallsByFloor.get(floorNumber);
+        walls?.forEach(wall => {
+            wall.mesh.isVisible = true;
+            wall.isVisible = true;
+        });
 
-  public get isTransparent(): boolean {
-    return this._transparent;
-  }
+        this.applyTransparency();
+    }
 
-  public get count(): number {
-    return this._walls.length;
-  }
+    public showAllWalls(): void {
+        this.walls.forEach(wall => {
+            wall.mesh.isVisible = true;
+            wall.isVisible = true;
+        });
+        this.applyTransparency();
+    }
+
+    public hideAllWalls(): void {
+        this.walls.forEach(wall => {
+            wall.mesh.isVisible = false;
+            wall.isVisible = false;
+        });
+    }
+
+    public toggleTransparency(): void {
+        this.transparent = !this.transparent;
+        this.applyTransparency();
+        this.eventBus.emit(EventType.WALL_TRANSPARENCY_TOGGLED, { transparent: this.transparent });
+    }
+
+    public setTransparency(transparent: boolean): void {
+        if (this.transparent !== transparent) {
+            this.transparent = transparent;
+            this.applyTransparency();
+        }
+    }
+
+    private applyTransparency(): void {
+        const alpha = this.transparent ? this.transparentAlpha : 1.0;
+
+        this.walls.forEach(wall => {
+            if (!wall.mesh.isVisible) return;
+            
+            const material = wall.mesh.material;
+            if (!material) return;
+
+            if (material instanceof StandardMaterial) {
+                material.alpha = alpha;
+                material.transparencyMode = this.transparent 
+                    ? Material.MATERIAL_ALPHABLEND 
+                    : Material.MATERIAL_OPAQUE;
+                
+                if (!this.transparent && wall.originalMaterial instanceof StandardMaterial) {
+                    material.diffuseColor = wall.originalMaterial.diffuseColor.clone();
+                } else if (this.transparent) {
+                    const color = material.diffuseColor.clone();
+                    material.diffuseColor = color.scale(0.8);
+                }
+            } else if (material instanceof PBRMaterial) {
+                material.alpha = alpha;
+                material.transparencyMode = this.transparent 
+                    ? Material.MATERIAL_ALPHABLEND 
+                    : Material.MATERIAL_OPAQUE;
+            }
+            
+            material.backFaceCulling = !this.transparent;
+        });
+    }
+
+    public get count(): number {
+        return this.walls.length;
+    }
+
+    public get isTransparent(): boolean {
+        return this.transparent;
+    }
 }

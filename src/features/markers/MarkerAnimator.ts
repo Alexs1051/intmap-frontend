@@ -1,247 +1,297 @@
 import { Scene, Animation, Vector3, Color3, EasingFunction, SineEase, BackEase, TransformNode } from "@babylonjs/core";
-import { logger } from "../../core/logger/Logger";
+import { injectable, inject } from "inversify";
+import { TYPES } from "../../core/di/Container";
+import { Logger } from "../../core/logger/Logger";
+import { ConfigService } from "../../core/config/ConfigService";
+import { IMarkerAnimatorConfig } from "@shared/types";
 
-const animatorLogger = logger.getLogger('MarkerAnimator');
+const DEFAULT_CONFIG: IMarkerAnimatorConfig = {
+    animationSpeed: 60,
+    normalScale: 1.0,
+    hoverScale: 1.2,
+    selectedPeakScale: 1.8,
+    selectedFinalScale: 1.5,
+    spawnPeakScale: 1.2,
+    selectedOutlineColor: { r: 0.3, g: 0.6, b: 1.0 }
+};
 
-export interface MarkerAnimationState {
-  isSelected: boolean;
-  isHovered: boolean;
-}
-
+/**
+ * Аниматор маркеров
+ */
+@injectable()
 export class MarkerAnimator {
-  private _scene: Scene;
-  private _currentAnimation: Animation | null = null;
-  
-  private readonly ANIMATION_SPEED = 60;
-  private readonly NORMAL_SCALE = 1.0;
-  private readonly HOVER_SCALE = 1.2;
-  private readonly SELECTED_PEAK_SCALE = 1.8;
-  private readonly SELECTED_FINAL_SCALE = 1.5;
-  private readonly SELECTED_OUTLINE_COLOR = new Color3(0.3, 0.6, 1.0);
+    private logger: Logger;
+    private config: IMarkerAnimatorConfig;
+    private scene?: Scene;
+    private activeAnimations: Map<TransformNode, Animation> = new Map();
+    private _isAnimating: boolean = false;
 
-  constructor(scene: Scene) {
-    this._scene = scene;
-  }
-
-  public async playSelectionAnimation(
-    node: TransformNode,
-    selected: boolean
-  ): Promise<void> {
-    if (!node) return;
-
-    this.stopCurrentAnimation(node);
-
-    if (selected) {
-      await this.playSelectAnimation(node);
-    } else {
-      await this.playDeselectAnimation(node);
+    constructor(
+        @inject(TYPES.Logger) logger: Logger,
+        @inject(TYPES.ConfigService) configService: ConfigService
+    ) {
+        this.logger = logger.getLogger('MarkerAnimator');
+        
+        const fullConfig = configService.get();
+        const customConfig = fullConfig.markerAnimator || {};
+        
+        this.config = { ...DEFAULT_CONFIG, ...customConfig };
     }
-  }
 
-  public playHoverAnimation(
-    node: TransformNode,
-    hovered: boolean,
-    isSelected: boolean
-  ): void {
-    if (!node || isSelected) return;
-
-    this.stopCurrentAnimation(node);
-
-    const targetScale = hovered ? this.HOVER_SCALE : this.NORMAL_SCALE;
-    
-    const animScale = new Animation(
-      "markerHoverAnim",
-      "scaling",
-      this.ANIMATION_SPEED,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const keys = [
-      { frame: 0, value: node.scaling.clone() },
-      { frame: 10, value: new Vector3(targetScale, targetScale, targetScale) }
-    ];
-
-    animScale.setKeys(keys);
-
-    const easing = new SineEase();
-    easing.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
-    animScale.setEasingFunction(easing);
-
-    node.animations = [];
-    node.animations.push(animScale);
-    
-    this._scene.beginAnimation(node, 0, 10, false);
-  }
-
-  public updateDistanceScale(
-    node: TransformNode,
-    distance: number,
-    isSelected: boolean,
-    isHovered: boolean
-  ): void {
-    if (isSelected || isHovered || !node) return;
-
-    const OPTIMAL_DISTANCE = 20;
-    const MIN_SCALE = 0.5;
-    const MAX_SCALE = 2.5;
-    
-    let targetScale = distance / OPTIMAL_DISTANCE;
-    targetScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
-    
-    const currentScale = node.scaling.x;
-    const newScale = this.lerp(currentScale, targetScale, 0.1);
-    
-    node.scaling.setAll(newScale);
-  }
-
-  public async playSpawnAnimation(node: TransformNode): Promise<void> {
-    if (!node) return;
-
-    node.scaling.setAll(0);
-    
-    const animScale = new Animation(
-      "markerSpawnAnim",
-      "scaling",
-      this.ANIMATION_SPEED,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const keys = [
-      { frame: 0, value: new Vector3(0, 0, 0) },
-      { frame: 15, value: new Vector3(1.2, 1.2, 1.2) },
-      { frame: 20, value: new Vector3(1.0, 1.0, 1.0) }
-    ];
-
-    animScale.setKeys(keys);
-
-    const easing = new BackEase(0.5);
-    animScale.setEasingFunction(easing);
-
-    node.animations = [];
-    node.animations.push(animScale);
-    
-    return new Promise((resolve) => {
-      this._scene.beginAnimation(node, 0, 20, false, 1.0, () => resolve());
-    });
-  }
-
-  public async playDisappearAnimation(node: TransformNode): Promise<void> {
-    if (!node) return;
-
-    const animScale = new Animation(
-      "markerDisappearAnim",
-      "scaling",
-      this.ANIMATION_SPEED,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const keys = [
-      { frame: 0, value: node.scaling.clone() },
-      { frame: 15, value: new Vector3(0, 0, 0) }
-    ];
-
-    animScale.setKeys(keys);
-
-    const easing = new SineEase();
-    easing.setEasingMode(EasingFunction.EASINGMODE_EASEIN);
-    animScale.setEasingFunction(easing);
-
-    node.animations = [];
-    node.animations.push(animScale);
-    
-    return new Promise((resolve) => {
-      this._scene.beginAnimation(node, 0, 15, false, 1.0, () => resolve());
-    });
-  }
-
-  private async playSelectAnimation(node: TransformNode): Promise<void> {
-    const animScale = new Animation(
-      "markerSelectAnim",
-      "scaling",
-      this.ANIMATION_SPEED,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const keys = [
-      { frame: 0, value: node.scaling.clone() },
-      { frame: 15, value: new Vector3(
-        this.SELECTED_PEAK_SCALE,
-        this.SELECTED_PEAK_SCALE,
-        this.SELECTED_PEAK_SCALE
-      )},
-      { frame: 25, value: new Vector3(
-        this.SELECTED_FINAL_SCALE * 1.1,
-        this.SELECTED_FINAL_SCALE * 1.1,
-        this.SELECTED_FINAL_SCALE * 1.1
-      )},
-      { frame: 30, value: new Vector3(
-        this.SELECTED_FINAL_SCALE,
-        this.SELECTED_FINAL_SCALE,
-        this.SELECTED_FINAL_SCALE
-      )}
-    ];
-
-    animScale.setKeys(keys);
-
-    const easing = new BackEase(0.5);
-    animScale.setEasingFunction(easing);
-
-    node.animations = [];
-    node.animations.push(animScale);
-    
-    return new Promise((resolve) => {
-      this._scene.beginAnimation(node, 0, 30, false, 1.0, () => resolve());
-    });
-  }
-
-  private async playDeselectAnimation(node: TransformNode): Promise<void> {
-    const animScale = new Animation(
-      "markerDeselectAnim",
-      "scaling",
-      this.ANIMATION_SPEED,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const keys = [
-      { frame: 0, value: node.scaling.clone() },
-      { frame: 15, value: new Vector3(
-        this.NORMAL_SCALE,
-        this.NORMAL_SCALE,
-        this.NORMAL_SCALE
-      )}
-    ];
-
-    animScale.setKeys(keys);
-
-    const easing = new SineEase();
-    easing.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
-    animScale.setEasingFunction(easing);
-
-    node.animations = [];
-    node.animations.push(animScale);
-    
-    return new Promise((resolve) => {
-      this._scene.beginAnimation(node, 0, 15, false, 1.0, () => resolve());
-    });
-  }
-
-  private stopCurrentAnimation(node: TransformNode): void {
-    if (this._currentAnimation) {
-      this._scene.stopAnimation(node);
-      this._currentAnimation = null;
+    /**
+     * Установить сцену
+     */
+    public setScene(scene: Scene): void {
+        this.scene = scene;
     }
-  }
 
-  private lerp(start: number, end: number, amount: number): number {
-    return start * (1 - amount) + end * amount;
-  }
+    /**
+     * Анимация выделения маркера
+     */
+    public async playSelectionAnimation(node: TransformNode, selected: boolean): Promise<void> {
+        if (!node || !this.scene) return;
 
-  public getSelectedOutlineColor(): Color3 {
-    return this.SELECTED_OUTLINE_COLOR.clone();
-  }
+        this._isAnimating = true;
+        this.stopCurrentAnimation(node);
+
+        if (selected) {
+            await this.playSelectAnimation(node);
+        } else {
+            await this.playDeselectAnimation(node);
+        }
+        
+        this._isAnimating = false;
+    }
+
+    /**
+     * Проверка, идет ли анимация
+     */
+    public isAnimating(): boolean {
+        return this._isAnimating;
+    }
+
+    /**
+     * Анимация наведения
+     */
+    public playHoverAnimation(node: TransformNode, hovered: boolean, isSelected: boolean): void {
+        if (!node || !this.scene || isSelected) return;
+
+        this.stopCurrentAnimation(node);
+
+        const targetScale = hovered ? this.config.hoverScale : this.config.normalScale;
+        
+        const animScale = new Animation(
+            "markerHoverAnim",
+            "scaling",
+            this.config.animationSpeed,
+            Animation.ANIMATIONTYPE_VECTOR3,
+            Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+
+        const keys = [
+            { frame: 0, value: node.scaling.clone() },
+            { frame: 10, value: new Vector3(targetScale, targetScale, targetScale) }
+        ];
+
+        animScale.setKeys(keys);
+
+        const easing = new SineEase();
+        easing.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
+        animScale.setEasingFunction(easing);
+
+        node.animations = [animScale];
+        this.activeAnimations.set(node, animScale);
+        
+        this.scene.beginAnimation(node, 0, 10, false);
+    }
+
+    /**
+     * Анимация масштабирования по расстоянию
+     */
+    public updateDistanceScale(node: TransformNode, distance: number, isSelected: boolean, isHovered: boolean): void {
+        if (isSelected || isHovered || !node) return;
+
+        const OPTIMAL_DISTANCE = 20;
+        const MIN_SCALE = 0.5;
+        const MAX_SCALE = 2.5;
+        
+        let targetScale = distance / OPTIMAL_DISTANCE;
+        targetScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
+        
+        const currentScale = node.scaling.x;
+        const newScale = this.lerp(currentScale, targetScale, 0.1);
+        
+        node.scaling.setAll(newScale);
+    }
+
+    /**
+     * Анимация появления
+     */
+    public async playSpawnAnimation(node: TransformNode): Promise<void> {
+        if (!node || !this.scene) return;
+
+        node.scaling.setAll(0);
+        
+        const animScale = new Animation(
+            "markerSpawnAnim",
+            "scaling",
+            this.config.animationSpeed,
+            Animation.ANIMATIONTYPE_VECTOR3,
+            Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+
+        const keys = [
+            { frame: 0, value: new Vector3(0, 0, 0) },
+            { frame: 15, value: new Vector3(this.config.spawnPeakScale, this.config.spawnPeakScale, this.config.spawnPeakScale) },
+            { frame: 20, value: new Vector3(this.config.normalScale, this.config.normalScale, this.config.normalScale) }
+        ];
+
+        animScale.setKeys(keys);
+
+        const easing = new BackEase(0.5);
+        animScale.setEasingFunction(easing);
+
+        node.animations = [animScale];
+        this.activeAnimations.set(node, animScale);
+        
+        return new Promise((resolve) => {
+            this.scene?.beginAnimation(node, 0, 20, false, 1.0, () => resolve());
+        });
+    }
+
+    /**
+     * Анимация исчезновения
+     */
+    public async playDisappearAnimation(node: TransformNode): Promise<void> {
+        if (!node || !this.scene) return;
+
+        const animScale = new Animation(
+            "markerDisappearAnim",
+            "scaling",
+            this.config.animationSpeed,
+            Animation.ANIMATIONTYPE_VECTOR3,
+            Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+
+        const keys = [
+            { frame: 0, value: node.scaling.clone() },
+            { frame: 15, value: new Vector3(0, 0, 0) }
+        ];
+
+        animScale.setKeys(keys);
+
+        const easing = new SineEase();
+        easing.setEasingMode(EasingFunction.EASINGMODE_EASEIN);
+        animScale.setEasingFunction(easing);
+
+        node.animations = [animScale];
+        this.activeAnimations.set(node, animScale);
+        
+        return new Promise((resolve) => {
+            this.scene?.beginAnimation(node, 0, 15, false, 1.0, () => resolve());
+        });
+    }
+
+    /**
+     * Анимация выделения
+     */
+    private async playSelectAnimation(node: TransformNode): Promise<void> {
+        const animScale = new Animation(
+            "markerSelectAnim",
+            "scaling",
+            this.config.animationSpeed,
+            Animation.ANIMATIONTYPE_VECTOR3,
+            Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+
+        const keys = [
+            { frame: 0, value: node.scaling.clone() },
+            { frame: 15, value: new Vector3(this.config.selectedPeakScale, this.config.selectedPeakScale, this.config.selectedPeakScale) },
+            { frame: 25, value: new Vector3(this.config.selectedFinalScale * 1.1, this.config.selectedFinalScale * 1.1, this.config.selectedFinalScale * 1.1) },
+            { frame: 30, value: new Vector3(this.config.selectedFinalScale, this.config.selectedFinalScale, this.config.selectedFinalScale) }
+        ];
+
+        animScale.setKeys(keys);
+
+        const easing = new BackEase(0.5);
+        animScale.setEasingFunction(easing);
+
+        node.animations = [animScale];
+        this.activeAnimations.set(node, animScale);
+        
+        return new Promise((resolve) => {
+            this.scene?.beginAnimation(node, 0, 30, false, 1.0, () => resolve());
+        });
+    }
+
+    /**
+     * Анимация снятия выделения
+     */
+    private async playDeselectAnimation(node: TransformNode): Promise<void> {
+        const animScale = new Animation(
+            "markerDeselectAnim",
+            "scaling",
+            this.config.animationSpeed,
+            Animation.ANIMATIONTYPE_VECTOR3,
+            Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+
+        const keys = [
+            { frame: 0, value: node.scaling.clone() },
+            { frame: 15, value: new Vector3(this.config.normalScale, this.config.normalScale, this.config.normalScale) }
+        ];
+
+        animScale.setKeys(keys);
+
+        const easing = new SineEase();
+        easing.setEasingMode(EasingFunction.EASINGMODE_EASEOUT);
+        animScale.setEasingFunction(easing);
+
+        node.animations = [animScale];
+        this.activeAnimations.set(node, animScale);
+        
+        return new Promise((resolve) => {
+            this.scene?.beginAnimation(node, 0, 15, false, 1.0, () => resolve());
+        });
+    }
+
+    /**
+     * Остановить текущую анимацию
+     */
+    private stopCurrentAnimation(node: TransformNode): void {
+        const anim = this.activeAnimations.get(node);
+        if (anim && this.scene) {
+            this.scene.stopAnimation(node);
+            this.activeAnimations.delete(node);
+        }
+    }
+
+    /**
+     * Остановить все анимации
+     */
+    public stopAllAnimations(): void {
+        this.activeAnimations.forEach((_, node) => {
+            if (this.scene) {
+                this.scene.stopAnimation(node);
+            }
+        });
+        this.activeAnimations.clear();
+    }
+
+    private lerp(start: number, end: number, amount: number): number {
+        return start * (1 - amount) + end * amount;
+    }
+
+    public getSelectedOutlineColor(): Color3 {
+        const color = this.config.selectedOutlineColor;
+        if (color && typeof color.r === 'number' && typeof color.g === 'number' && typeof color.b === 'number') {
+            return new Color3(color.r, color.g, color.b);
+        }
+        return new Color3(0.3, 0.6, 1.0);
+    }
+
+    public dispose(): void {
+        this.stopAllAnimations();
+        this.logger.info("MarkerAnimator disposed");
+    }
 }

@@ -1,110 +1,341 @@
-import './styles/main.css';
-import './styles/animations.css';
+// app.ts
+import "reflect-metadata";
 
+console.log('=== APP STARTING ===');
+
+// Глобальный обработчик ошибок
+window.addEventListener('error', (event) => {
+  console.error('Global error:', event.error);
+  const debug = document.getElementById('debug');
+  if (debug) debug.innerHTML = `Error: ${event.error?.message || event.message}`;
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled rejection:', event.reason);
+  const debug = document.getElementById('debug');
+  if (debug) debug.innerHTML = `Promise Error: ${event.reason?.message || event.reason}`;
+});
+
+import { container, TYPES } from "./core/di/Container";
+import { configureContainer } from "./core/di/ContainerConfig";
 import { BabylonEngine } from "./core/engine/BabylonEngine";
 import { SceneManager } from "./core/scene/SceneManager";
-import { UIManager } from "./features/ui/UIManager";
-import { ConnectionScreen } from "./features/ui/components/ConnectionScreen";
-import { FPSCounter } from "./features/ui/components/FPSCounter";
-import { logger } from "./core/logger/Logger";
+import { Logger } from "./core/logger/Logger";
+import { EventBus } from "./core/events/EventBus";
+import { EventType } from "./core/events/EventTypes";
+import { ConfigService } from "./core/config/ConfigService";
 
-const appLogger = logger.getLogger('App');
+import './styles/main.css';
+import './styles/animations.css';
+import './styles/components/control-panel.css';
+import './styles/components/search-bar.css';
+import './styles/components/marker-details-panel.css';
+import './styles/components/popup-manager.css';
+import './styles/components/connection-screen.css';
+import './styles/components/fps-counter.css';
+import './styles/components/building-title.css';
+import './styles/components/auth-popup.css';
 
+/**
+ * Главный класс приложения
+ */
 class App {
-  private _engine: BabylonEngine;
-  private _sceneManager: SceneManager;
-  private _fpsCounter: FPSCounter;
-  private _uiManager: UIManager;
-  private _connectionScreen: ConnectionScreen;
-  private _modelUrl: string;
-  private _lastTime: number = performance.now();
+  private engine!: BabylonEngine;
+  private sceneManager!: SceneManager;
+  private logger!: Logger;
+  private eventBus!: EventBus;
+  private config!: ConfigService;
+  private lastTime: number = performance.now();
+  private isRunning: boolean = false;
 
   constructor() {
-    if (window.location.hostname.includes('github.io')) {
-      this._modelUrl = '/IntMap/models/building.glb';
-    } else {
-      this._modelUrl = './models/building.glb';
-    }
-
-    this._uiManager = UIManager.getInstance();
-    this._connectionScreen = new ConnectionScreen();
+    console.log('App constructor start');
+    const debug = document.getElementById('debug');
+    if (debug) debug.innerHTML = 'Initializing...';
     
-    this._uiManager.showLoading('Инициализация движка...');
-    this._uiManager.updateLoadingProgress(0);
+    try {
+      console.log('Configuring container...');
+      configureContainer();
+      console.log('Container configured');
 
-    this._engine = BabylonEngine.getInstance();
-    this._sceneManager = SceneManager.getInstance(this._uiManager);
-    this._fpsCounter = new FPSCounter();
+      console.log('Getting dependencies...');
+      this.engine = container.get<BabylonEngine>(TYPES.BabylonEngine);
+      this.sceneManager = container.get<SceneManager>(TYPES.SceneManager);
+      this.logger = container.get<Logger>(TYPES.Logger).getLogger('App');
+      this.eventBus = container.get<EventBus>(TYPES.EventBus);
+      this.config = container.get<ConfigService>(TYPES.ConfigService);
+      console.log('Dependencies obtained');
 
-    this.setupConnectionHandling();
-    this.loadAllResources();
+      console.log('Setting up event handlers...');
+      this.setupEventHandlers();
+      this.setupConnectionHandling();
+      this.setupLoadingHandlers();
 
-    this._engine.runRenderLoop(() => {
-      const now = performance.now();
-      const deltaTime = (now - this._lastTime) / 1000;
-      this._lastTime = now;
+      console.log('Starting app...');
+      this.start();
+
+      this.logger.info(`Application initialized (v${this.config.get().version})`);
+      console.log('App constructor done');
       
-      this._sceneManager.render(deltaTime);
-      this._fpsCounter.update();
+      if (debug) debug.innerHTML = 'App started!';
+      
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Failed to initialize application:', error);
+      if (debug) debug.innerHTML = `Error: ${error.message}`;
+      this.showError(error.message);
+    }
+  }
+
+  private setupEventHandlers(): void {
+    window.addEventListener('error', (event) => {
+      this.logger.error('Global error', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      });
+      this.eventBus.emit(EventType.ERROR_OCCURRED, { error: event.error });
     });
     
-    appLogger.info("Приложение инициализировано");
+    window.addEventListener('unhandledrejection', (event) => {
+      this.logger.error('Unhandled promise rejection', event.reason);
+      this.eventBus.emit(EventType.ERROR_OCCURRED, { error: event.reason });
+    });
+    
+    this.eventBus.on(EventType.LOADING_PROGRESS, (event) => {
+      const overall = event.data.overall || 0;
+      if (this.config.isDebug() && (overall === 0 || overall === 0.5 || overall === 1)) {
+        console.log(`Loading progress: ${(overall * 100).toFixed(1)}%`);
+      }
+    });
+    
+    this.eventBus.on(EventType.LOADING_ERROR, (event) => {
+      this.logger.error('Loading error', event.data);
+    });
+
+    this.eventBus.on(EventType.MARKER_SELECTED, (event) => {
+      this.logger.info(`Marker selected from event: ${event.data.marker?.name}`);
+    });
   }
 
   private setupConnectionHandling(): void {
-    window.addEventListener('offline', () => {
-      appLogger.warn("Интернет соединение потеряно");
-      this._connectionScreen.show('Интернет соединение потеряно');
-    });
-
-    window.addEventListener('online', () => {
-      appLogger.info("Интернет соединение восстановлено");
-      if (this._connectionScreen.isVisible) this._connectionScreen.hide();
-    });
-
-    this._connectionScreen.setRetryCallback(() => {
-      this._connectionScreen.hide();
-      this.loadAllResources();
-    });
-
+    const handleOnline = () => {
+      this.logger.info('Connection restored');
+      this.eventBus.emit(EventType.CONNECTION_STATUS_CHANGED, { online: true });
+    };
+    
+    const handleOffline = () => {
+      this.logger.warn('Connection lost');
+      this.eventBus.emit(EventType.CONNECTION_STATUS_CHANGED, { online: false });
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
     if (!navigator.onLine) {
-      this._connectionScreen.show('Нет интернет соединения');
+      handleOffline();
     }
   }
 
-  private async loadAllResources(): Promise<void> {
+  private setupLoadingHandlers(): void {
+    // Подписываемся на прогресс загрузки
+    this.eventBus.on(EventType.LOADING_PROGRESS, (data: any) => {
+      const progress = data.data?.overall || data.overall || 0;
+      const component = data.data?.component || data.component || 'ресурсов';
+      this.updateLoadingProgress(progress, `Загрузка: ${component}...`);
+    });
+    
+    this.eventBus.on(EventType.LOADING_START, () => {
+      this.updateLoadingProgress(0, 'Начало загрузки...');
+    });
+    
+    this.eventBus.on(EventType.LOADING_COMPLETE, () => {
+      setTimeout(() => {
+        this.hideLoadingScreen();
+      }, 500);
+    });
+    
+    this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
+      this.hideLoadingScreen();
+      const errorData = data.data || data;
+      const errorMessage = errorData.error?.message || errorData.error || errorData.message || "Неизвестная ошибка";
+      this.showError(`Ошибка загрузки: ${errorMessage}`)
+    });
+  }
+
+  private updateLoadingProgress(progress: number, status: string): void {
+    const percent = Math.floor(progress * 100);
+    const bar = document.getElementById('loading-bar');
+    const percentEl = document.getElementById('loading-percent');
+    const statusEl = document.getElementById('loading-status');
+    
+    if (bar) bar.style.width = `${percent}%`;
+    if (percentEl) percentEl.textContent = `${percent}%`;
+    if (statusEl) statusEl.textContent = status;
+    
+    if (this.config.isDebug() && (percent === 0 || percent === 50 || percent === 100)) {
+      console.log(`Loading progress: ${percent}%`);
+    }
+  }
+
+  private hideLoadingScreen(): void {
+    const loadingEl = document.getElementById('app-loading');
+    if (loadingEl) {
+      loadingEl.classList.add('hidden');
+      setTimeout(() => {
+        loadingEl.style.display = 'none';
+      }, 500);
+    }
+  }
+
+  private async start(): Promise<void> {
     try {
-      appLogger.info("Начинаем загрузку ресурсов");
+        this.logger.info('Starting application...');
+        
+        const modelUrl = this.config.get().modelUrl;
+        this.logger.info(`Loading model from: ${modelUrl}`);
+        
+        // 1. Загружаем все ресурсы
+        await this.sceneManager.loadAll(modelUrl);
+        
+        // 2. Получаем менеджеры
+        const buildingManager = this.sceneManager.getBuildingManager();
+        const cameraManager = this.sceneManager.getCameraManager();
+        
+        if (buildingManager && buildingManager.isLoaded) {
+            const dimensions = buildingManager.dimensions;
+            const center = buildingManager.center;
+            
+            this.logger.info(`Building loaded: ${dimensions.height}x${dimensions.width}x${dimensions.depth}`);
+            
+            if (cameraManager) {
+                cameraManager.setDimensions(dimensions);
+                cameraManager.setTargetPosition(center);
+            }
+        }
+        
+        // 3. Делаем здание видимым
+        if (buildingManager && buildingManager.data) {
+            buildingManager.data.elements.forEach(element => {
+                element.mesh.isVisible = true;
+                element.isVisible = true;
+            });
+        }
+        
+        // 4. Показываем сцену
+        await this.sceneManager.showScene();
+        
+        // 5. Запускаем рендер-луп
+        this.startRenderLoop();
+        
+        // 6. Создаём маркеры
+        const markerManager = this.sceneManager.getMarkerManager();
+        if (markerManager) {
+            await markerManager.initialize();
+        }
+        
+        // 7. Запускаем анимации с небольшой задержкой
+        if (cameraManager) {
+            setTimeout(() => {
+                this.logger.info('Starting camera intro animation...');
+                cameraManager.initialize();
+            }, 300);
+        }
+        
+        if (buildingManager && buildingManager.isLoaded) {
+            setTimeout(() => {
+                this.logger.info('Starting construction animation...');
+                buildingManager.animateConstruction();
+            }, 500);
+        }
+        
+        this.logger.info('Application started successfully');
+        
+    } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.logger.error('Failed to start application', error);
+        this.showError(error.message);
+    }
+  }
+
+  private startRenderLoop(): void {
+    if (this.isRunning) return;
+    
+    this.isRunning = true;
+    this.lastTime = performance.now();
+    
+    this.engine.runRenderLoop(() => {
+      if (!this.isRunning) return;
       
-      if (!await this.checkModelAvailability(this._modelUrl)) {
-        throw new Error("Модель недоступна");
+      const now = performance.now();
+      const deltaTime = Math.min(0.033, (now - this.lastTime) / 1000);
+      this.lastTime = now;
+      
+      try {
+        this.sceneManager.render(deltaTime);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.logger.error('Render error', error);
+        this.stop();
       }
-
-      await this._sceneManager.loadAll(this._modelUrl);
-      await this._uiManager.hideLoading();
-      await this._sceneManager.showScene();
-      
-      appLogger.info("Загрузка ресурсов завершена");
-    } catch (error) {
-      appLogger.error("Ошибка загрузки", error);
-      this._uiManager.hideLoading();
-      this._connectionScreen.showError(
-        error.message?.includes('Failed to fetch') 
-          ? 'Сервер недоступен. Проверьте соединение.'
-          : 'Не удалось загрузить модель здания'
-      );
-    }
+    });
+    
+    this.logger.debug('Render loop started');
   }
 
-  private async checkModelAvailability(url: string): Promise<boolean> {
-    try {
-      const response = await fetch(url, { method: 'HEAD' });
-      return response.ok;
-    } catch (error) {
-      appLogger.warn("Модель недоступна", error);
-      return false;
-    }
+  public stop(): void {
+    if (!this.isRunning) return;
+    
+    this.isRunning = false;
+    this.engine.stopRenderLoop();
+    this.logger.info('Application stopped');
+  }
+
+  private showError(errorMessage: string): void {
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ff4444;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: monospace;
+      z-index: 10000;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+      max-width: 90%;
+      word-break: break-word;
+      text-align: center;
+    `;
+    errorDiv.textContent = `❌ Error: ${errorMessage}`;
+    document.body.appendChild(errorDiv);
+    
+    setTimeout(() => {
+      if (errorDiv.parentNode) {
+        errorDiv.remove();
+      }
+    }, 5000);
+  }
+
+  public dispose(): void {
+    this.stop();
+    this.sceneManager.dispose();
+    this.engine.dispose();
+    this.logger.info('Application disposed');
   }
 }
 
-window.addEventListener('load', () => new App());
+window.addEventListener('load', () => {
+  console.log('Window loaded');
+  try {
+    const app = new App();
+    (window as any).__APP__ = app;
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('Failed to create app instance:', error);
+  }
+});

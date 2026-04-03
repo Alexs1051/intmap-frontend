@@ -1,0 +1,8 @@
+/* Тёмная тема (по умолчанию) */
+:root {
+  --color-bg-primary: rgba(30, 30, 40, 0.95);
+  --color-bg-secondary: rgba(255, 255, 255, 0.05);
+  --color-bg-card: rgba(30, 30, 40, 0.8);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #aaaaaa;
+}

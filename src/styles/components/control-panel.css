@@ -1,29 +1,19 @@
-/* Основной контейнер */
 .control-panel {
   position: fixed;
-  background: rgba(30, 30, 40, 0.8);
+  background: var(--color-bg-card);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(255, 255, 255, 0.1);
-  
-  /* CSS переменные для размеров */
-  --btn-size: 50px;
-  --icon-size: 30px;
-  --gap: 6px;
-  --padding: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-control-panel);
 }
 
-/* Ландшафтная ориентация (горизонтально) */
 .control-panel.landscape {
   bottom: 20px;
   right: 20px;
   display: flex;
   flex-direction: row;
-  gap: var(--gap);
-  padding: var(--padding) calc(var(--padding) * 1.5);
+  gap: var(--panel-gap);
+  padding: var(--panel-padding) calc(var(--panel-padding) * 1.5);
   border-radius: calc(var(--btn-size) * 1.2);
   max-width: calc(100vw - 40px);
   overflow-x: auto;
@@ -31,57 +21,32 @@
   white-space: nowrap;
 }
 
-/* Портретная ориентация (вертикально) */
 .control-panel.portrait {
   bottom: 20px;
   right: 20px;
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
-  padding: calc(var(--padding) * 1.5) var(--padding);
+  gap: var(--panel-gap);
+  padding: calc(var(--panel-padding) * 1.5) var(--panel-padding);
   border-radius: calc(var(--btn-size) * 1.2);
   max-height: calc(100vh - 40px);
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-/* Стили для скроллбара */
-.control-panel::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.control-panel::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-.control-panel::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-}
-
-.control-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
-}
-
-/* Стили для всех кнопок (единые) */
 .control-panel-button {
   width: var(--btn-size);
   height: var(--btn-size);
-  border-radius: 50%;
+  border-radius: var(--radius-circle);
   border: none;
   background: rgba(60, 60, 80, 0.6);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
   flex-shrink: 0;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
 }
 
 .control-panel-button img {
@@ -89,7 +54,7 @@
   height: var(--icon-size);
   object-fit: contain;
   filter: brightness(0.9);
-  transition: filter 0.2s ease;
+  transition: filter var(--transition-fast);
 }
 
 .control-panel-button:hover {
@@ -110,23 +75,12 @@
   filter: brightness(1.2);
 }
 
-/* Мобильные устройства */
 @media (max-width: 768px) {
   .control-panel {
     --btn-size: 36px;
     --icon-size: 28px;
-    --gap: 5px;
-    --padding: 6px;
-  }
-  
-  .control-panel.landscape {
-    bottom: 10px;
-    right: 10px;
-  }
-  
-  .control-panel.portrait {
-    bottom: 10px;
-    right: 10px;
+    --panel-gap: 5px;
+    --panel-padding: 6px;
   }
 }
 
@@ -134,17 +88,16 @@
   .control-panel {
     --btn-size: 32px;
     --icon-size: 24px;
-    --gap: 4px;
-    --padding: 5px;
+    --panel-gap: 4px;
+    --panel-padding: 5px;
   }
 }
 
-/* Для очень маленьких экранов */
 @media (max-width: 360px) {
   .control-panel {
     --btn-size: 28px;
     --icon-size: 20px;
-    --gap: 3px;
-    --padding: 4px;
+    --panel-gap: 3px;
+    --panel-padding: 4px;
   }
 }
