@@ -35,6 +35,20 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Ensure models directory exists
+        run: |
+          mkdir -p dist/models
+          # Копируем модель из исходников
+          if [ -f "public/models/building.glb" ]; then
+            cp public/models/building.glb dist/models/
+            echo "Model copied successfully"
+          else
+            echo "WARNING: Model file not found at public/models/building.glb"
+            # Создаём файл-заглушку, чтобы не было 404
+            echo "Model not found" > dist/models/building.glb.txt
+          fi
+          ls -la dist/models/
+
       - name: Create .nojekyll file
         run: touch dist/.nojekyll
 
@@ -42,10 +56,10 @@ jobs:
         run: |
           echo "=== Contents of dist ==="
           ls -la dist/
+          echo "=== Contents of dist/models ==="
+          ls -la dist/models/ || echo "models directory not found"
           echo "=== bundle.js exists ==="
           ls -la dist/bundle.js || echo "bundle.js not found!"
-          echo "=== index.html exists ==="
-          ls -la dist/index.html || echo "index.html not found!"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
