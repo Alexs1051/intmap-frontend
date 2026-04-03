@@ -75,16 +75,12 @@ module.exports = {
       patterns: [
         { 
           from: path.resolve(__dirname, 'public/index.html'),
-          to: path.resolve(__dirname, 'dist/index.html'),
-          transform: (content) => {
-            if (isProduction) {
-              return content.toString().replace(
-                '</head>',
-                '<base href="/IntMap/">\n</head>'
-              );
-            }
-            return content;
-          }
+          to: path.resolve(__dirname, 'dist/index.html')
+        },
+        { 
+          from: path.resolve(__dirname, 'public/styles'),
+          to: path.resolve(__dirname, 'dist/styles'),
+          noErrorOnMissing: true
         },
         { 
           from: path.resolve(__dirname, 'public/models'),
