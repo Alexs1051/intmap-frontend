@@ -35,31 +35,36 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Ensure models directory exists
+      - name: Copy assets to dist
         run: |
+          # Создаём директории
           mkdir -p dist/models
-          # Копируем модель из исходников
+          mkdir -p dist/icons
+          
+          # Копируем модель
           if [ -f "public/models/building.glb" ]; then
             cp public/models/building.glb dist/models/
-            echo "Model copied successfully"
+            echo "✅ Model copied"
           else
-            echo "WARNING: Model file not found at public/models/building.glb"
-            # Создаём файл-заглушку, чтобы не было 404
-            echo "Model not found" > dist/models/building.glb.txt
+            echo "⚠️ Model not found at public/models/building.glb"
           fi
-          ls -la dist/models/
+          
+          # Копируем все иконки
+          if [ -d "public/icons" ]; then
+            cp -r public/icons/* dist/icons/
+            echo "✅ Icons copied: $(ls public/icons | wc -l) files"
+          else
+            echo "⚠️ Icons directory not found at public/icons"
+          fi
+          
+          # Выводим содержимое для отладки
+          echo "=== dist/models ==="
+          ls -la dist/models/ || echo "empty"
+          echo "=== dist/icons ==="
+          ls -la dist/icons/ || echo "empty"
 
       - name: Create .nojekyll file
         run: touch dist/.nojekyll
-
-      - name: Debug - list dist contents
-        run: |
-          echo "=== Contents of dist ==="
-          ls -la dist/
-          echo "=== Contents of dist/models ==="
-          ls -la dist/models/ || echo "models directory not found"
-          echo "=== bundle.js exists ==="
-          ls -la dist/bundle.js || echo "bundle.js not found!"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
