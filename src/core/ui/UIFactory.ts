@@ -20,22 +20,26 @@ import {
     IPopupManager, 
     ISearchBar 
 } from "@shared/interfaces";
+import { ConfigService } from "@core/config/ConfigService";
 
 @injectable()
 export class UIFactory {
     private logger: Logger;
+    private config: ConfigService;
     private eventBus: EventBus;
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
+        @inject(TYPES.ConfigService) configService: ConfigService,
         @inject(TYPES.EventBus) eventBus: EventBus
     ) {
         this.logger = logger.getLogger('UIFactory');
+        this.config = configService;
         this.eventBus = eventBus;
     }
 
     public createControlPanel(): IControlPanel {
-        return new ControlPanel(this.logger);
+        return new ControlPanel(this.logger, this.config);
     }
 
     public createSearchBar(): ISearchBar {

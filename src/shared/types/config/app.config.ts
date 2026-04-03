@@ -15,6 +15,7 @@ export interface IAppConfig {
     apiUrl: string;
     /** URL модели здания (.glb файл) */
     modelUrl: string;
+    basePath: string;
     /** Режим отладки (включает дополнительные логи) */
     debug: boolean;
     /** Версия приложения */
