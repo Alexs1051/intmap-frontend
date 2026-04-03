@@ -79,16 +79,16 @@ export class ControlPanel implements IControlPanel {
             tooltip: string;
             type: UIEventType;
         }> = [
-            { id: 'floor-up', defaultIcon: '/icons/circle-arrow-up.png', tooltip: 'Следующий этаж', type: UIEventType.NEXT_FLOOR },
-            { id: 'floor-down', defaultIcon: '/icons/circle-arrow-down.png', tooltip: 'Предыдущий этаж', type: UIEventType.PREV_FLOOR },
-            { id: 'view', defaultIcon: '/icons/layers-off.png', activeIcon: '/icons/layers.png', tooltip: 'Этаж/Здание', type: UIEventType.TOGGLE_VIEW_MODE },
-            { id: 'walls', defaultIcon: '/icons/eye-off.png', activeIcon: '/icons/eye.png', tooltip: 'Прозрачность стен', type: UIEventType.TOGGLE_WALL_TRANSPARENCY },
-            { id: 'mode', defaultIcon: '/icons/mode-3d.png', activeIcon: '/icons/mode-2d.png', tooltip: 'Переключить 2D/3D', type: UIEventType.CAMERA_MODE_TOGGLE },
-            { id: 'theme', defaultIcon: '/icons/night.png', activeIcon: '/icons/day.png', tooltip: 'Сменить тему', type: UIEventType.TOGGLE_THEME },
-            { id: 'graph', defaultIcon: '/icons/graph-off.png', activeIcon: '/icons/graph.png', tooltip: 'Показать граф связей', type: UIEventType.TOGGLE_GRAPH },
-            { id: 'reset', defaultIcon: '/icons/reset.png', tooltip: 'Сброс камеры', type: UIEventType.RESET_CAMERA },
-            { id: 'search', defaultIcon: '/icons/search.png', tooltip: 'Поиск', type: UIEventType.SEARCH_TOGGLE },
-            { id: 'auth', defaultIcon: '/icons/lock.png', activeIcon: '/icons/lock-open.png', tooltip: 'Не авторизован', type: UIEventType.AUTH_TOGGLE }
+            { id: 'floor-up', defaultIcon: 'icons/circle-arrow-up.png', tooltip: 'Следующий этаж', type: UIEventType.NEXT_FLOOR },
+            { id: 'floor-down', defaultIcon: 'icons/circle-arrow-down.png', tooltip: 'Предыдущий этаж', type: UIEventType.PREV_FLOOR },
+            { id: 'view', defaultIcon: 'icons/layers-off.png', activeIcon: 'icons/layers.png', tooltip: 'Этаж/Здание', type: UIEventType.TOGGLE_VIEW_MODE },
+            { id: 'walls', defaultIcon: 'icons/eye-off.png', activeIcon: 'icons/eye.png', tooltip: 'Прозрачность стен', type: UIEventType.TOGGLE_WALL_TRANSPARENCY },
+            { id: 'mode', defaultIcon: 'icons/mode-3d.png', activeIcon: 'icons/mode-2d.png', tooltip: 'Переключить 2D/3D', type: UIEventType.CAMERA_MODE_TOGGLE },
+            { id: 'theme', defaultIcon: 'icons/night.png', activeIcon: 'icons/day.png', tooltip: 'Сменить тему', type: UIEventType.TOGGLE_THEME },
+            { id: 'graph', defaultIcon: 'icons/graph-off.png', activeIcon: 'icons/graph.png', tooltip: 'Показать граф связей', type: UIEventType.TOGGLE_GRAPH },
+            { id: 'reset', defaultIcon: 'icons/reset.png', tooltip: 'Сброс камеры', type: UIEventType.RESET_CAMERA },
+            { id: 'search', defaultIcon: 'icons/search.png', tooltip: 'Поиск', type: UIEventType.SEARCH_TOGGLE },
+            { id: 'auth', defaultIcon: 'icons/lock.png', activeIcon: 'icons/lock-open.png', tooltip: 'Не авторизован', type: UIEventType.AUTH_TOGGLE }
         ];
 
         buttonsConfig.forEach(config => {
