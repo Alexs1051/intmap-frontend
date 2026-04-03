@@ -2,9 +2,7 @@ import { IAppConfig } from "../types";
 
 export const CONFIG_DEFAULTS: IAppConfig = {
     apiUrl: '/api',
-    modelUrl: process.env.NODE_ENV === 'production' 
-        ? '/IntMap/models/building.glb'
-        : '/models/building.glb',
+    modelUrl: '/models/building.glb',
     debug: true,
     version: '1.0.0',
     environment: 'development',
