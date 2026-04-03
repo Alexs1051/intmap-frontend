@@ -3,12 +3,12 @@ const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
-  mode: 'development',
+  mode: 'production',
   entry: './src/app.ts',
   output: {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'dist'),
-    publicPath: '/'
+    publicPath: './'
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
@@ -62,13 +62,18 @@ module.exports = {
   },
   plugins: [
     new webpack.DefinePlugin({
-      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
       'process.env.VERSION': JSON.stringify(require('./package.json').version),
       'process.env.API_URL': JSON.stringify(process.env.API_URL || ''),
       'process.env.LOG_SERVER_URL': JSON.stringify(process.env.LOG_SERVER_URL || '')
     }),
     new CopyWebpackPlugin({
       patterns: [
+        { 
+          from: path.resolve(__dirname, 'public/index.html'),
+          to: path.resolve(__dirname, 'dist/index.html'),
+          noErrorOnMissing: false
+        },
         { 
           from: path.resolve(__dirname, 'public/models'),
           to: path.resolve(__dirname, 'dist/models'),
@@ -78,29 +83,10 @@ module.exports = {
           from: path.resolve(__dirname, 'public/icons'),
           to: path.resolve(__dirname, 'dist/icons'),
           noErrorOnMissing: true
-        },
-        {
-          from: path.resolve(__dirname, 'public/index.html'),
-          to: path.resolve(__dirname, 'dist/index.html'),
-          noErrorOnMissing: true
         }
       ]
     })
   ],
-  devServer: {
-    static: {
-      directory: path.join(__dirname, 'dist'),
-    },
-    port: 8080,
-    hot: true,
-    open: true,
-    client: {
-      overlay: {
-        errors: true,
-        warnings: false
-      }
-    }
-  },
   devtool: 'source-map',
   ignoreWarnings: [
     {

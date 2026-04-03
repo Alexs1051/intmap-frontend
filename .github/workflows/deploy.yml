@@ -33,14 +33,17 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Create .nojekyll file
+        run: touch dist/.nojekyll
+
       - name: Debug - list dist contents
         run: |
           echo "=== Contents of dist ==="
           ls -la dist/
-          echo "=== Contents of dist/models (if exists) ==="
-          ls -la dist/models/ || echo "models directory not found"
-          echo "=== Contents of dist/icons (if exists) ==="
-          ls -la dist/icons/ || echo "icons directory not found"
+          echo "=== bundle.js exists ==="
+          ls -la dist/bundle.js || echo "bundle.js not found!"
+          echo "=== index.html exists ==="
+          ls -la dist/index.html || echo "index.html not found!"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
