@@ -2,13 +2,17 @@ const path = require('path');
 const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
+// Определяем базовый путь для GitHub Pages
+const repoName = 'IntMap'; // Имя репозитория
+const publicPath = process.env.NODE_ENV === 'production' ? `/${repoName}/` : '/';
+
 module.exports = {
-  mode: 'production',
+  mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',
   entry: './src/app.ts',
   output: {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'dist'),
-    publicPath: './'
+    publicPath: publicPath
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.jsx'],
@@ -17,14 +21,12 @@ module.exports = {
       '@core': path.resolve(__dirname, 'src/core'),
       '@features': path.resolve(__dirname, 'src/features'),
       '@styles': path.resolve(__dirname, 'src/styles'),
-      
       '@shared/types': path.resolve(__dirname, 'src/shared/types'),
       '@shared/constants': path.resolve(__dirname, 'src/shared/constants'),
       '@shared/interfaces': path.resolve(__dirname, 'src/shared/interfaces'),
       '@shared/helpers': path.resolve(__dirname, 'src/shared/helpers'),
       '@shared/utils': path.resolve(__dirname, 'src/shared/utils'),
       '@shared/errors': path.resolve(__dirname, 'src/shared/errors'),
-      
       '@core/di': path.resolve(__dirname, 'src/core/di'),
       '@core/engine': path.resolve(__dirname, 'src/core/engine'),
       '@core/logger': path.resolve(__dirname, 'src/core/logger'),
@@ -33,7 +35,6 @@ module.exports = {
       '@core/assets': path.resolve(__dirname, 'src/core/assets'),
       '@core/scene': path.resolve(__dirname, 'src/core/scene'),
       '@core/ui': path.resolve(__dirname, 'src/core/ui'),
-      
       '@features/camera': path.resolve(__dirname, 'src/features/camera'),
       '@features/building': path.resolve(__dirname, 'src/features/building'),
       '@features/markers': path.resolve(__dirname, 'src/features/markers'),
@@ -62,7 +63,7 @@ module.exports = {
   },
   plugins: [
     new webpack.DefinePlugin({
-      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
       'process.env.VERSION': JSON.stringify(require('./package.json').version),
       'process.env.API_URL': JSON.stringify(process.env.API_URL || ''),
       'process.env.LOG_SERVER_URL': JSON.stringify(process.env.LOG_SERVER_URL || '')
@@ -72,7 +73,13 @@ module.exports = {
         { 
           from: path.resolve(__dirname, 'public/index.html'),
           to: path.resolve(__dirname, 'dist/index.html'),
-          noErrorOnMissing: false
+          transform: (content) => {
+            // ✅ Добавляем base в HTML при сборке
+            return content.toString().replace(
+              '</head>',
+              '<base href="/IntMap/">\n</head>'
+            );
+          }
         },
         { 
           from: path.resolve(__dirname, 'public/models'),

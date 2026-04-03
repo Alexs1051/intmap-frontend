@@ -5,10 +5,9 @@
   "scripts": {
     "start": "webpack serve --mode development",
     "build": "npm run clean && webpack --mode production && npm run copy-assets",
+    "build:dev": "npm run clean && webpack --mode development",
     "clean": "rimraf dist",
-    "copy-assets": "copyfiles -u 1 public/**/* dist/",
-    "dev": "webpack serve --mode development",
-    "watch": "webpack --watch"
+    "copy-assets": "copyfiles -u 1 public/**/* dist/"
   },
   "dependencies": {
     "@babylonjs/core": "8.55.1",
