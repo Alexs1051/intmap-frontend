@@ -1,16 +1,12 @@
 import { IAppConfig } from "../types";
 
-// Определяем базовый путь для GitHub Pages
-const isProduction = process.env.NODE_ENV === 'production';
-const BASE_PATH = isProduction ? '/IntMap/' : '/';
-
 export const CONFIG_DEFAULTS: IAppConfig = {
     apiUrl: '/api',
-    modelUrl: `${BASE_PATH}models/building.glb`,
-    basePath: BASE_PATH,
+    modelUrl: 'models/building.glb',
+    basePath: '',
     debug: true,
     version: '1.0.0',
-    environment: isProduction ? 'production' : 'development',
+    environment: 'development',
     
     engine: {
         canvasId: 'gameCanvas',

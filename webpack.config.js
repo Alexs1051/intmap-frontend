@@ -99,6 +99,21 @@ module.exports = {
       ]
     })
   ],
+  devServer: {
+    static: {
+      directory: path.join(__dirname, 'dist'),
+    },
+    port: 8080,
+    hot: true,
+    open: true,
+    historyApiFallback: true,
+    client: {
+      overlay: {
+        errors: true,
+        warnings: false
+      }
+    }
+  },
   devtool: 'source-map',
   ignoreWarnings: [
     {

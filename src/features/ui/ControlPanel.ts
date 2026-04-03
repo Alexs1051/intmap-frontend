@@ -3,7 +3,6 @@ import { Logger } from "../../core/logger/Logger";
 import { UI } from "../../shared/constants";
 import { IControlPanel } from "@shared/interfaces";
 import { UIEventType, UserInfo } from "@shared/types";
-import { ConfigService } from "@core/config/ConfigService";
 import { TYPES } from "@core/di/Container";
 
 /**
@@ -21,7 +20,6 @@ interface ControlPanelEvent {
 export class ControlPanel implements IControlPanel {
     private logger: Logger;
     private config: typeof UI.CONTROL_PANEL;
-    private basePath: string;
     
     private container: HTMLDivElement;
     private buttons: Map<string, HTMLButtonElement> = new Map();
@@ -32,11 +30,9 @@ export class ControlPanel implements IControlPanel {
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
-        @inject(TYPES.ConfigService) configService: ConfigService
     ) {
         this.logger = logger.getLogger('ControlPanel');
         this.config = UI.CONTROL_PANEL;
-        this.basePath = configService.get().basePath;
         
         this.container = this.createContainer();
         this.createButtons();
@@ -44,10 +40,6 @@ export class ControlPanel implements IControlPanel {
         
         document.body.appendChild(this.container);
         this.logger.debug("ControlPanel created");
-    }
-
-    private getIconPath(iconName: string): string {
-        return `${this.basePath}icons/${iconName}`;
     }
 
     public update(): void {
@@ -82,7 +74,7 @@ export class ControlPanel implements IControlPanel {
         });
     }
 
-        private createButtons(): void {
+    private createButtons(): void {
         const buttonsConfig: Array<{
             id: string;
             defaultIcon: string;
@@ -90,16 +82,16 @@ export class ControlPanel implements IControlPanel {
             tooltip: string;
             type: UIEventType;
         }> = [
-            { id: 'floor-up', defaultIcon: this.getIconPath('circle-arrow-up.png'), tooltip: 'Следующий этаж', type: UIEventType.NEXT_FLOOR },
-            { id: 'floor-down', defaultIcon: this.getIconPath('circle-arrow-down.png'), tooltip: 'Предыдущий этаж', type: UIEventType.PREV_FLOOR },
-            { id: 'view', defaultIcon: this.getIconPath('layers-off.png'), activeIcon: this.getIconPath('layers.png'), tooltip: 'Этаж/Здание', type: UIEventType.TOGGLE_VIEW_MODE },
-            { id: 'walls', defaultIcon: this.getIconPath('eye-off.png'), activeIcon: this.getIconPath('eye.png'), tooltip: 'Прозрачность стен', type: UIEventType.TOGGLE_WALL_TRANSPARENCY },
-            { id: 'mode', defaultIcon: this.getIconPath('mode-3d.png'), activeIcon: this.getIconPath('mode-2d.png'), tooltip: 'Переключить 2D/3D', type: UIEventType.CAMERA_MODE_TOGGLE },
-            { id: 'theme', defaultIcon: this.getIconPath('night.png'), activeIcon: this.getIconPath('day.png'), tooltip: 'Сменить тему', type: UIEventType.TOGGLE_THEME },
-            { id: 'graph', defaultIcon: this.getIconPath('graph-off.png'), activeIcon: this.getIconPath('graph.png'), tooltip: 'Показать граф связей', type: UIEventType.TOGGLE_GRAPH },
-            { id: 'reset', defaultIcon: this.getIconPath('reset.png'), tooltip: 'Сброс камеры', type: UIEventType.RESET_CAMERA },
-            { id: 'search', defaultIcon: this.getIconPath('search.png'), tooltip: 'Поиск', type: UIEventType.SEARCH_TOGGLE },
-            { id: 'auth', defaultIcon: this.getIconPath('lock.png'), activeIcon: this.getIconPath('lock-open.png'), tooltip: 'Не авторизован', type: UIEventType.AUTH_TOGGLE }
+            { id: 'floor-up', defaultIcon: 'icons/circle-arrow-up.png', tooltip: 'Следующий этаж', type: UIEventType.NEXT_FLOOR },
+            { id: 'floor-down', defaultIcon: 'icons/circle-arrow-down.png', tooltip: 'Предыдущий этаж', type: UIEventType.PREV_FLOOR },
+            { id: 'view', defaultIcon: 'icons/layers-off.png', activeIcon: 'icons/layers.png', tooltip: 'Этаж/Здание', type: UIEventType.TOGGLE_VIEW_MODE },
+            { id: 'walls', defaultIcon: 'icons/eye-off.png', activeIcon: 'icons/eye.png', tooltip: 'Прозрачность стен', type: UIEventType.TOGGLE_WALL_TRANSPARENCY },
+            { id: 'mode', defaultIcon: 'icons/mode-3d.png', activeIcon: 'icons/mode-2d.png', tooltip: 'Переключить 2D/3D', type: UIEventType.CAMERA_MODE_TOGGLE },
+            { id: 'theme', defaultIcon: 'icons/night.png', activeIcon: 'icons/day.png', tooltip: 'Сменить тему', type: UIEventType.TOGGLE_THEME },
+            { id: 'graph', defaultIcon: 'icons/graph-off.png', activeIcon: 'icons/graph.png', tooltip: 'Показать граф связей', type: UIEventType.TOGGLE_GRAPH },
+            { id: 'reset', defaultIcon: 'icons/reset.png', tooltip: 'Сброс камеры', type: UIEventType.RESET_CAMERA },
+            { id: 'search', defaultIcon: 'icons/search.png', tooltip: 'Поиск', type: UIEventType.SEARCH_TOGGLE },
+            { id: 'auth', defaultIcon: 'icons/lock.png', activeIcon: 'icons/lock-open.png', tooltip: 'Не авторизован', type: UIEventType.AUTH_TOGGLE }
         ];
 
         buttonsConfig.forEach(config => {
