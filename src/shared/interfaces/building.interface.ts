@@ -1,18 +1,20 @@
 import { Scene, Vector3, AbstractMesh, TransformNode } from "@babylonjs/core";
 import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions } from "../types";
 import { ISceneComponent, ILoadableComponent } from "./scene.interface";
+import { ParsedMarker, ParsedRoom } from "../types/dto/building.dto";
 
 export interface IBuildingLoader {
     setScene(scene: Scene): void;
     loadModel(modelUrl: string, onProgress?: (progress: number) => void): Promise<{
         meshes: AbstractMesh[];
+        transformNodes: TransformNode[];
         rootMesh: AbstractMesh | null;
     }>;
     unloadModel(): void;
 }
 
 export interface IBuildingParser {
-    parseMeshes(meshes: AbstractMesh[]): BuildingParseResult;
+    parseMeshes(loadResult: { meshes: AbstractMesh[]; transformNodes: TransformNode[]; rootMesh: AbstractMesh | null }): BuildingParseResult;
 }
 
 export interface IBuildingAnimator {
@@ -61,7 +63,22 @@ export interface IBuildingManager extends ILoadableComponent {
     getElement(name: string): BuildingElement | undefined;
     getElementsByType(type: ElementType): BuildingElement[];
     dispose(): void;
-    
+
+    /** Получить все парсенные маркеры */
+    getMarkers(): Map<string, ParsedMarker>;
+
+    /** Получить маркер по ID */
+    getMarkerById(id: string): ParsedMarker | undefined;
+
+    /** Получить все парсенные комнаты */
+    getRooms(): Map<string, ParsedRoom>;
+
+    /** Получить комнату по ID */
+    getRoomById(id: string): ParsedRoom | undefined;
+
+    /** Получить маркеры по этажу */
+    getMarkersByFloor(floorNumber: number): ParsedMarker[];
+
     readonly isLoaded: boolean;
     readonly dimensions: BuildingDimensions;
     readonly center: Vector3;

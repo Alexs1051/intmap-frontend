@@ -3,15 +3,15 @@
  */
 export const BUILDING_PARSER = {
     /** Префикс ноды этажа */
-    FLOOR_PREFIX: "SM_Floor_",
+    FLOOR_PREFIX: "Floor_",
     /** Префикс стены */
-    WALL_PREFIX: "SM_Wall_",
+    WALL_PREFIX: "Wall_",
     /** Префикс окна */
-    WINDOW_PREFIX: "SM_Window_",
+    WINDOW_PREFIX: "Window_",
     /** Префикс двери */
-    DOOR_PREFIX: "SM_Door_",
+    DOOR_PREFIX: "Door_",
     /** Префикс лестницы */
-    STAIR_PREFIX: "SM_Stair_"
+    STAIR_PREFIX: "Stair_"
 } as const;
 
 /**

@@ -82,3 +82,81 @@ export interface BuildingLoadProgress {
     /** Общий прогресс (0-1) */
     overall: number;
 }
+
+/**
+ * Тип маркера
+ */
+export type MarkerTypeDto = 'marker' | 'flag' | 'waypoint';
+
+/**
+ * Парсенный маркер из модели
+ */
+export interface ParsedMarker {
+    parsedMarker: string;
+    /** Уникальный идентификатор маркера */
+    id: string;
+    /** Тип маркера */
+    type: MarkerTypeDto;
+    /** Внутреннее имя */
+    name: string;
+    /** Отображаемое имя */
+    displayName: string;
+    /** Позиция в 3D пространстве */
+    position: Vector3;
+    /** Список ID связанных маркеров */
+    connections: string[];
+    /** Номер этажа */
+    floorNumber?: number;
+    /** ID комнаты, в которой находится маркер */
+    roomId?: string;
+    /** Метаданные маркера */
+    metadata: {
+        number?: string;      // Для FL/WP - номер
+        suffix?: string;      // Для одинаковых названий - суффикс (01, 02, 03)
+        qr?: string;          // Для FL - QR код
+    };
+}
+
+/**
+ * Парсенная комната из модели
+ */
+export interface ParsedRoom {
+    /** Уникальный идентификатор комнаты */
+    id: string;
+    /** Внутреннее имя */
+    name: string;
+    /** Отображаемое имя */
+    displayName: string;
+    /** Стены комнаты */
+    walls: BuildingElement[];
+    /** ID маркеров в комнате */
+    markers: string[];
+    /** Позиция комнаты */
+    position: Vector3;
+    /** Номер этажа */
+    floorNumber?: number;
+}
+
+/**
+ * Расширенный результат парсинга здания
+ */
+export interface BuildingParseResult {
+    /** Все элементы здания (маппинг по имени) */
+    elements: Map<string, BuildingElement>;
+    /** Элементы, сгруппированные по этажам */
+    floors: Map<number, BuildingElement[]>;
+    /** Ноды этажей (пустые TransformNode для группировки) */
+    floorNodes: Map<number, TransformNode>;
+    /** Все стены */
+    walls: BuildingElement[];
+    /** Все окна */
+    windows: BuildingElement[];
+    /** Все двери */
+    doors: BuildingElement[];
+    /** Все лестницы */
+    stairs: BuildingElement[];
+    /** Парсенные комнаты */
+    rooms: Map<string, ParsedRoom>;
+    /** Парсенные маркеры */
+    markers: Map<string, ParsedMarker>;
+}

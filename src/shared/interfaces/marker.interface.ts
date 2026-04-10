@@ -20,7 +20,8 @@ export interface IMarker {
     readonly isToMarker: boolean;
     readonly root: TransformNode;
     readonly mesh: Mesh;
-    
+    readonly isVisible: boolean;
+
     update(cameraPosition: Vector3): void;
     handleClick(): void;
     handleDoubleClick(): void;
@@ -34,6 +35,8 @@ export interface IMarker {
     dispose(): void;
 }
 
+// В shared/interfaces/marker.interface.ts
+
 export interface IMarkerManager extends ILoadableComponent {
     readonly markers: IMarker[];
     readonly selectedMarker: IMarker | null;
@@ -41,38 +44,49 @@ export interface IMarkerManager extends ILoadableComponent {
     readonly graphVisible: boolean;
     readonly graph: any;
     readonly pathfinder: any;
-    
+
     setScene(scene: Scene): void;
     setCameraManager(cameraManager: ICameraManager): void;
     handleScenePick(ray: Ray): boolean;
-    
+
     createMarker(data: MarkerData): IMarker;
     getMarker(id: string): IMarker | undefined;
     getMarkersByType(type: MarkerType): IMarker[];
+    getAllMarkers(): IMarker[];
     removeMarker(id: string): boolean;
     clearAllMarkers(): void;
-    
+
     findPath(fromId: string, toId: string): PathResult | null;
     highlightPath(pathIds: string[]): void;
     clearPathHighlight(): void;
-    
+
     focusOnMarker(markerId: string, options?: FocusOptions): Promise<void>;
     setWaypointsVisible(visible: boolean): void;
     toggleGraph(): void;
-    
+
     setOnMarkerSelected(callback: (marker: IMarker | null) => void): void;
     setSelectedMarker(marker: IMarker | null): void;
-    
+
     load(onProgress?: (progress: number) => void): Promise<void>;
     initialize(): Promise<void>;
     update(deltaTime: number): void;
     dispose(): void;
+
+    setAllMarkersVisible(visible: boolean): void;
+
+    setCurrentFloor(floor: number | 'all'): void;
+    setFromMarker(markerId: string): void;
+    setToMarker(markerId: string): void;
+    getFromMarker(): string | null;
+    getToMarker(): string | null;
+
+    updateMarkersVisibility(): void;
 }
 
 export interface IMarkerGraph {
     readonly nodeCount: number;
     readonly edgeCount: number;
-    
+
     addNode(marker: IMarker): void;
     addConnection(fromId: string, toId: string, direction: string, weight?: number): boolean;
     findPath(startId: string, endId: string): { path: string[]; totalDistance: number } | null;
@@ -84,7 +98,7 @@ export interface IMarkerGraph {
 
 export interface IMarkerGraphRenderer {
     readonly isVisible: boolean;
-    
+
     initialize(scene: Scene, graph: MarkerGraph): void;
     renderAll(): void;
     renderForMarker(markerId: string): void;

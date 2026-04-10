@@ -1,4 +1,4 @@
-import { Scene, SceneLoader, AbstractMesh } from "@babylonjs/core";
+import { Scene, SceneLoader, AbstractMesh, TransformNode } from "@babylonjs/core";
 import "@babylonjs/loaders/glTF";
 import { injectable, inject } from "inversify";
 import { TYPES } from "../../core/di/Container";
@@ -6,6 +6,12 @@ import { Logger } from "../../core/logger/Logger";
 import { EventBus } from "../../core/events/EventBus";
 import { EventType } from "../../core/events/EventTypes";
 import { IBuildingLoader } from "@shared/interfaces";
+
+export interface LoadResult {
+    meshes: AbstractMesh[];
+    transformNodes: TransformNode[];
+    rootMesh: AbstractMesh | null;
+}
 
 @injectable()
 export class BuildingLoader implements IBuildingLoader {
@@ -26,15 +32,20 @@ export class BuildingLoader implements IBuildingLoader {
     public async loadModel(
         modelUrl: string,
         onProgress?: (progress: number) => void
-    ): Promise<{ meshes: AbstractMesh[]; rootMesh: AbstractMesh | null }> {
-        if (!this.scene) throw new Error("Scene not set before load");
+    ): Promise<LoadResult> {
+        if (!this.scene) {
+            throw new Error("Scene not set before load");
+        }
 
-        this.logger.info(`Loading model: ${modelUrl}`);
+        this.logger.info(`Loading model from: ${modelUrl}`);
         this.eventBus.emit(EventType.LOADING_START, { url: modelUrl, type: 'building' });
 
         try {
             const result = await SceneLoader.ImportMeshAsync(
-                "", "", modelUrl, this.scene,
+                "",
+                "",
+                modelUrl,
+                this.scene,
                 (event) => {
                     if (event.lengthComputable && onProgress) {
                         onProgress(event.loaded / event.total);
@@ -47,14 +58,21 @@ export class BuildingLoader implements IBuildingLoader {
                 ".glb"
             );
 
-            this.logger.info(`Model loaded, meshes: ${result.meshes.length}`);
+            const transformNodes = result.transformNodes || [];
+
+            this.logger.info(`Model loaded: ${result.meshes.length} meshes, ${transformNodes.length} transform nodes`);
 
             const rootMesh = result.meshes.find(mesh =>
                 ["__root__", "root", "scene"].includes(mesh.name)
             ) || null;
 
             this.eventBus.emit(EventType.BUILDING_LOADED, { meshes: result.meshes.length });
-            return { meshes: result.meshes, rootMesh };
+
+            return {
+                meshes: result.meshes,
+                transformNodes: transformNodes,
+                rootMesh
+            };
         } catch (error) {
             this.logger.error("Failed to load model", error);
             this.eventBus.emit(EventType.LOADING_ERROR, { error });
@@ -66,9 +84,16 @@ export class BuildingLoader implements IBuildingLoader {
         if (!this.scene) return;
 
         const meshesToRemove = this.scene.meshes.filter(mesh =>
-            mesh.name.startsWith("SM_") ||
-            mesh.name.includes("building") ||
-            mesh.name.includes("Floor") ||
+            mesh.name.startsWith("Floor_") ||
+            mesh.name.startsWith("Wall_") ||
+            mesh.name.startsWith("Window_") ||
+            mesh.name.startsWith("Door_") ||
+            mesh.name.startsWith("Stair_") ||
+            mesh.name.startsWith("Room_") ||
+            mesh.name.startsWith("MR_") ||
+            mesh.name.startsWith("FL_") ||
+            mesh.name.startsWith("WP_") ||
+            mesh.name === "Connections" ||
             mesh.name.startsWith("__root__")
         );
 

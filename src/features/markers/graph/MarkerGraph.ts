@@ -5,7 +5,7 @@ import { Logger } from "../../../core/logger/Logger";
 import { EventBus } from "../../../core/events/EventBus";
 import { EventType } from "../../../core/events/EventTypes";
 import { Marker } from "../Marker";
-import { ConnectionDirection, MarkerConnection } from "@shared/types";
+import { ConnectionDirection } from "@shared/types";
 import { GraphEdge, GraphNode, GraphPathResult } from "@shared/types/dto";
 
 /**
@@ -15,7 +15,7 @@ import { GraphEdge, GraphNode, GraphPathResult } from "@shared/types/dto";
 export class MarkerGraph {
     private logger: Logger;
     private eventBus: EventBus;
-    
+
     private _nodes: Map<string, GraphNode> = new Map();
     private _edges: Map<string, GraphEdge> = new Map();
     private _markers: Map<string, Marker> = new Map();
@@ -96,29 +96,43 @@ export class MarkerGraph {
 
     public addConnectionsFromMarker(marker: Marker): void {
         const connections = marker.data.connections;
-        if (!connections || !Array.isArray(connections)) return;
 
-        connections.forEach((conn: MarkerConnection) => {
-            if (conn.fromId && conn.toId && conn.direction) {
-                this.addConnection(conn.fromId, conn.toId, conn.direction, conn.weight);
+        if (!connections || !Array.isArray(connections)) {
+            return;
+        }
+
+        // Если connections - массив строк (просто ID)
+        if (connections.length > 0 && typeof connections[0] === 'string') {
+            for (const targetId of connections) {
+                if (typeof targetId === 'string' && targetId !== marker.id) {
+                    this.addConnection(marker.id, targetId, 'two-way');
+                }
             }
-        });
+        }
+        // Если connections - массив MarkerConnection
+        else if (connections.length > 0 && typeof connections[0] === 'object') {
+            for (const conn of connections) {
+                if (conn.fromId && conn.toId && conn.direction) {
+                    this.addConnection(conn.fromId, conn.toId, conn.direction, conn.weight);
+                }
+            }
+        }
     }
 
     public findPath(startId: string, endId: string): GraphPathResult | null {
         this.logger.debug(`Finding path from ${startId} to ${endId}`);
-        
+
         if (!this._nodes.has(startId) || !this._nodes.has(endId)) {
             return null;
         }
-        
+
         const queue: string[] = [startId];
         const visited = new Set<string>([startId]);
         const previous = new Map<string, string>();
-        
+
         while (queue.length > 0) {
             const current = queue.shift()!;
-            
+
             if (current === endId) {
                 const path: string[] = [];
                 let node: string | undefined = endId;
@@ -126,12 +140,12 @@ export class MarkerGraph {
                     path.unshift(node);
                     node = previous.get(node);
                 }
-                
+
                 let totalDistance = 0;
                 for (let i = 0; i < path.length - 1; i++) {
                     const fromId = path[i];
                     const toId = path[i + 1];
-                    
+
                     // ✅ Проверяем, что fromId и toId существуют
                     if (fromId && toId) {
                         const fromNode = this._nodes.get(fromId);
@@ -141,10 +155,10 @@ export class MarkerGraph {
                         }
                     }
                 }
-                
+
                 return { path, totalDistance };
             }
-            
+
             const currentNode = this._nodes.get(current);
             if (currentNode) {
                 for (const neighborId of currentNode.connections.keys()) {
@@ -156,7 +170,7 @@ export class MarkerGraph {
                 }
             }
         }
-        
+
         this.logger.warn(`Path not found: ${startId} -> ${endId}`);
         return null;
     }
@@ -200,7 +214,7 @@ export class MarkerGraph {
 
         this._nodes.delete(markerId);
         this._markers.delete(markerId);
-        
+
         this.logger.debug(`Node removed: ${markerId}`);
         this.eventBus.emit(EventType.GRAPH_NODE_REMOVED, { markerId });
         return true;
@@ -244,7 +258,7 @@ export class MarkerGraph {
         while (queue.length > 0) {
             const current = queue.shift()!;
             const neighbors = this.getNeighborIds(current);
-            
+
             for (const neighbor of neighbors) {
                 if (!visited.has(neighbor)) {
                     visited.add(neighbor);

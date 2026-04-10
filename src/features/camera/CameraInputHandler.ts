@@ -1,208 +1,147 @@
 import { injectable } from "inversify";
 import { Logger } from "../../core/logger/Logger";
 import { CameraMode } from "../../shared/types";
-import { ICameraInputHandler } from "@shared/interfaces";
+import { ICameraInputHandler, ICameraManager } from "@shared/interfaces";
 
-interface TouchState {
-  identifier: number;
-  startX: number;
-  startY: number;
+interface PointerState {
+  isRightPressed: boolean;   // ПКМ - вращение
+  isMiddlePressed: boolean;  // СКМ - панорамирование
   lastX: number;
   lastY: number;
-  type: 'rotate' | 'pan' | 'zoom';
 }
 
 @injectable()
 export class CameraInputHandler implements ICameraInputHandler {
   private readonly logger = Logger.getInstance().getLogger('CameraInputHandler');
-  
-  private isLeftPressed: boolean = false;
-  private isRightPressed: boolean = false;
-  private activeTouches: Map<number, TouchState> = new Map();
-  private isTouchDevice: boolean;
-  private lastMouseX: number = 0;
-  private lastMouseY: number = 0;
-  private currentMode: CameraMode = CameraMode.ORBIT;
   private canvas: HTMLCanvasElement | null = null;
-  
+  private currentMode: CameraMode = CameraMode.ORBIT;
+
+  private readonly ROTATION_SENSITIVITY = 1.0;
+  private readonly PAN_SENSITIVITY = 1.0;
+
+  private pointerState: PointerState = {
+    isRightPressed: false,
+    isMiddlePressed: false,
+    lastX: 0,
+    lastY: 0
+  };
+
   private onOrbitRotate?: (dx: number, dy: number) => void;
   private onOrbitPan?: (dx: number, dy: number) => void;
   private onOrbitZoom?: (delta: number) => void;
 
   constructor() {
-    this.isTouchDevice = this.detectTouchDevice();
-    this.setupCanvasListeners();
-    this.logger.info(`Input handler initialized, touch device: ${this.isTouchDevice}`);
+    this.logger.info('CameraInputHandler initialized');
   }
 
-  private detectTouchDevice(): boolean {
-    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  }
-
-  private setupCanvasListeners(): void {
-    const canvas = document.getElementById('gameCanvas') || document.querySelector('canvas');
-    if (!canvas) {
-      this.logger.warn('Canvas not found for input handling');
-      return;
-    }
-    this.attachToCanvas(canvas as HTMLCanvasElement);
+  public setCameraManager(_cameraManager: ICameraManager): void {
   }
 
   public attachToCanvas(canvas: HTMLCanvasElement): void {
     if (this.canvas) {
       this.removeCanvasListeners();
     }
-    
-    this.canvas = canvas;
-    
-    canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-    canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
-    canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
-    canvas.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
-    canvas.addEventListener('contextmenu', this.onContextMenu.bind(this));
 
-    if (this.isTouchDevice) {
-      canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
-      canvas.addEventListener('touchmove', this.onTouchMove.bind(this));
-      canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
-    }
+    this.canvas = canvas;
+
+    // Устанавливаем стили для canvas
+    canvas.style.touchAction = 'none';
+    canvas.style.userSelect = 'none';
+
+    canvas.addEventListener('pointerdown', this.onPointerDown.bind(this));
+    canvas.addEventListener('pointermove', this.onPointerMove.bind(this));
+    canvas.addEventListener('pointerup', this.onPointerUp.bind(this));
+    canvas.addEventListener('contextmenu', this.onContextMenu.bind(this));
+    canvas.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
+
+    this.logger.info('CameraInputHandler attached to canvas');
   }
 
   private removeCanvasListeners(): void {
     if (!this.canvas) return;
-    
-    this.canvas.removeEventListener('mousedown', this.onMouseDown);
-    this.canvas.removeEventListener('mouseup', this.onMouseUp);
-    this.canvas.removeEventListener('mousemove', this.onMouseMove);
-    this.canvas.removeEventListener('wheel', this.onWheel);
+
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    this.canvas.removeEventListener('pointermove', this.onPointerMove);
+    this.canvas.removeEventListener('pointerup', this.onPointerUp);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+    this.canvas.removeEventListener('wheel', this.onWheel);
   }
 
-  private onMouseDown(e: MouseEvent): void {
-    const rect = this.canvas!.getBoundingClientRect();
-    this.lastMouseX = e.clientX - rect.left;
-    this.lastMouseY = e.clientY - rect.top;
+  private onPointerDown(e: PointerEvent): void {
+    console.log('Pointer down:', e.button);
 
-    switch (e.button) {
-      case 0: this.isLeftPressed = true; break;
-      case 2: this.isRightPressed = true; e.preventDefault(); break;
+    if (e.button === 2) { // ПКМ - вращение
+      this.pointerState.isRightPressed = true;
+      this.pointerState.lastX = e.clientX;
+      this.pointerState.lastY = e.clientY;
+      e.preventDefault();
+      e.stopPropagation();
+      this.canvas?.setPointerCapture(e.pointerId);
+      if (this.canvas) this.canvas.style.cursor = 'grabbing';
+      console.log('RKM pressed - rotation mode');
+    } else if (e.button === 1) { // СКМ - панорамирование
+      this.pointerState.isMiddlePressed = true;
+      this.pointerState.lastX = e.clientX;
+      this.pointerState.lastY = e.clientY;
+      e.preventDefault();
+      e.stopPropagation();
+      this.canvas?.setPointerCapture(e.pointerId);
+      if (this.canvas) this.canvas.style.cursor = 'move';
+      console.log('MMB pressed - pan mode');
     }
   }
 
-  private onMouseUp(e: MouseEvent): void {
-    switch (e.button) {
-      case 0: this.isLeftPressed = false; break;
-      case 2: this.isRightPressed = false; break;
+  private onPointerMove(e: PointerEvent): void {
+    if (this.pointerState.isRightPressed) {
+      const deltaX = (e.clientX - this.pointerState.lastX) * this.ROTATION_SENSITIVITY;
+      const deltaY = (e.clientY - this.pointerState.lastY) * this.ROTATION_SENSITIVITY;
+
+      if ((deltaX !== 0 || deltaY !== 0) && this.onOrbitRotate) {
+        this.onOrbitRotate(-deltaX, -deltaY);
+        this.pointerState.lastX = e.clientX;
+        this.pointerState.lastY = e.clientY;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    } else if (this.pointerState.isMiddlePressed) {
+      const deltaX = (e.clientX - this.pointerState.lastX) * this.PAN_SENSITIVITY;
+      const deltaY = (e.clientY - this.pointerState.lastY) * this.PAN_SENSITIVITY;
+
+      if ((deltaX !== 0 || deltaY !== 0) && this.onOrbitPan) {
+        this.onOrbitPan(deltaX, deltaY);
+        this.pointerState.lastX = e.clientX;
+        this.pointerState.lastY = e.clientY;
+      }
+      e.preventDefault();
+      e.stopPropagation();
     }
   }
 
-  private onMouseMove(e: MouseEvent): void {
-    const rect = this.canvas!.getBoundingClientRect();
-    const currentX = e.clientX - rect.left;
-    const currentY = e.clientY - rect.top;
-    
-    const deltaX = currentX - this.lastMouseX;
-    const deltaY = currentY - this.lastMouseY;
-    
-    if (deltaX !== 0 || deltaY !== 0) {
-      this.processMouseMovement(deltaX, deltaY);
-    }
-    
-    this.lastMouseX = currentX;
-    this.lastMouseY = currentY;
-  }
-
-  private onWheel(e: WheelEvent): void {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const delta = e.deltaY > 0 ? 1 : -1;
-    if (this.currentMode === CameraMode.ORBIT && this.onOrbitZoom) {
-      this.onOrbitZoom(delta);
+  private onPointerUp(e: PointerEvent): void {
+    if (e.button === 2) {
+      this.pointerState.isRightPressed = false;
+      if (this.canvas) this.canvas.style.cursor = 'default';
+      this.canvas?.releasePointerCapture(e.pointerId);
+      console.log('RKM released');
+    } else if (e.button === 1) {
+      this.pointerState.isMiddlePressed = false;
+      if (this.canvas) this.canvas.style.cursor = 'default';
+      this.canvas?.releasePointerCapture(e.pointerId);
+      console.log('MMB released');
     }
   }
 
   private onContextMenu(e: MouseEvent): void {
     e.preventDefault();
+    e.stopPropagation();
   }
 
-  private onTouchStart(e: TouchEvent): void {
-      e.preventDefault();
-      const rect = this.canvas!.getBoundingClientRect();
-      
-      for (let i = 0; i < e.touches.length; i++) {
-          const touch = e.touches[i];
-          if (!touch) continue;
-          
-          this.activeTouches.set(touch.identifier, {
-              identifier: touch.identifier,
-              startX: touch.clientX - rect.left,
-              startY: touch.clientY - rect.top,
-              lastX: touch.clientX - rect.left,
-              lastY: touch.clientY - rect.top,
-              type: this.determineTouchType(e.touches.length)
-          });
-      }
-  }
-
-  private onTouchMove(e: TouchEvent): void {
-      e.preventDefault();
-      const rect = this.canvas!.getBoundingClientRect();
-      
-      for (let i = 0; i < e.touches.length; i++) {
-          const touch = e.touches[i];
-          if (!touch) continue;
-          
-          const state = this.activeTouches.get(touch.identifier);
-          if (state) {
-              const currentX = touch.clientX - rect.left;
-              const currentY = touch.clientY - rect.top;
-              this.processTouchMovement(state.type, currentX - state.lastX, currentY - state.lastY);
-              
-              state.lastX = currentX;
-              state.lastY = currentY;
-          }
-      }
-  }
-
-  private onTouchEnd(e: TouchEvent): void {
-      for (let i = 0; i < e.changedTouches.length; i++) {
-          const touch = e.changedTouches[i];
-          if (touch) {
-              this.activeTouches.delete(touch.identifier);
-          }
-      }
-  }
-
-  private determineTouchType(touchCount: number): 'rotate' | 'pan' | 'zoom' {
-    if (touchCount === 1) return 'rotate';
-    if (touchCount === 2) return 'pan';
-    return 'zoom';
-  }
-
-  private processMouseMovement(deltaX: number, deltaY: number): void {
-    if (this.currentMode !== CameraMode.ORBIT) return;
-    
-    if (this.isLeftPressed && this.onOrbitRotate) {
-      this.onOrbitRotate(deltaX, deltaY);
-    } else if (this.isRightPressed && this.onOrbitPan) {
-      this.onOrbitPan(deltaX, deltaY);
-    }
-  }
-
-  private processTouchMovement(type: 'rotate' | 'pan' | 'zoom', deltaX: number, deltaY: number): void {
-    if (this.currentMode !== CameraMode.ORBIT) return;
-    
-    switch (type) {
-      case 'rotate':
-        this.onOrbitRotate?.(deltaX, deltaY);
-        break;
-      case 'pan':
-        this.onOrbitPan?.(deltaX, deltaY);
-        break;
-      case 'zoom':
-        this.onOrbitZoom?.(deltaY > 0 ? 1 : -1);
-        break;
+  private onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.deltaY > 0 ? 1 : -1;
+    if (this.currentMode === CameraMode.ORBIT && this.onOrbitZoom) {
+      this.onOrbitZoom(delta);
     }
   }
 
@@ -218,13 +157,12 @@ export class CameraInputHandler implements ICameraInputHandler {
 
   public setMode(mode: CameraMode): void {
     this.currentMode = mode;
-    this.isLeftPressed = false;
-    this.isRightPressed = false;
-    this.activeTouches.clear();
+    this.pointerState.isRightPressed = false;
+    this.pointerState.isMiddlePressed = false;
   }
 
   public canInteractWithUI(): boolean {
-    return !this.isLeftPressed && !this.isRightPressed && this.activeTouches.size === 0;
+    return !this.pointerState.isRightPressed && !this.pointerState.isMiddlePressed;
   }
 
   public dispose(): void {

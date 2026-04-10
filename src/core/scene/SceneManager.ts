@@ -6,12 +6,12 @@ import { Logger } from "../logger/Logger";
 import { EventBus } from "../events/EventBus";
 import { EventType } from "../events/EventTypes";
 import { container } from "../di/Container";
-import { 
-    IBuildingManager, 
-    ICameraManager, 
-    ILoadableComponent, 
-    IMarkerManager, 
-    ISceneManager, 
+import {
+    IBuildingManager,
+    ICameraManager,
+    ILoadableComponent,
+    IMarkerManager,
+    ISceneManager,
     IUIManager,
     ISceneComponent
 } from "@shared/interfaces";
@@ -24,12 +24,12 @@ export class SceneManager implements ISceneManager {
     private isLoadingFlag: boolean = false;
     private logger: Logger;
     private isDisposed: boolean = false;
-    
+
     public cameraManager?: ICameraManager;
     public buildingManager?: IBuildingManager;
     public markerManager?: IMarkerManager;
     public uiManager?: IUIManager;
-    
+
 
     constructor(
         @inject(TYPES.BabylonEngine) private engine: BabylonEngine,
@@ -37,16 +37,16 @@ export class SceneManager implements ISceneManager {
         @inject(TYPES.EventBus) private eventBus: EventBus
     ) {
         this.logger = logger.getLogger('SceneManager');
-        
+
         const babylonEngine = engine.getEngine();
         const existingScene = babylonEngine.scenes?.[0];
-        
+
         if (existingScene) {
             this._scene = existingScene;
         } else {
             this._scene = new Scene(babylonEngine);
         }
-        
+
         this.registerComponents();
         this.logger.info("SceneManager initialized");
     }
@@ -65,13 +65,13 @@ export class SceneManager implements ISceneManager {
             try {
                 if (container.isBound(config.type)) {
                     const component = container.get<any>(config.type);
-                    
+
                     if (config.setScene && component && typeof component.setScene === 'function') {
                         component.setScene(this._scene);
                     }
-                    
+
                     this.registerComponent(config.name, component as ISceneComponent);
-                    
+
                     // Сохраняем ссылки на менеджеры
                     switch (config.name) {
                         case 'camera':
@@ -90,7 +90,7 @@ export class SceneManager implements ISceneManager {
                         case 'lighting':
                             break;
                     }
-                    
+
                     this.logger.info(`${config.name} registered`);
                 }
             } catch (error) {
@@ -117,7 +117,7 @@ export class SceneManager implements ISceneManager {
         } catch (error) {
             this.logger.error("Failed to get UIManager", error);
         }
-        
+
         if (this.markerManager && this.cameraManager) {
             this.markerManager.setCameraManager(this.cameraManager);
         }
@@ -125,11 +125,11 @@ export class SceneManager implements ISceneManager {
 
     public registerComponent(name: string, component: ISceneComponent): void {
         this.components.set(name, component);
-        
+
         if (this.isLoadableComponent(component)) {
             this.loadableComponents.set(name, component);
         }
-        
+
         this.logger.debug(`Component registered: ${name}`);
     }
 
@@ -142,33 +142,33 @@ export class SceneManager implements ISceneManager {
             this.logger.warn("Loading already in progress");
             return;
         }
-        
+
         this.isLoadingFlag = true;
         this.eventBus.emit(EventType.LOADING_START, { modelUrl });
-        
+
         try {
             const components = Array.from(this.loadableComponents.entries());
             const normalComponents = components.filter(([name]) => name !== 'building');
             let completedNormal = 0;
             const totalNormal = normalComponents.length;
-            
+
             this.eventBus.emit(EventType.LOADING_PROGRESS, {
                 component: 'environment',
                 progress: 0,
                 overall: 0
             });
-            
+
             await this.delay(100);
-            
+
             for (const [name, component] of normalComponents) {
                 this.logger.debug(`Loading component: ${name}`);
-                
+
                 this.eventBus.emit(EventType.LOADING_PROGRESS, {
                     component: name,
                     progress: 0,
                     overall: (completedNormal / totalNormal) * 0.3
                 });
-                
+
                 await component.load((progress) => {
                     const componentStart = completedNormal / totalNormal;
                     const componentEnd = (completedNormal + 1) / totalNormal;
@@ -179,29 +179,29 @@ export class SceneManager implements ISceneManager {
                         overall: overallProgress
                     });
                 });
-                
+
                 completedNormal++;
-                
+
                 this.eventBus.emit(EventType.LOADING_PROGRESS, {
                     component: name,
                     progress: 1,
                     overall: (completedNormal / totalNormal) * 0.3
                 });
-                
+
                 await this.delay(50);
             }
-            
+
             if (this.buildingManager) {
                 this.logger.debug("Loading building model...");
-                
+
                 this.eventBus.emit(EventType.LOADING_PROGRESS, {
                     component: 'building',
                     progress: 0,
                     overall: 0.3
                 });
-                
+
                 await this.delay(100);
-                
+
                 await this.buildingManager.loadBuilding(modelUrl, (progress: number) => {
                     const overallProgress = 0.3 + (progress * 0.7);
                     this.eventBus.emit(EventType.LOADING_PROGRESS, {
@@ -210,20 +210,20 @@ export class SceneManager implements ISceneManager {
                         overall: overallProgress
                     });
                 });
-                
+
                 this.eventBus.emit(EventType.LOADING_PROGRESS, {
                     component: 'building',
                     progress: 1,
                     overall: 1
                 });
-                
+
                 await this.delay(100);
             }
-            
+
             await this.initializeComponents();
-            
+
             this.logger.info("All resources loaded successfully");
-            
+
         } catch (error) {
             this.logger.error("Failed to load resources", error);
             this.eventBus.emit(EventType.LOADING_ERROR, { error });
@@ -240,7 +240,7 @@ export class SceneManager implements ISceneManager {
 
     private async initializeComponents(): Promise<void> {
         this.logger.debug("Initializing components");
-        
+
         if (this.uiManager && this.cameraManager && this.buildingManager && this.markerManager) {
             try {
                 this.uiManager.initialize(this._scene, {
@@ -254,7 +254,7 @@ export class SceneManager implements ISceneManager {
                 this.logger.error("Error initializing UIManager", error);
             }
         }
-        
+
         const initPromises = Array.from(this.components.values())
             .filter(component => component && typeof component.initialize === 'function')
             .map(component => {
@@ -265,13 +265,13 @@ export class SceneManager implements ISceneManager {
                     return Promise.resolve();
                 }
             });
-        
+
         await Promise.all(initPromises);
-        
+
         this.setupMarkerClickHandler();
-        
+
         this.logger.debug(`Initialized ${initPromises.length} components`);
-        
+
         if (!this._scene.activeCamera) {
             this.logger.error("No active camera after initialization!");
             this.createEmergencyCamera();
@@ -285,30 +285,30 @@ export class SceneManager implements ISceneManager {
             this.logger.warn("Cannot setup marker click handler: scene or markerManager not ready");
             return;
         }
-        
+
         const canvas = this._scene.getEngine().getRenderingCanvas();
         if (!canvas) {
             this.logger.warn("Cannot setup marker click handler: canvas not found");
             return;
         }
-        
+
         canvas.addEventListener('click', (event) => {
             if (!this.markerManager) return;
-            
+
             const rect = canvas.getBoundingClientRect();
             const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
             const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
             const ray = this._scene.createPickingRay(x, y, null, this._scene.activeCamera);
-            
+
             this.markerManager.handleScenePick(ray);
         });
-        
+
         this.logger.info("Marker click handler setup complete");
     }
-    
+
     private createEmergencyCamera(): void {
         this.logger.warn("Creating emergency camera");
-        
+
         const emergencyCamera = new ArcRotateCamera(
             "emergencyCamera",
             -Math.PI / 2,
@@ -317,16 +317,16 @@ export class SceneManager implements ISceneManager {
             Vector3.Zero(),
             this._scene
         );
-        
+
         emergencyCamera.maxZ = 2000;
         emergencyCamera.lowerRadiusLimit = 5;
         emergencyCamera.upperRadiusLimit = 500;
-        
+
         const canvas = this.engine.getCanvas();
         if (canvas) {
             emergencyCamera.attachControl(canvas, true);
         }
-        
+
         this._scene.activeCamera = emergencyCamera;
         this.logger.info("Emergency camera created");
     }
@@ -339,9 +339,9 @@ export class SceneManager implements ISceneManager {
 
     public render(deltaTime: number): void {
         if (this.isDisposed) return;
-        
+
         this.eventBus.emit(EventType.SCENE_BEFORE_RENDER, { deltaTime });
-        
+
         this.components.forEach(component => {
             try {
                 if (component && typeof component.update === 'function') {
@@ -351,19 +351,19 @@ export class SceneManager implements ISceneManager {
                 this.logger.error("Error updating component", error);
             }
         });
-        
+
         this._scene.render();
-        
+
         if (this.uiManager) {
             this.uiManager.updateFPS();
         }
-        
+
         this.eventBus.emit(EventType.SCENE_AFTER_RENDER, { deltaTime });
     }
 
     public dispose(): void {
         if (this.isDisposed) return;
-        
+
         this.components.forEach(component => {
             try {
                 if (component && typeof component.dispose === 'function') {
@@ -373,14 +373,14 @@ export class SceneManager implements ISceneManager {
                 this.logger.error("Error disposing component", error);
             }
         });
-        
+
         this.components.clear();
         this.loadableComponents.clear();
-        
+
         if (this._scene) {
             this._scene.dispose();
         }
-        
+
         this.isDisposed = true;
         this.logger.info("SceneManager disposed");
     }
@@ -407,5 +407,24 @@ export class SceneManager implements ISceneManager {
 
     public getUIManager(): IUIManager | undefined {
         return this.uiManager;
+    }
+
+    public getEngine(): BabylonEngine {
+        return this.engine;
+    }
+
+    public updateCanvas(canvas: HTMLCanvasElement): void {
+        // Обновляем ссылку на canvas в движке
+        const babylonEngine = this.engine.getEngine();
+        // @ts-ignore
+        babylonEngine._gl = null;
+        // @ts-ignore
+        babylonEngine._canvas = canvas;
+        babylonEngine.resize();
+
+        // Обновляем ссылку в сцене
+        this._scene.getEngine().resize();
+
+        this.logger.info('Canvas updated in engine');
     }
 }

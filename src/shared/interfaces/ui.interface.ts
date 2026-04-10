@@ -1,8 +1,8 @@
 import { Scene } from "@babylonjs/core";
 import { Marker } from "../../features/markers/Marker";
-import { 
-    UIEvent, UserInfo, NotificationType, SearchResult, 
-    PopupOptions, BuildingOption, AuthResult 
+import {
+    UIEvent, UserInfo, NotificationType, SearchResult,
+    PopupOptions, BuildingOption, AuthResult
 } from "../types";
 import { ICameraManager, IBuildingManager, IMarkerManager } from "./index";
 
@@ -13,36 +13,36 @@ import { ICameraManager, IBuildingManager, IMarkerManager } from "./index";
 export interface IUIManager {
     /** Инициализация UI менеджера */
     initialize(scene: Scene, dependencies: UIManagerDependencies): void;
-    
+
     /** Экран загрузки */
     showLoading(status: string): void;
     updateLoadingProgress(progress: number, status?: string): void;
     hideLoading(): void;
-    
+
     /** Уведомления */
     showNotification(message: string, type: NotificationType, duration?: number): void;
     showInfo(message: string, duration?: number): void;
     showSuccess(message: string, duration?: number): void;
     showError(message: string, duration?: number): void;
     showWarning(message: string, duration?: number): void;
-    
+
     /** Экран соединения */
     showConnection(reason?: string): void;
     showConnectionError(reason?: string): void;
     hideConnection(): void;
     setRetryCallback(callback: () => void): void;
-    
+
     /** Поиск */
     toggleSearch(): void;
-    
+
     /** FPS счётчик */
     updateFPS(): void;
     toggleFPS(show?: boolean): void;
-    
+
     /** Тема оформления */
     setTheme(theme: 'light' | 'dark'): void;
     loadTheme(): void;
-    
+
     /** Уничтожить */
     dispose(): void;
 }
@@ -143,6 +143,7 @@ export interface IMarkerDetailsPanel {
     updateFromState(active: boolean): void;
     /** Обновить состояние кнопки "Сюда" */
     updateToState(active: boolean): void;
+    updateRouteState(fromMarkerId: string | null, toMarkerId: string | null): void;
     /** Установить колбэк закрытия */
     setCloseCallback(callback: () => void): void;
     /** Установить колбэк фокуса */

@@ -4,7 +4,7 @@ import { TYPES } from "../../core/di/Container";
 import { Logger } from "../../core/logger/Logger";
 import { EventBus } from "../../core/events/EventBus";
 import { EventType } from "../../core/events/EventTypes";
-import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions } from "../../shared/types";
+import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, ParsedMarker, ParsedRoom } from "../../shared/types";
 import type { IBuildingAnimator, IBuildingLoader, IBuildingManager, IBuildingParser, IFloorManager, IWallManager } from "@shared/interfaces";
 
 @injectable()
@@ -12,13 +12,13 @@ export class BuildingManager implements IBuildingManager {
     private logger: Logger;
     private eventBus: EventBus;
     private scene?: Scene;
-    
+
     private _loader: IBuildingLoader;
     private _parser: IBuildingParser;
     private _animator: IBuildingAnimator;
     private _floorManager: IFloorManager;
     private _wallManager: IWallManager;
-    
+
     private _data: BuildingParseResult | null = null;
     private _isLoaded: boolean = false;
     private _dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
@@ -64,19 +64,26 @@ export class BuildingManager implements IBuildingManager {
         // BuildingManager не требует обновления
     }
 
-    public async loadBuilding(modelUrl: string, onProgress?: (progress: number) => void): Promise<void> {
-        if (!this.scene) throw new Error("Scene not set before load");
+    public async loadBuilding(
+        modelUrl: string,
+        onProgress?: (progress: number) => void
+    ): Promise<void> {
+        if (!this.scene) {
+            throw new Error("Scene not set before load");
+        }
 
         this.logger.info(`Loading building: ${modelUrl}`);
         this.eventBus.emit(EventType.LOADING_START, { url: modelUrl, type: 'building' });
 
         try {
             onProgress?.(0.1);
-            const loadResult = await this._loader.loadModel(modelUrl, (p) => onProgress?.(0.1 + p * 0.3));
+            const loadResult = await this._loader.loadModel(modelUrl, (p) => {
+                onProgress?.(0.1 + p * 0.3);
+            });
 
             onProgress?.(0.4);
-            this._data = this._parser.parseMeshes(loadResult.meshes);
-            
+            this._data = this._parser.parseMeshes(loadResult);
+
             onProgress?.(0.6);
             this.initializeManagers();
             this.calculateDimensions();
@@ -84,7 +91,7 @@ export class BuildingManager implements IBuildingManager {
 
             onProgress?.(1.0);
             this._isLoaded = true;
-            this.logger.info(`Building loaded. Elements: ${this._data.elements.size}, Floors: ${this._data.floors.size}, Walls: ${this._data.walls.length}`);
+            this.logger.info(`Building loaded. Elements: ${this._data.elements.size}, Floors: ${this._data.floors.size}, Walls: ${this._data.walls.length}, Markers: ${this._data.markers.size}`);
             this.eventBus.emit(EventType.BUILDING_LOADED, { dimensions: this._dimensions });
 
         } catch (error) {
@@ -104,7 +111,7 @@ export class BuildingManager implements IBuildingManager {
 
         this._data.walls.forEach(element => this._wallManager.addWall(element));
         this._floorManager.showAllFloors();
-        
+
         this.logger.info(`Managers initialized. Floors: ${this._floorManager.floorCount}, Walls: ${this._wallManager.count}`);
     }
 
@@ -219,6 +226,52 @@ export class BuildingManager implements IBuildingManager {
         (this._wallManager as any).dispose?.();
         this._data = null;
         this._isLoaded = false;
+    }
+
+    /**
+     * Получить все парсенные маркеры
+     */
+    public getMarkers(): Map<string, ParsedMarker> {
+        if (!this._data) {
+            return new Map();
+        }
+        console.log(`BuildingManager.getMarkers: returning ${this._data.markers.size} markers`);
+        return this._data.markers;
+    }
+
+    /**
+     * Получить маркер по ID
+     */
+    public getMarkerById(id: string): ParsedMarker | undefined {
+        return this._data?.markers.get(id);
+    }
+
+    /**
+     * Получить все парсенные комнаты
+     */
+    public getRooms(): Map<string, ParsedRoom> {
+        return this._data?.rooms || new Map();
+    }
+
+    /**
+     * Получить комнату по ID
+     */
+    public getRoomById(id: string): ParsedRoom | undefined {
+        return this._data?.rooms.get(id);
+    }
+
+    /**
+     * Получить маркеры по этажу
+     */
+    public getMarkersByFloor(floorNumber: number): ParsedMarker[] {
+        if (!this._data) return [];
+        const markers: ParsedMarker[] = [];
+        for (const marker of this._data.markers.values()) {
+            if (marker.floorNumber === floorNumber) {
+                markers.push(marker);
+            }
+        }
+        return markers;
     }
 
     // Геттеры для интерфейса

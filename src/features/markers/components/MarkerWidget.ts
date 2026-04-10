@@ -1,5 +1,5 @@
-import { 
-  Scene, 
+import {
+  Scene,
   TransformNode,
   MeshBuilder,
   StandardMaterial,
@@ -7,10 +7,10 @@ import {
   Vector3,
   Mesh
 } from "@babylonjs/core";
-import { 
-  AdvancedDynamicTexture, 
-  Rectangle, 
-  TextBlock, 
+import {
+  AdvancedDynamicTexture,
+  Rectangle,
+  TextBlock,
   Control,
   Grid
 } from "@babylonjs/gui";
@@ -27,7 +27,7 @@ import { MARKER_WIDGET } from "../../../shared/constants";
 export class MarkerWidget {
   private logger: Logger;
   private config: typeof MARKER_WIDGET;
-  
+
   private _root!: TransformNode;
   private _background!: Mesh;
   private _guiTexture!: AdvancedDynamicTexture;
@@ -35,13 +35,13 @@ export class MarkerWidget {
   private _titleText: TextBlock | null = null;
   private _backgroundRect!: Rectangle;
   private _outlineMesh: Mesh | null = null;
-  
+
   private _backgroundColor!: Color3;
   private _foregroundColor!: Color3;
   private _type!: MarkerType;
   private _iconName!: string;
   private _title!: string;
-  
+
   private _currentWidth!: number;
   private _currentHeight!: number;
   private _currentScale: number = 1.0;
@@ -49,9 +49,10 @@ export class MarkerWidget {
   private _isFromMarker: boolean = false;
   private _isToMarker: boolean = false;
   private _isAnimating: boolean = false;
+  private _isVisible: boolean = true;
 
   constructor(
-    @inject(TYPES.Logger) logger: Logger  ) {
+    @inject(TYPES.Logger) logger: Logger) {
     this.logger = logger.getLogger('MarkerWidget');
     this.config = MARKER_WIDGET;
   }
@@ -80,9 +81,9 @@ export class MarkerWidget {
     this._type = type;
     this._iconName = iconName;
     this._title = title;
-    
+
     const sizeMultiplier = this.config.SIZE_MULTIPLIERS[type] || 1.0;
-    
+
     if (this._type === MarkerType.FLAG || this._type === MarkerType.WAYPOINT) {
       this._currentWidth = (this.config.ICON_SIZE + (this.config.PADDING * 2)) * sizeMultiplier;
       this._currentHeight = this._currentWidth;
@@ -110,9 +111,9 @@ export class MarkerWidget {
     }
 
     this.createOutlineWireframe(scene);
-    
+
     this._background.metadata = { widget: this };
-    
+
     this.logger.debug(`Widget initialized: ${title}`);
   }
 
@@ -244,39 +245,39 @@ export class MarkerWidget {
       width: this._currentWidth / this.config.TEXTURE_SCALE,
       height: this._currentHeight / this.config.TEXTURE_SCALE
     }, scene);
-    
+
     const material = new StandardMaterial("markerBgMat", scene);
     material.diffuseColor = new Color3(1, 1, 1);
     material.alpha = 0;
     material.backFaceCulling = false;
-    
+
     bg.material = material;
     bg.parent = this._root;
     bg.position.z = 0;
     bg.isPickable = true;
     bg.enablePointerMoveEvents = true;
     bg.isVisible = true;
-    
+
     this.logger.debug(`Background created for marker, isPickable: ${bg.isPickable}`);
-    
+
     return bg;
   }
 
   private createOutlineWireframe(scene: Scene): void {
     const width = this._currentWidth / this.config.TEXTURE_SCALE;
     const height = this._currentHeight / this.config.TEXTURE_SCALE;
-    
+
     this._outlineMesh = MeshBuilder.CreatePlane("outlineWireframe", {
       width: width * this.config.OUTLINE_SCALE,
       height: height * this.config.OUTLINE_SCALE
     }, scene);
-    
+
     const outlineMaterial = new StandardMaterial("outlineMat", scene);
     outlineMaterial.diffuseColor = new Color3(1, 0.8, 0.2);
     outlineMaterial.wireframe = true;
     outlineMaterial.alpha = 0.8;
     outlineMaterial.backFaceCulling = false;
-    
+
     this._outlineMesh.material = outlineMaterial;
     this._outlineMesh.parent = this._root;
     this._outlineMesh.position.z = -0.01;
@@ -293,9 +294,9 @@ export class MarkerWidget {
 
   public setSelected(selected: boolean): void {
     if (this._isSelected === selected) return;
-    
+
     this._isSelected = selected;
-    
+
     if (selected && this._type === MarkerType.MARKER) {
       const brightColor = this.brightenColor(this._backgroundColor, 1.3);
       this._backgroundRect.background = this.rgbaToCss({
@@ -334,15 +335,15 @@ export class MarkerWidget {
 
   public updateScale(cameraPosition: Vector3): void {
     if (this._isAnimating) return;
-    
+
     const distance = Vector3.Distance(this._root.position, cameraPosition);
     const OPTIMAL_DISTANCE = 20;
     const MIN_SCALE = 0.5;
     const MAX_SCALE = 2.5;
-    
+
     let targetScale = distance / OPTIMAL_DISTANCE;
     targetScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
-    
+
     this._currentScale = this.lerp(this._currentScale, targetScale, 0.1);
     this._root.scaling.setAll(this._currentScale);
   }
@@ -363,7 +364,12 @@ export class MarkerWidget {
   }
 
   public setVisible(visible: boolean): void {
+    this._isVisible = visible;
     this._root.setEnabled(visible);
+  }
+
+  public get isVisible(): boolean {
+    return this._isVisible;
   }
 
   public dispose(): void {

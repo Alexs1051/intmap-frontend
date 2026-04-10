@@ -13,7 +13,7 @@ export class FloorManager implements IFloorManager {
     private readonly logger: Logger;
     private readonly eventBus: EventBus;
     private wallManager?: IWallManager;
-    
+
     private readonly floors: Map<number, FloorData> = new Map();
     private readonly floorNodes: Map<number, TransformNode> = new Map();
     private currentFloorNum: number = FLOOR_CONFIG.DEFAULT_FLOOR;
@@ -69,7 +69,7 @@ export class FloorManager implements IFloorManager {
             floor.elements.push(element);
             this.logger.debug(`Added element ${element.name} to floor ${floorNumber}`);
         }
-        
+
         if (floorNode && !this.floorNodes.has(floorNumber)) {
             this.floorNodes.set(floorNumber, floorNode);
             this.logger.debug(`Stored floor node for floor ${floorNumber}`);
@@ -99,12 +99,15 @@ export class FloorManager implements IFloorManager {
         }
 
         this.currentFloorNum = floorNumber;
-        
+
         if (this.viewMode === 'single') {
             this.hideOtherFloors(floorNumber);
         }
-        
-        this.eventBus.emit(EventType.FLOOR_CHANGED, { floor: floorNumber, mode: this.viewMode });
+
+        this.eventBus.emit(EventType.FLOOR_CHANGED, {
+            floor: floorNumber,
+            mode: this.viewMode
+        });
     }
 
     public showAllFloors(): void {
@@ -120,8 +123,11 @@ export class FloorManager implements IFloorManager {
             }
             floor.isVisible = true;
         }
-        
-        this.eventBus.emit(EventType.FLOOR_CHANGED, { floor: 'all', mode: this.viewMode });
+
+        this.eventBus.emit(EventType.FLOOR_CHANGED, {
+            floor: 'all',
+            mode: this.viewMode
+        });
     }
 
     public hideAllFloors(): void {
@@ -156,16 +162,16 @@ export class FloorManager implements IFloorManager {
 
     public setViewMode(mode: 'single' | 'all'): void {
         if (this.viewMode === mode) return;
-        
+
         this.viewMode = mode;
         this.logger.info(`View mode set to: ${mode}`);
-        
+
         if (mode === 'single') {
             this.showFloor(this.currentFloorNum);
         } else {
             this.showAllFloors();
         }
-        
+
         this.eventBus.emit(EventType.VIEW_MODE_CHANGED, { mode, floor: this.currentFloorNum });
     }
 

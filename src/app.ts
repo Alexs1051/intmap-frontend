@@ -45,14 +45,14 @@ class App {
   private logger!: Logger;
   private eventBus!: EventBus;
   private config!: ConfigService;
-  private lastTime: number = performance.now();
   private isRunning: boolean = false;
+  private renderLoopId: number | null = null;
 
   constructor() {
     console.log('App constructor start');
     const debug = document.getElementById('debug');
     if (debug) debug.innerHTML = 'Initializing...';
-    
+
     try {
       console.log('Configuring container...');
       configureContainer();
@@ -76,9 +76,9 @@ class App {
 
       this.logger.info(`Application initialized (v${this.config.get().version})`);
       console.log('App constructor done');
-      
+
       if (debug) debug.innerHTML = 'App started!';
-      
+
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       console.error('Failed to initialize application:', error);
@@ -98,19 +98,19 @@ class App {
       });
       this.eventBus.emit(EventType.ERROR_OCCURRED, { error: event.error });
     });
-    
+
     window.addEventListener('unhandledrejection', (event) => {
       this.logger.error('Unhandled promise rejection', event.reason);
       this.eventBus.emit(EventType.ERROR_OCCURRED, { error: event.reason });
     });
-    
+
     this.eventBus.on(EventType.LOADING_PROGRESS, (event) => {
       const overall = event.data.overall || 0;
       if (this.config.isDebug() && (overall === 0 || overall === 0.5 || overall === 1)) {
         console.log(`Loading progress: ${(overall * 100).toFixed(1)}%`);
       }
     });
-    
+
     this.eventBus.on(EventType.LOADING_ERROR, (event) => {
       this.logger.error('Loading error', event.data);
     });
@@ -125,43 +125,42 @@ class App {
       this.logger.info('Connection restored');
       this.eventBus.emit(EventType.CONNECTION_STATUS_CHANGED, { online: true });
     };
-    
+
     const handleOffline = () => {
       this.logger.warn('Connection lost');
       this.eventBus.emit(EventType.CONNECTION_STATUS_CHANGED, { online: false });
     };
-    
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
     if (!navigator.onLine) {
       handleOffline();
     }
   }
 
   private setupLoadingHandlers(): void {
-    // Подписываемся на прогресс загрузки
     this.eventBus.on(EventType.LOADING_PROGRESS, (data: any) => {
       const progress = data.data?.overall || data.overall || 0;
       const component = data.data?.component || data.component || 'ресурсов';
       this.updateLoadingProgress(progress, `Загрузка: ${component}...`);
     });
-    
+
     this.eventBus.on(EventType.LOADING_START, () => {
       this.updateLoadingProgress(0, 'Начало загрузки...');
     });
-    
+
     this.eventBus.on(EventType.LOADING_COMPLETE, () => {
       setTimeout(() => {
         this.hideLoadingScreen();
       }, 500);
     });
-    
+
     this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
       this.hideLoadingScreen();
       const errorData = data.data || data;
       const errorMessage = errorData.error?.message || errorData.error || errorData.message || "Неизвестная ошибка";
-      this.showError(`Ошибка загрузки: ${errorMessage}`)
+      this.showError(`Ошибка загрузки: ${errorMessage}`);
     });
   }
 
@@ -170,11 +169,11 @@ class App {
     const bar = document.getElementById('loading-bar');
     const percentEl = document.getElementById('loading-percent');
     const statusEl = document.getElementById('loading-status');
-    
+
     if (bar) bar.style.width = `${percent}%`;
     if (percentEl) percentEl.textContent = `${percent}%`;
     if (statusEl) statusEl.textContent = status;
-    
+
     if (this.config.isDebug() && (percent === 0 || percent === 50 || percent === 100)) {
       console.log(`Loading progress: ${percent}%`);
     }
@@ -192,87 +191,99 @@ class App {
 
   private async start(): Promise<void> {
     try {
-        this.logger.info('Starting application...');
-        
-        const modelUrl = this.config.get().modelUrl;
-        this.logger.info(`Loading model from: ${modelUrl}`);
-        
-        // 1. Загружаем все ресурсы
-        await this.sceneManager.loadAll(modelUrl);
-        
-        // 2. Получаем менеджеры
-        const buildingManager = this.sceneManager.getBuildingManager();
-        const cameraManager = this.sceneManager.getCameraManager();
-        
-        if (buildingManager && buildingManager.isLoaded) {
-            const dimensions = buildingManager.dimensions;
-            const center = buildingManager.center;
-            
-            this.logger.info(`Building loaded: ${dimensions.height}x${dimensions.width}x${dimensions.depth}`);
-            
-            if (cameraManager) {
-                cameraManager.setDimensions(dimensions);
-                cameraManager.setTargetPosition(center);
-            }
-        }
-        
-        // 3. Делаем здание видимым
-        if (buildingManager && buildingManager.data) {
-            buildingManager.data.elements.forEach(element => {
-                element.mesh.isVisible = true;
-                element.isVisible = true;
-            });
-        }
-        
-        // 4. Показываем сцену
-        await this.sceneManager.showScene();
-        
-        // 5. Запускаем рендер-луп
-        this.startRenderLoop();
-        
-        // 6. Создаём маркеры
-        const markerManager = this.sceneManager.getMarkerManager();
-        if (markerManager) {
-            await markerManager.initialize();
-        }
-        
-        // 7. Запускаем анимации с небольшой задержкой
+      this.logger.info('Starting application...');
+
+      const modelUrl = this.config.get().modelUrl;
+      this.logger.info(`Loading model from: ${modelUrl}`);
+
+      // 1. Загружаем все ресурсы
+      await this.sceneManager.loadAll(modelUrl);
+
+      // 2. Получаем менеджеры
+      const buildingManager = this.sceneManager.getBuildingManager();
+      const cameraManager = this.sceneManager.getCameraManager();
+      const markerManager = this.sceneManager.getMarkerManager();
+
+      if (buildingManager && buildingManager.isLoaded) {
+        const dimensions = buildingManager.dimensions;
+        const center = buildingManager.center;
+
+        this.logger.info(`Building loaded: ${dimensions.height}x${dimensions.width}x${dimensions.depth}`);
+
         if (cameraManager) {
-            setTimeout(() => {
-                this.logger.info('Starting camera intro animation...');
-                cameraManager.initialize();
-            }, 300);
+          cameraManager.setDimensions(dimensions);
+          cameraManager.setTargetPosition(center);
         }
-        
-        if (buildingManager && buildingManager.isLoaded) {
-            setTimeout(() => {
-                this.logger.info('Starting construction animation...');
-                buildingManager.animateConstruction();
-            }, 500);
-        }
-        
-        this.logger.info('Application started successfully');
-        
+      }
+
+      // 3. Создаём маркеры
+      if (markerManager) {
+        this.logger.info('Creating markers...');
+        await markerManager.initialize();
+
+        markerManager.setAllMarkersVisible(false);
+        this.logger.info('Markers created and hidden');
+      }
+
+      // 4. Делаем здание видимым
+      if (buildingManager && buildingManager.data) {
+        buildingManager.data.elements.forEach(element => {
+          element.mesh.isVisible = true;
+          element.isVisible = true;
+        });
+      }
+
+      // 5. Показываем сцену
+      await this.sceneManager.showScene();
+
+      // 6. Запускаем рендер-луп
+      this.startRenderLoop();
+
+      // 7. Запускаем анимации с небольшой задержкой
+      if (cameraManager) {
+        setTimeout(() => {
+          this.logger.info('Starting camera intro animation...');
+          cameraManager.initialize();
+        }, 300);
+      }
+
+      // 8. Анимацию строительства запускаем последней
+      if (buildingManager && buildingManager.isLoaded) {
+        setTimeout(async () => {
+          this.logger.info('Starting construction animation...');
+          await buildingManager.animateConstruction();
+
+          if (markerManager) {
+            // Применяем логику видимости из MarkerManager
+            markerManager.setCurrentFloor('all');
+            markerManager.updateMarkersVisibility();
+            this.logger.info('Markers visibility updated after construction animation');
+          }
+        }, 500);
+      }
+
+      this.logger.info('Application started successfully');
+
     } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        this.logger.error('Failed to start application', error);
-        this.showError(error.message);
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.logger.error('Failed to start application', error);
+      this.showError(error.message);
     }
   }
 
   private startRenderLoop(): void {
     if (this.isRunning) return;
-    
+
     this.isRunning = true;
-    this.lastTime = performance.now();
-    
-    this.engine.runRenderLoop(() => {
+    let lastTime = performance.now();
+
+    const render = () => {
       if (!this.isRunning) return;
-      
+
       const now = performance.now();
-      const deltaTime = Math.min(0.033, (now - this.lastTime) / 1000);
-      this.lastTime = now;
-      
+      const deltaTime = Math.min(0.033, (now - lastTime) / 1000);
+      lastTime = now;
+
       try {
         this.sceneManager.render(deltaTime);
       } catch (err) {
@@ -280,15 +291,22 @@ class App {
         this.logger.error('Render error', error);
         this.stop();
       }
-    });
-    
+
+      this.renderLoopId = requestAnimationFrame(render);
+    };
+
+    this.renderLoopId = requestAnimationFrame(render);
     this.logger.debug('Render loop started');
   }
 
   public stop(): void {
     if (!this.isRunning) return;
-    
+
     this.isRunning = false;
+    if (this.renderLoopId !== null) {
+      cancelAnimationFrame(this.renderLoopId);
+      this.renderLoopId = null;
+    }
     this.engine.stopRenderLoop();
     this.logger.info('Application stopped');
   }
@@ -313,7 +331,7 @@ class App {
     `;
     errorDiv.textContent = `❌ Error: ${errorMessage}`;
     document.body.appendChild(errorDiv);
-    
+
     setTimeout(() => {
       if (errorDiv.parentNode) {
         errorDiv.remove();

@@ -23,7 +23,7 @@ export class Marker implements IMarker {
   private eventBus: EventBus;
   private widget: MarkerWidget;
   private animator: MarkerAnimator;
-  
+
   private _id: string;
   private _type: MarkerType;
   private _data: AnyMarkerData;
@@ -32,8 +32,8 @@ export class Marker implements IMarker {
   private _isFromMarker: boolean = false;
   private _isToMarker: boolean = false;
 
-  public onClick: (marker: Marker) => void = () => {};
-  public onDoubleClick: (marker: Marker) => void = () => {};
+  public onClick: (marker: Marker) => void = () => { };
+  public onDoubleClick: (marker: Marker) => void = () => { };
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -47,18 +47,18 @@ export class Marker implements IMarker {
     this.eventBus = eventBus;
     this.widget = widget;
     this.animator = animator;
-    
+
     this._id = data.id;
     this._type = data.type;
     this._data = data;
-    
+
     const bgColorData = data.backgroundColor ?? DEFAULT_BG_COLOR;
     const textColorData = data.textColor ?? DEFAULT_TEXT_COLOR;
     const iconName = data.iconName ?? this.getDefaultIconForType(data.type);
-    
+
     const bgColor = new Color3(bgColorData.r, bgColorData.g, bgColorData.b);
     const fgColor = new Color3(textColorData.r, textColorData.g, textColorData.b);
-    
+
     this.widget.initialize(
       scene,
       data.position,
@@ -68,10 +68,10 @@ export class Marker implements IMarker {
       iconName,
       data.name
     );
-    
+
     this.setupInteractivity(scene);
     this.playSpawnAnimation();
-    
+
     this.logger.debug(`Marker created: ${data.id} (${data.name})`);
   }
 
@@ -97,23 +97,23 @@ export class Marker implements IMarker {
 
     mesh.isPickable = true;
     mesh.enablePointerMoveEvents = true;
-    
+
     mesh.actionManager = new ActionManager(scene);
-    
+
     mesh.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
         console.log(`Marker clicked: ${this._id}`);
         this.handleClick();
       })
     );
-    
+
     mesh.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnDoublePickTrigger, () => {
         console.log(`Marker double-clicked: ${this._id}`);
         this.handleDoubleClick();
       })
     );
-    
+
     mesh.actionManager.registerAction(
       new SetValueAction(
         ActionManager.OnPointerOverTrigger,
@@ -122,7 +122,7 @@ export class Marker implements IMarker {
         'pointer'
       )
     );
-    
+
     mesh.actionManager.registerAction(
       new SetValueAction(
         ActionManager.OnPointerOutTrigger,
@@ -157,10 +157,10 @@ export class Marker implements IMarker {
 
   public setSelected(selected: boolean): void {
     if (this._isSelected === selected) return;
-    
+
     this._isSelected = selected;
     this.widget.setSelected(selected);
-    
+
     const root = this.widget.root;
     if (root) {
       this.animator.playSelectionAnimation(root, selected).catch(err => {
@@ -171,9 +171,9 @@ export class Marker implements IMarker {
 
   public setHovered(hovered: boolean): void {
     if (this._isHovered === hovered) return;
-    
+
     this._isHovered = hovered;
-    
+
     const root = this.widget.root;
     if (root) {
       this.animator.playHoverAnimation(root, hovered, this._isSelected);
@@ -181,13 +181,25 @@ export class Marker implements IMarker {
   }
 
   public setAsFromMarker(isFrom: boolean): void {
+    if (this._isFromMarker === isFrom) return;
     this._isFromMarker = isFrom;
     this.widget.setAsFromMarker(isFrom);
+
+    // Обновляем визуал при необходимости
+    if (isFrom) {
+      this.setAsToMarker(false); // Не может быть одновременно и From, и To
+    }
   }
 
   public setAsToMarker(isTo: boolean): void {
+    if (this._isToMarker === isTo) return;
     this._isToMarker = isTo;
     this.widget.setAsToMarker(isTo);
+
+    // Обновляем визуал при необходимости
+    if (isTo) {
+      this.setAsFromMarker(false); // Не может быть одновременно и From, и To
+    }
   }
 
   public setVisible(visible: boolean): void {
@@ -266,5 +278,9 @@ export class Marker implements IMarker {
 
   public get mesh(): Mesh {
     return this.widget.mesh;
+  }
+
+  public get isVisible(): boolean {
+    return this.widget.isVisible;
   }
 }

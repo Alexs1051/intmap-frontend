@@ -32,7 +32,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
     private _currentMarker: Marker | null = null;
     private _onCloseCallback: (() => void) | null = null;
     private _onFocusCallback: ((marker: Marker) => void) | null = null;
-    
+
     private _fromActive: boolean = false;
     private _toActive: boolean = false;
     private _onFromToggle: ((marker: Marker, type: 'from') => void) | null = null;
@@ -73,9 +73,15 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         if (routeButtons) {
             const fromButton = routeButtons.children[0] as HTMLButtonElement;
             const toButton = routeButtons.children[1] as HTMLButtonElement;
-            
-            if (fromButton) fromButton.className = `route-button ${this._fromActive ? 'active' : ''}`;
-            if (toButton) toButton.className = `route-button ${this._toActive ? 'active' : ''}`;
+
+            if (fromButton) {
+                fromButton.className = `route-button ${this._fromActive ? 'active' : ''}`;
+                fromButton.style.backgroundColor = this._fromActive ? 'rgba(100, 150, 255, 0.3)' : '';
+            }
+            if (toButton) {
+                toButton.className = `route-button ${this._toActive ? 'active' : ''}`;
+                toButton.style.backgroundColor = this._toActive ? 'rgba(100, 150, 255, 0.3)' : '';
+            }
         }
     }
 
@@ -162,8 +168,20 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         fromButton.innerHTML = '<i class="fa-solid fa-arrow-right-from-bracket" style="margin-right: 8px;"></i> Отсюда';
         fromButton.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this._currentMarker && this._onFromToggle) {
-                this._onFromToggle(this._currentMarker, 'from');
+            e.preventDefault();
+
+            if (!this._currentMarker) return;
+
+            // Если кнопка уже активна - деактивируем
+            if (this._fromActive) {
+                if (this._onFromToggle) {
+                    this._onFromToggle(this._currentMarker, 'from');
+                }
+            } else {
+                // Иначе активируем (и автоматически деактивируем To если был активен)
+                if (this._onFromToggle) {
+                    this._onFromToggle(this._currentMarker, 'from');
+                }
             }
         });
 
@@ -172,14 +190,46 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         toButton.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket" style="margin-right: 8px;"></i> Сюда';
         toButton.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this._currentMarker && this._onToToggle) {
-                this._onToToggle(this._currentMarker, 'to');
+            e.preventDefault();
+
+            if (!this._currentMarker) return;
+
+            // Если кнопка уже активна - деактивируем
+            if (this._toActive) {
+                if (this._onToToggle) {
+                    this._onToToggle(this._currentMarker, 'to');
+                }
+            } else {
+                // Иначе активируем (и автоматически деактивируем From если был активен)
+                if (this._onToToggle) {
+                    this._onToToggle(this._currentMarker, 'to');
+                }
             }
         });
 
         container.appendChild(fromButton);
         container.appendChild(toButton);
         return container;
+    }
+
+    /**
+     * Обновление состояния кнопок маршрута
+     */
+    public updateRouteState(fromMarkerId: string | null, toMarkerId: string | null): void {
+        if (!this._currentMarker) return;
+
+        const newFromActive = fromMarkerId === this._currentMarker.id;
+        const newToActive = toMarkerId === this._currentMarker.id;
+
+        if (this._fromActive !== newFromActive) {
+            this._fromActive = newFromActive;
+        }
+
+        if (this._toActive !== newToActive) {
+            this._toActive = newToActive;
+        }
+
+        this.updateRouteButtons();
     }
 
     private createFocusButton(): HTMLButtonElement {
@@ -200,11 +250,11 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
     private createTitleSection(data: MarkerData): HTMLDivElement {
         const container = document.createElement('div');
         container.className = 'title-section';
-        
+
         const bgColor = data.backgroundColor ?? DEFAULT_BG_COLOR;
         const textColor = data.textColor ?? DEFAULT_TEXT_COLOR;
         const iconName = data.iconName ?? DEFAULT_ICON_NAME;
-        
+
         container.style.borderLeftColor = rgbaToCss(bgColor);
 
         const textContainer = document.createElement('div');
@@ -224,15 +274,15 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         const iconCircle = document.createElement('div');
         iconCircle.className = 'title-icon-circle';
         iconCircle.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-        
+
         const icon = document.createElement('span');
         icon.className = 'title-icon';
         icon.textContent = iconName;
         icon.style.color = rgbaToCss(textColor);
         icon.style.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
-        
+
         iconCircle.appendChild(icon);
-        
+
         container.appendChild(textContainer);
         container.appendChild(iconCircle);
 
@@ -248,7 +298,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         label.textContent = 'Описание';
 
         let htmlContent = '';
-        
+
         // ✅ Проверяем, что description - строка и не пустая
         if (description && typeof description === 'string' && description.trim()) {
             try {
@@ -259,7 +309,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
                 htmlContent = description;
             }
         }
-        
+
         const value = document.createElement('div');
         value.className = 'description-markdown';
         value.innerHTML = htmlContent || 'Нет описания';
