@@ -15,6 +15,10 @@ import { container } from "../../core/di/Container";
 import { MarkerType, AnyMarkerData, FocusOptions, PathResult, ParsedMarker, RGBA } from "../../shared/types";
 import { ICameraManager, IMarkerManager, IBuildingManager } from "@shared/interfaces";
 
+// Шаблоны описаний (импортируются как raw строки через webpack asset/source)
+import markerTemplate from '../../data/templates/marker.md';
+import flagTemplate from '../../data/templates/flag.md';
+
 /**
  * Менеджер маркеров
  */
@@ -465,29 +469,27 @@ export class MarkerManager implements IMarkerManager {
   }
 
   private generateDescription(parsedMarker: ParsedMarker): string {
-    let description = `## ${parsedMarker.displayName}\n\n`;
-
-    if (parsedMarker.metadata.number) {
-      description += `**Номер:** ${parsedMarker.metadata.number}\n\n`;
+    // Waypoint не имеют описания
+    if (parsedMarker.type === 'waypoint') {
+      return '';
     }
 
-    if (parsedMarker.roomId) {
-      description += `**Комната:** ${parsedMarker.roomId}\n\n`;
+    // Flag - шаблон с QR-кодом
+    if (parsedMarker.type === 'flag') {
+      const flagName = parsedMarker.displayName || `Флаг ${parsedMarker.metadata?.number || 'unknown'}`;
+      const qrUrl = parsedMarker.metadata?.qr || `https://example.com/flag/${parsedMarker.metadata?.number || 'unknown'}`;
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
+
+      return flagTemplate
+        .replace('{{FLAG_NAME}}', flagName)
+        .replace('{{QR_IMAGE}}', `![QR-код](${qrImageUrl})`)
+        .replace(/{{\w+}}/g, ''); // Убираем оставшиеся плейсхолдеры
     }
 
-    if (parsedMarker.floorNumber) {
-      description += `**Этаж:** ${parsedMarker.floorNumber}\n\n`;
-    }
-
-    if (parsedMarker.metadata.qr) {
-      description += `**QR-код:** [Ссылка](${parsedMarker.metadata.qr})\n\n`;
-    }
-
-    if (parsedMarker.connections.length > 0) {
-      description += `**Связи:** ${parsedMarker.connections.length}\n\n`;
-    }
-
-    return description;
+    // Marker - шаблон с названием и описанием
+    return markerTemplate
+      .replace('{{NAME}}', parsedMarker.displayName)
+      .replace('{{DESCRIPTION}}', `Краткое описание для "${parsedMarker.displayName}".`);
   }
 
   public update(_deltaTime: number): void {

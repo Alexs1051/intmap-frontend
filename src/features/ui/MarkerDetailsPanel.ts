@@ -361,12 +361,20 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         const qrContainer = document.createElement('div');
         qrContainer.className = 'qr-container';
 
+        // Генерируем QR-код как изображение через публичный API
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`;
+        const qrImage = document.createElement('img');
+        qrImage.className = 'qr-image';
+        qrImage.src = qrImageUrl;
+        qrImage.alt = 'QR-код';
+
         const qrLink = document.createElement('a');
         qrLink.href = qr;
         qrLink.target = '_blank';
         qrLink.textContent = 'Перейти по ссылке';
         qrLink.className = 'qr-link';
 
+        qrContainer.appendChild(qrImage);
         qrContainer.appendChild(qrLink);
         container.appendChild(label);
         container.appendChild(qrContainer);

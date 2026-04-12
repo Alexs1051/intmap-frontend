@@ -248,6 +248,16 @@
   font-style: italic;
 }
 
+.description-markdown img {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: var(--radius-md);
+  background: white;
+  padding: 8px;
+  display: block;
+  margin: var(--spacing-md) auto;
+}
+
 .description-markdown table {
   width: 100%;
   border-collapse: collapse;
@@ -290,6 +300,49 @@
 .info-value.monospace {
   font-family: monospace;
   font-size: 13px;
+}
+
+.qr-section {
+  margin-bottom: var(--spacing-xl);
+}
+
+.qr-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.qr-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+}
+
+.qr-image {
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-md);
+  background: white;
+  padding: 8px;
+}
+
+.qr-link {
+  color: var(--color-accent-primary);
+  font-size: 14px;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.qr-link:hover {
+  color: var(--color-accent-secondary);
+  text-decoration: underline;
 }
 
 @media (max-width: 768px) {
