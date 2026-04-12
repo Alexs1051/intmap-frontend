@@ -76,11 +76,9 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
 
             if (fromButton) {
                 fromButton.className = `route-button ${this._fromActive ? 'active' : ''}`;
-                fromButton.style.backgroundColor = this._fromActive ? 'rgba(100, 150, 255, 0.3)' : '';
             }
             if (toButton) {
                 toButton.className = `route-button ${this._toActive ? 'active' : ''}`;
-                toButton.style.backgroundColor = this._toActive ? 'rgba(100, 150, 255, 0.3)' : '';
             }
         }
     }
@@ -172,17 +170,26 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
 
             if (!this._currentMarker) return;
 
-            // Если кнопка уже активна - деактивируем
             if (this._fromActive) {
+                // Деактивируем From
+                this._fromActive = false;
                 if (this._onFromToggle) {
                     this._onFromToggle(this._currentMarker, 'from');
                 }
             } else {
-                // Иначе активируем (и автоматически деактивируем To если был активен)
+                // Активируем From, деактивируем To если был активен
+                if (this._toActive) {
+                    this._toActive = false;
+                    if (this._onToToggle) {
+                        this._onToToggle(this._currentMarker, 'to');
+                    }
+                }
+                this._fromActive = true;
                 if (this._onFromToggle) {
                     this._onFromToggle(this._currentMarker, 'from');
                 }
             }
+            this.updateRouteButtons();
         });
 
         const toButton = document.createElement('button');
@@ -194,17 +201,26 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
 
             if (!this._currentMarker) return;
 
-            // Если кнопка уже активна - деактивируем
             if (this._toActive) {
+                // Деактивируем To
+                this._toActive = false;
                 if (this._onToToggle) {
                     this._onToToggle(this._currentMarker, 'to');
                 }
             } else {
-                // Иначе активируем (и автоматически деактивируем From если был активен)
+                // Активируем To, деактивируем From если был активен
+                if (this._fromActive) {
+                    this._fromActive = false;
+                    if (this._onFromToggle) {
+                        this._onFromToggle(this._currentMarker, 'from');
+                    }
+                }
+                this._toActive = true;
                 if (this._onToToggle) {
                     this._onToToggle(this._currentMarker, 'to');
                 }
             }
+            this.updateRouteButtons();
         });
 
         container.appendChild(fromButton);
@@ -275,18 +291,33 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         iconCircle.className = 'title-icon-circle';
         iconCircle.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
 
-        const icon = document.createElement('span');
-        icon.className = 'title-icon';
-        icon.textContent = iconName;
-        icon.style.color = rgbaToCss(textColor);
-        icon.style.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
+        const iconImg = document.createElement('img');
+        iconImg.className = 'title-icon-img';
+        iconImg.src = this.getIconPath(iconName);
+        // Применяем цвет foreground к иконке через SVG feColorMatrix filter
+        const svgFilter = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="tint"><feColorMatrix type="matrix" values="0 0 0 0 ${textColor.r} 0 0 0 0 ${textColor.g} 0 0 0 0 ${textColor.b} 0 0 0 1 0"/></filter></svg>`;
+        const encodedFilter = encodeURIComponent(svgFilter);
+        iconImg.style.filter = `url("data:image/svg+xml;utf8,${encodedFilter}#tint")`;
 
-        iconCircle.appendChild(icon);
+        iconCircle.appendChild(iconImg);
 
         container.appendChild(textContainer);
         container.appendChild(iconCircle);
 
         return container;
+    }
+
+    private getIconPath(iconName: string): string {
+        const iconMap: { [key: string]: string } = {
+            location_on: '/icons/waypoint.png',
+            flag: '/icons/info.png',
+            circle: '/icons/waypoint.png',
+            '📍': '/icons/waypoint.png',
+            '🚩': '/icons/info.png',
+            '🔘': '/icons/waypoint.png'
+        };
+
+        return iconMap[iconName] || '/icons/waypoint.png';
     }
 
     private createDescriptionSection(description: string): HTMLDivElement {

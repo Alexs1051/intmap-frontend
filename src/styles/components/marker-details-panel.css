@@ -85,15 +85,20 @@
 }
 
 .route-button.active {
-  background: var(--color-accent-primary);
+  background: var(--gradient-accent);
   color: white;
-  border-color: var(--color-accent-primary);
-  box-shadow: 0 0 10px rgba(0, 210, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 10px rgba(0, 210, 255, 0.3);
 }
 
 .route-button:not(.active):hover {
   background: rgba(255, 255, 255, 0.15);
   color: var(--color-text-primary);
+}
+
+.route-button.active:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 210, 255, 0.5);
 }
 
 .focus-button {
@@ -167,9 +172,10 @@
   flex-shrink: 0;
 }
 
-.title-icon {
-  font-size: 24px;
-  font-family: 'Material Icons', 'Material Symbols Outlined';
+.title-icon-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .description-section {
@@ -290,7 +296,7 @@
   .marker-details-panel {
     width: 320px;
   }
-  
+
   .marker-details-content {
     padding: var(--spacing-lg);
   }
