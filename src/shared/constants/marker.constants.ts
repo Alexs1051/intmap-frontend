@@ -2,27 +2,18 @@
  * Конфигурация виджета маркера
  */
 export const MARKER_WIDGET = {
-    /** Размер иконки в пикселях */
-    ICON_SIZE: 32,
-    /** Размер шрифта иконки */
-    ICON_FONT_SIZE: 24,
-    /** Отступы внутри виджета */
+    ICON_SIZE: 28,
+    FONT_SIZE: 16,
     PADDING: 8,
-    /** Размер шрифта текста */
-    FONT_SIZE: 14,
-    /** Масштаб текстуры */
-    TEXTURE_SCALE: 100,
-    /** Прозрачность фона */
     BACKGROUND_ALPHA: 0.9,
-    /** Масштаб обводки */
-    OUTLINE_SCALE: 1.2,
-    /** Множители размера для разных типов маркеров */
-    SIZE_MULTIPLIERS: {
-        marker: 1.0,
-        flag: 1.2,
-        waypoint: 0.8
-    }
-} as const;
+
+    OPTIMAL_DISTANCE: 5,
+    MIN_SCALE: 0.25,
+    MAX_SCALE: 0.625,
+
+    HIDE_TEXT_DISTANCE: 35,
+    FADE_START_DISTANCE: 25
+};
 
 /**
  * Конфигурация аниматора маркеров

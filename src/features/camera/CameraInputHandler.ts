@@ -68,7 +68,7 @@ export class CameraInputHandler implements ICameraInputHandler {
   }
 
   private onPointerDown(e: PointerEvent): void {
-    console.log('Pointer down:', e.button);
+    this.logger.debug(`Pointer down: ${e.button}`);
 
     if (e.button === 2) { // ПКМ - вращение
       this.pointerState.isRightPressed = true;
@@ -78,7 +78,7 @@ export class CameraInputHandler implements ICameraInputHandler {
       e.stopPropagation();
       this.canvas?.setPointerCapture(e.pointerId);
       if (this.canvas) this.canvas.style.cursor = 'grabbing';
-      console.log('RKM pressed - rotation mode');
+      this.logger.debug('RKM pressed - rotation mode');
     } else if (e.button === 1) { // СКМ - панорамирование
       this.pointerState.isMiddlePressed = true;
       this.pointerState.lastX = e.clientX;
@@ -87,7 +87,7 @@ export class CameraInputHandler implements ICameraInputHandler {
       e.stopPropagation();
       this.canvas?.setPointerCapture(e.pointerId);
       if (this.canvas) this.canvas.style.cursor = 'move';
-      console.log('MMB pressed - pan mode');
+      this.logger.debug('MMB pressed - pan mode');
     }
   }
 
@@ -122,12 +122,12 @@ export class CameraInputHandler implements ICameraInputHandler {
       this.pointerState.isRightPressed = false;
       if (this.canvas) this.canvas.style.cursor = 'default';
       this.canvas?.releasePointerCapture(e.pointerId);
-      console.log('RKM released');
+      this.logger.debug('RKM released');
     } else if (e.button === 1) {
       this.pointerState.isMiddlePressed = false;
       if (this.canvas) this.canvas.style.cursor = 'default';
       this.canvas?.releasePointerCapture(e.pointerId);
-      console.log('MMB released');
+      this.logger.debug('MMB released');
     }
   }
 

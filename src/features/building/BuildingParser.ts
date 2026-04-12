@@ -23,9 +23,9 @@ export class BuildingParser implements IBuildingParser {
             ...loadResult.transformNodes
         ];
 
-        console.log('=== ALL OBJECTS ===');
+        this.logger.debug('=== ALL OBJECTS ===');
         allObjects.forEach(obj => {
-            console.log(`Object: ${obj.name}, Type: ${obj.getClassName()}, Parent: ${obj.parent?.name || 'null'}`);
+            this.logger.debug(`Object: ${obj.name}, Type: ${obj.getClassName()}, Parent: ${obj.parent?.name || 'null'}`);
         });
 
         const markersFound = allObjects.filter(obj =>
@@ -33,7 +33,7 @@ export class BuildingParser implements IBuildingParser {
             obj.name.startsWith('FL_') ||
             obj.name.startsWith('WP_')
         );
-        console.log(`Found ${markersFound.length} potential markers:`, markersFound.map(m => m.name));
+        this.logger.debug(`Found ${markersFound.length} potential markers:`, markersFound.map(m => m.name));
 
         const result: BuildingParseResult = {
             elements: new Map(),
@@ -55,7 +55,7 @@ export class BuildingParser implements IBuildingParser {
         const floorNodeMap = new Map<AbstractMesh | TransformNode, number>();
         result.floorNodes.forEach((node, floorNum) => {
             floorNodeMap.set(node, floorNum);
-            console.log(`Floor node mapping: ${node.name} -> floor ${floorNum}`);
+            this.logger.debug(`Floor node mapping: ${node.name} -> floor ${floorNum}`);
         });
 
         // 3. Обрабатываем строительные элементы (стены, полы и т.д.)

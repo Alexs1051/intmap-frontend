@@ -1,6 +1,7 @@
 import { injectable } from "inversify";
 import { IAppConfig } from "@shared/types";
 import { CONFIG_DEFAULTS } from "@shared/constants";
+import { Logger } from "../logger/Logger";
 
 @injectable()
 export class ConfigService {
@@ -11,7 +12,7 @@ export class ConfigService {
     const windowConfig = (window as any).__CONFIG__;
     this.config = this.mergeConfig(CONFIG_DEFAULTS, windowConfig || {});
     this.isDebugMode = this.config.debug;
-    
+
     this.logConfig();
   }
 
@@ -22,14 +23,14 @@ export class ConfigService {
     if (!defaults || typeof defaults !== 'object') {
       return overrides ?? defaults;
     }
-    
+
     const result = { ...defaults };
-    
+
     for (const key in overrides) {
       if (overrides.hasOwnProperty(key)) {
         const defaultValue = result[key];
         const overrideValue = overrides[key];
-        
+
         if (typeof overrideValue === 'object' && overrideValue !== null && !Array.isArray(overrideValue)) {
           result[key] = this.mergeConfig(defaultValue, overrideValue);
         } else {
@@ -37,7 +38,7 @@ export class ConfigService {
         }
       }
     }
-    
+
     return result;
   }
 
@@ -61,14 +62,14 @@ export class ConfigService {
   public getValue<T = any>(path: string, defaultValue?: T): T {
     const parts = path.split('.');
     let result: any = this.config;
-    
+
     for (const part of parts) {
       if (result === undefined || result === null) {
         return defaultValue as T;
       }
       result = result[part];
     }
-    
+
     return (result !== undefined ? result : defaultValue) as T;
   }
 
@@ -87,7 +88,7 @@ export class ConfigService {
   public updateSection<T extends keyof IAppConfig>(section: T, updates: Partial<IAppConfig[T]>): void {
     // ✅ Исправлено: проверяем, что секция существует и является объектом
     const currentSection = this.config[section];
-    
+
     if (currentSection && typeof currentSection === 'object' && !Array.isArray(currentSection)) {
       this.config[section] = { ...currentSection, ...updates } as IAppConfig[T];
     } else {
@@ -191,7 +192,7 @@ export class ConfigService {
    */
   private logConfig(): void {
     if (this.isDebugMode) {
-      console.log('[ConfigService] Configuration loaded:', {
+      Logger.getInstance().getLogger('ConfigService').debug('Configuration loaded:', {
         version: this.config.version,
         environment: this.config.environment,
         debug: this.config.debug,

@@ -67,20 +67,20 @@ export class UIManager implements IUIManager {
     this.buildingManager = dependencies.buildingManager;
     this.markerManager = dependencies.markerManager;
 
-    console.log('UIManager.initialize: markerManager =', this.markerManager);
+    this.logger.debug('UIManager.initialize: markerManager =', this.markerManager);
 
     this.createUIComponents();
 
     if (this.markerManager) {
-      console.log('MarkerManager set in UIManager');
+      this.logger.debug('MarkerManager set in UIManager');
 
       if (this.searchBar) {
-        console.log('Setting MarkerManager to SearchBar');
+        this.logger.debug('Setting MarkerManager to SearchBar');
         this.searchBar.setMarkerManager(this.markerManager);
       }
 
       this.eventBus.on(EventType.MARKERS_LOADED, () => {
-        console.log('MARKERS_LOADED event received');
+        this.logger.debug('MARKERS_LOADED event received');
         this.searchBar?.refreshMarkers();
       });
     }
@@ -98,13 +98,13 @@ export class UIManager implements IUIManager {
   }
 
   private createUIComponents(): void {
-    console.log('Creating UI components...');
+    this.logger.debug('Creating UI components...');
 
     this.controlPanel = this.factory.createControlPanel();
-    console.log('ControlPanel created');
+    this.logger.debug('ControlPanel created');
 
     this.searchBar = this.factory.createSearchBar();
-    console.log('SearchBar created');
+    this.logger.debug('SearchBar created');
 
     this.popupManager = this.factory.createPopupManager();
     this.markerDetailsPanel = this.factory.createMarkerDetailsPanel();
@@ -113,13 +113,13 @@ export class UIManager implements IUIManager {
     this.buildingTitle = this.factory.createBuildingTitle();
     this.authPopup = this.factory.createAuthPopup();
 
-    console.log('All UI components created');
+    this.logger.debug('All UI components created');
 
     setTimeout(() => {
       const controlPanelEl = document.querySelector('.control-panel');
       const searchOverlay = document.querySelector('.search-overlay');
-      console.log('ControlPanel in DOM:', !!controlPanelEl);
-      console.log('SearchBar in DOM:', !!searchOverlay);
+      this.logger.debug('ControlPanel in DOM:', !!controlPanelEl);
+      this.logger.debug('SearchBar in DOM:', !!searchOverlay);
     }, 100);
   }
 
@@ -337,20 +337,20 @@ export class UIManager implements IUIManager {
   }
 
   private calculateAndShowRoute(): void {
-    console.log('calculateAndShowRoute called', { fromId: this.fromMarkerId, toId: this.toMarkerId });
+    this.logger.debug('calculateAndShowRoute called', { fromId: this.fromMarkerId, toId: this.toMarkerId });
 
     if (!this.fromMarkerId || !this.toMarkerId || !this.markerManager) {
-      console.log('Missing from/to or markerManager');
+      this.logger.debug('Missing from/to or markerManager');
       return;
     }
 
     const result = this.markerManager.findPath(this.fromMarkerId, this.toMarkerId);
-    console.log('Path result:', result);
+    this.logger.debug('Path result:', result);
 
     if (result && result.path && result.path.length > 0) {
       // Извлекаем markerId из PathNode[]
       const pathIds: string[] = result.path.map(node => node.markerId);
-      console.log('Highlighting path:', pathIds);
+      this.logger.debug('Highlighting path:', pathIds);
 
       this.markerManager.highlightPath(pathIds);
 
@@ -365,7 +365,7 @@ export class UIManager implements IUIManager {
         this.cameraManager.focusOnRoute(positions, 1.5);
       }
     } else {
-      console.log('Path not found');
+      this.logger.debug('Path not found');
       this.showError('Маршрут не найден');
       this.clearRoute();
     }
@@ -384,11 +384,11 @@ export class UIManager implements IUIManager {
 
   public showLoading(status: string): void {
     this._isLoading = true;
-    console.log(`[Loading] ${status}`);
+    this.logger.debug(`[Loading] ${status}`);
   }
 
   public updateLoadingProgress(progress: number, status?: string): void {
-    console.log(`[Loading] ${Math.round(progress * 100)}% - ${status}`);
+    this.logger.debug(`[Loading] ${Math.round(progress * 100)}% - ${status}`);
   }
 
   public hideLoading(): void {

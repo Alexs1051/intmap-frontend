@@ -21,15 +21,15 @@ export class EventBus {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       this.debugMode = urlParams.get('debug-events') === 'true';
-      
+
       // Также можно включить через localStorage
       if (localStorage.getItem('debug-events') === 'true') {
         this.debugMode = true;
       }
     }
-    
+
     if (this.debugMode) {
-      console.log('[EventBus] Debug mode enabled');
+      // Debug mode enabled
     }
   }
 
@@ -39,7 +39,7 @@ export class EventBus {
   public setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
     if (enabled) {
-      console.log('[EventBus] Debug mode enabled');
+      // Debug mode enabled
     }
   }
 
@@ -53,9 +53,9 @@ export class EventBus {
     if (!this.handlers.has(type)) {
       this.handlers.set(type, new Set());
     }
-    
+
     this.handlers.get(type)!.add(handler as EventHandler);
-    
+
     // Возвращаем функцию для отписки
     return () => this.off(type, handler);
   }
@@ -70,9 +70,9 @@ export class EventBus {
     if (!this.onceHandlers.has(type)) {
       this.onceHandlers.set(type, new Set());
     }
-    
+
     this.onceHandlers.get(type)!.add(handler as EventHandler);
-    
+
     return () => this.offOnce(type, handler);
   }
 
@@ -130,12 +130,12 @@ export class EventBus {
       timestamp: Date.now(),
       source
     };
-    
+
     // Логируем только важные события или если включен debug режим
     if (this.debugMode || this.shouldLogEvent(type)) {
       console.debug(`[EventBus] ${type}`, event);
     }
-    
+
     // Вызываем постоянные обработчики
     const handlers = this.handlers.get(type);
     if (handlers) {
@@ -147,7 +147,7 @@ export class EventBus {
         }
       });
     }
-    
+
     // Вызываем однократные обработчики
     const onceHandlers = this.onceHandlers.get(type);
     if (onceHandlers) {

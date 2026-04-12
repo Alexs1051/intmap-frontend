@@ -59,6 +59,10 @@ export class Marker implements IMarker {
     const bgColor = new Color3(bgColorData.r, bgColorData.g, bgColorData.b);
     const fgColor = new Color3(textColorData.r, textColorData.g, textColorData.b);
 
+    // Асинхронная инициализация
+    // Текст передаётся только для MARKER, для FLAG/WAYPOINT - undefined
+    const textForWidget = data.type === MarkerType.MARKER ? data.name : undefined;
+
     this.widget.initialize(
       scene,
       data.position,
@@ -66,11 +70,11 @@ export class Marker implements IMarker {
       fgColor,
       this._type,
       iconName,
-      data.name
-    );
-
-    this.setupInteractivity(scene);
-    this.playSpawnAnimation();
+      textForWidget
+    ).then(() => {
+      this.setupInteractivity(scene);
+      this.playSpawnAnimation();
+    });
 
     this.logger.debug(`Marker created: ${data.id} (${data.name})`);
   }
@@ -102,14 +106,14 @@ export class Marker implements IMarker {
 
     mesh.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnPickTrigger, () => {
-        console.log(`Marker clicked: ${this._id}`);
+        this.logger.debug(`Marker clicked: ${this._id}`);
         this.handleClick();
       })
     );
 
     mesh.actionManager.registerAction(
       new ExecuteCodeAction(ActionManager.OnDoublePickTrigger, () => {
-        console.log(`Marker double-clicked: ${this._id}`);
+        this.logger.debug(`Marker double-clicked: ${this._id}`);
         this.handleDoubleClick();
       })
     );
@@ -282,5 +286,10 @@ export class Marker implements IMarker {
 
   public get isVisible(): boolean {
     return this.widget.isVisible;
+  }
+
+  public setTitle(title: string): void {
+    this._data.name = title;
+    this.widget.setTitle(title);
   }
 }

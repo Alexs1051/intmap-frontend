@@ -131,14 +131,14 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
         // Рендерим ТОЛЬКО связи между waypoint
         const waypoints = markers.filter((marker: Marker) => marker.type === MarkerType.WAYPOINT);
 
-        console.log(`MarkerGraphRenderer.renderAll: ${waypoints.length} waypoints in graph`);
+        this.logger.debug(`MarkerGraphRenderer.renderAll: ${waypoints.length} waypoints in graph`);
 
         waypoints.forEach((marker: Marker) => {
             const neighbors = this.graph!.getNeighbors(marker.id);
             // Показываем связи только с другими waypoint
             const waypointNeighbors = neighbors.filter((neighbor: Marker) => neighbor.type === MarkerType.WAYPOINT);
 
-            console.log(`Waypoint ${marker.id} has ${waypointNeighbors.length} waypoint neighbors`);
+            this.logger.debug(`Waypoint ${marker.id} has ${waypointNeighbors.length} waypoint neighbors`);
 
             waypointNeighbors.forEach((neighbor: Marker) => {
                 const edgeId = this.getEdgeId(marker.id, neighbor.id);
@@ -154,7 +154,7 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
         // По умолчанию скрываем все линии, пока граф не включен
         this.hide();
 
-        console.log(`Rendered ${this._lines.size} connections between waypoints`);
+        this.logger.debug(`Rendered ${this._lines.size} connections between waypoints`);
         this.eventBus.emit(EventType.GRAPH_RENDERED, { edges: this._lines.size });
     }
 
@@ -182,13 +182,13 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
         const pos1 = marker1.position;
         const pos2 = marker2.position;
 
-        console.log(`Rendering connection: ${marker1.id} -> ${marker2.id}`);
+        this.logger.debug(`Rendering connection: ${marker1.id} -> ${marker2.id}`);
 
         const line = this.createLine(pos1, pos2, this.config.lineColor);
         this._lines.set(edgeId, line);
 
         if (this.config.showArrows) {
-            console.log(`Creating arrows for: ${marker1.id} -> ${marker2.id}`);
+            this.logger.debug(`Creating arrows for: ${marker1.id} -> ${marker2.id}`);
             this.createArrows(marker1, marker2, edgeId);
         }
     }

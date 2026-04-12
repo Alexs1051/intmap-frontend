@@ -65,8 +65,8 @@ export class MarkerParser {
         objects: (AbstractMesh | TransformNode)[],
         floorNodeMap: Map<AbstractMesh | TransformNode, number>
     ): { markers: Map<string, ParsedMarker>; rooms: Map<string, ParsedRoom> } {
-        console.log('=== MarkerParser: processing objects ===');
-        console.log(`FloorNodeMap size: ${floorNodeMap.size}`);
+        this.logger.debug('=== MarkerParser: processing objects ===');
+        this.logger.debug(`FloorNodeMap size: ${floorNodeMap.size}`);
 
         const floorCache = new Map<AbstractMesh | TransformNode, number | undefined>();
         const context: ParsingContext = {
@@ -78,17 +78,17 @@ export class MarkerParser {
 
         // Ищем Connections узел
         const connectionsNode = this.findConnectionsNode(objects);
-        console.log(`Connections node found: ${connectionsNode ? connectionsNode.name : 'NO'}`);
+        this.logger.debug(`Connections node found: ${connectionsNode ? connectionsNode.name : 'NO'}`);
 
         const connections = connectionsNode ? this.parseConnections(connectionsNode) : [];
-        console.log(`Parsed ${connections.length} connections`);
+        this.logger.debug(`Parsed ${connections.length} connections`);
 
         this.parseHierarchy(objects, context);
 
         this.applyConnections(context.markers, connections);
 
         this.logger.info(`Parsed ${context.markers.size} markers and ${context.rooms.size} rooms with ${connections.length} connections`);
-        console.log(`Final markers:`, Array.from(context.markers.keys()));
+        this.logger.debug(`Final markers:`, Array.from(context.markers.keys()));
 
         return {
             markers: context.markers,
@@ -97,13 +97,13 @@ export class MarkerParser {
     }
 
     private findConnectionsNode(objects: (AbstractMesh | TransformNode)[]): AbstractMesh | TransformNode | null {
-        console.log('=== Looking for Connections node ===');
+        this.logger.debug('=== Looking for Connections node ===');
 
         for (const obj of objects) {
-            console.log(`Checking object: ${obj.name}, type: ${obj.getClassName()}`);
+            this.logger.debug(`Checking object: ${obj.name}, type: ${obj.getClassName()}`);
 
             if (obj.name === 'Connections') {
-                console.log(`Found Connections node: ${obj.name}`);
+                this.logger.debug(`Found Connections node: ${obj.name}`);
                 return obj;
             }
 
@@ -126,34 +126,34 @@ export class MarkerParser {
             }
         }
 
-        console.log('Connections node NOT found');
+        this.logger.debug('Connections node NOT found');
         return null;
     }
 
     private parseConnections(connectionsNode: AbstractMesh | TransformNode): ConnectionInfo[] {
         const connections: ConnectionInfo[] = [];
 
-        console.log('=== Parsing Connections ===');
+        this.logger.debug('=== Parsing Connections ===');
 
         const processNode = (node: AbstractMesh | TransformNode, depth: number = 0) => {
             const indent = '  '.repeat(depth);
             const name = node.name;
 
-            console.log(`${indent}Processing node: ${name}, type: ${node.getClassName()}`);
+            this.logger.debug(`${indent}Processing node: ${name}, type: ${node.getClassName()}`);
 
             // Пропускаем сам контейнер Connections
             if (name === 'Connections') {
-                console.log(`${indent}  -> Skipping Connections container`);
+                this.logger.debug(`${indent}  -> Skipping Connections container`);
                 // Используем getChildren() вместо getChildMeshes() для TransformNode
                 if (node.getChildren && node.getChildren().length > 0) {
-                    console.log(`${indent}  -> Processing ${node.getChildren().length} children via getChildren()`);
+                    this.logger.debug(`${indent}  -> Processing ${node.getChildren().length} children via getChildren()`);
                     node.getChildren().forEach(child => {
                         if (child instanceof AbstractMesh || child instanceof TransformNode) {
                             processNode(child, depth + 1);
                         }
                     });
                 } else if (node.getChildMeshes && node.getChildMeshes().length > 0) {
-                    console.log(`${indent}  -> Processing ${node.getChildMeshes().length} children via getChildMeshes()`);
+                    this.logger.debug(`${indent}  -> Processing ${node.getChildMeshes().length} children via getChildMeshes()`);
                     node.getChildMeshes().forEach(child => processNode(child, depth + 1));
                 }
                 return;
@@ -164,7 +164,7 @@ export class MarkerParser {
             let cleanName = name;
             if (name.endsWith('-S')) {
                 cleanName = name.slice(0, -2);
-                console.log(`${indent}  -> One-way connection (suffix -S removed): ${cleanName}`);
+                this.logger.debug(`${indent}  -> One-way connection (suffix -S removed): ${cleanName}`);
             }
 
             // Обрабатываем связи
@@ -173,7 +173,7 @@ export class MarkerParser {
                 const leftPart = cleanName.substring(0, dashIndex);
                 const rightPart = cleanName.substring(dashIndex + 1);
 
-                console.log(`${indent}  -> Left part: ${leftPart}, Right part: ${rightPart}`);
+                this.logger.debug(`${indent}  -> Left part: ${leftPart}, Right part: ${rightPart}`);
 
                 const leftTargets = leftPart.split('+');
                 const rightTargets = rightPart.split('+');
@@ -183,7 +183,7 @@ export class MarkerParser {
                         const from = this.normalizeMarkerId(fromTarget);
                         const to = this.normalizeMarkerId(toTarget);
 
-                        console.log(`${indent}    -> Creating connection: ${from} -> ${to}`);
+                        this.logger.debug(`${indent}    -> Creating connection: ${from} -> ${to}`);
 
                         if (from && to && from !== to) {
                             connections.push({
@@ -195,35 +195,35 @@ export class MarkerParser {
                     }
                 }
             } else {
-                console.log(`${indent}  -> No dash found in name, skipping`);
+                this.logger.debug(`${indent}  -> No dash found in name, skipping`);
             }
 
             // Рекурсивно обрабатываем дочерние узлы
             if (node.getChildren && node.getChildren().length > 0) {
-                console.log(`${indent}  -> Processing ${node.getChildren().length} children via getChildren()`);
+                this.logger.debug(`${indent}  -> Processing ${node.getChildren().length} children via getChildren()`);
                 node.getChildren().forEach(child => {
                     if (child instanceof AbstractMesh || child instanceof TransformNode) {
                         processNode(child, depth + 1);
                     }
                 });
             } else if (node.getChildMeshes && node.getChildMeshes().length > 0) {
-                console.log(`${indent}  -> Processing ${node.getChildMeshes().length} children via getChildMeshes()`);
+                this.logger.debug(`${indent}  -> Processing ${node.getChildMeshes().length} children via getChildMeshes()`);
                 node.getChildMeshes().forEach(child => processNode(child, depth + 1));
             }
         };
 
         processNode(connectionsNode);
 
-        console.log(`Total connections parsed: ${connections.length}`);
+        this.logger.debug(`Total connections parsed: ${connections.length}`);
         connections.forEach((conn, idx) => {
-            console.log(`  ${idx + 1}. ${conn.from} -> ${conn.to} (${conn.bidirectional ? 'two-way' : 'one-way'})`);
+            this.logger.debug(`  ${idx + 1}. ${conn.from} -> ${conn.to} (${conn.bidirectional ? 'two-way' : 'one-way'})`);
         });
 
         return connections;
     }
 
     private normalizeMarkerId(name: string): string {
-        console.log(`Normalizing marker ID: ${name}`);
+        this.logger.debug(`Normalizing marker ID: ${name}`);
 
         // Удаляем кавычки если есть
         let cleanName = name.replace(/"/g, '');
@@ -234,7 +234,7 @@ export class MarkerParser {
             const baseName = mrMatch[1]!.replace(/\s+/g, '_');
             const suffix = mrMatch[2];
             const result = suffix ? `marker_${baseName}_${suffix}` : `marker_${baseName}`;
-            console.log(`  MR marker: ${name} -> ${result}`);
+            this.logger.debug(`  MR marker: ${name} -> ${result}`);
             return result;
         }
 
@@ -242,7 +242,7 @@ export class MarkerParser {
         const flMatch = cleanName.match(/^FL_(\d+)$/);
         if (flMatch) {
             const result = `flag_${flMatch[1]!}`;
-            console.log(`  FL marker: ${name} -> ${result}`);
+            this.logger.debug(`  FL marker: ${name} -> ${result}`);
             return result;
         }
 
@@ -250,12 +250,12 @@ export class MarkerParser {
         const wpMatch = cleanName.match(/^WP_(\d+)$/);
         if (wpMatch) {
             const result = `waypoint_${wpMatch[1]!}`;
-            console.log(`  WP marker: ${name} -> ${result}`);
+            this.logger.debug(`  WP marker: ${name} -> ${result}`);
             return result;
         }
 
         // Если ничего не подошло, возвращаем как есть
-        console.log(`  Unknown marker type: ${name} -> ${cleanName}`);
+        this.logger.debug(`  Unknown marker type: ${name} -> ${cleanName}`);
         return cleanName;
     }
 
@@ -269,13 +269,13 @@ export class MarkerParser {
 
             // Пропускаем Connections и его детей при парсинге маркеров
             if (name === 'Connections') {
-                console.log(`Skipping Connections node and its children`);
+                this.logger.debug(`Skipping Connections node and its children`);
                 continue;
             }
 
             // Если объект начинается с префикса связи, пропускаем
             if (name.includes('-') && !name.startsWith('MR_') && !name.startsWith('FL_') && !name.startsWith('WP_')) {
-                console.log(`Skipping connection node: ${name}`);
+                this.logger.debug(`Skipping connection node: ${name}`);
                 continue;
             }
 
@@ -288,7 +288,7 @@ export class MarkerParser {
             if (name.startsWith('Room_')) {
                 // Избегаем дублирования комнат
                 if (context.rooms.has(name)) {
-                    console.log(`Room ${name} already exists, skipping`);
+                    this.logger.debug(`Room ${name} already exists, skipping`);
                     // Всё равно обрабатываем детей, но без создания новой комнаты
                     if (obj.getChildMeshes && obj.getChildMeshes().length > 0) {
                         this.parseHierarchy(obj.getChildMeshes(), context, name);
@@ -306,7 +306,7 @@ export class MarkerParser {
                     floorNumber
                 };
                 context.rooms.set(name, room);
-                console.log(`Created room: ${name}, floor: ${floorNumber}`);
+                this.logger.debug(`Created room: ${name}, floor: ${floorNumber}`);
 
                 if (obj.getChildMeshes && obj.getChildMeshes().length > 0) {
                     this.parseHierarchy(obj.getChildMeshes(), context, name);
@@ -327,13 +327,13 @@ export class MarkerParser {
 
             if (name.startsWith('MR_')) {
                 marker = this.parseMarker(name, obj, MarkerType.MARKER, floorNumber, parentRoom);
-                if (marker) console.log(`Found MR marker: ${name} -> ${marker.id}, floor: ${floorNumber}`);
+                if (marker) this.logger.debug(`Found MR marker: ${name} -> ${marker.id}, floor: ${floorNumber}`);
             } else if (name.startsWith('FL_')) {
                 marker = this.parseMarker(name, obj, MarkerType.FLAG, floorNumber, parentRoom);
-                if (marker) console.log(`Found FL marker: ${name} -> ${marker.id}, floor: ${floorNumber}`);
+                if (marker) this.logger.debug(`Found FL marker: ${name} -> ${marker.id}, floor: ${floorNumber}`);
             } else if (name.startsWith('WP_') && !name.includes('-')) {
                 marker = this.parseMarker(name, obj, MarkerType.WAYPOINT, floorNumber, parentRoom);
-                if (marker) console.log(`Found WP marker: ${name} -> ${marker.id}, floor: ${floorNumber}`);
+                if (marker) this.logger.debug(`Found WP marker: ${name} -> ${marker.id}, floor: ${floorNumber}`);
             }
 
             if (marker) {
@@ -377,7 +377,7 @@ export class MarkerParser {
         roomId?: string
     ): ParsedMarker | null {
         const worldPosition = this.getWorldPosition(obj);
-        console.log(`Marker ${name}: world Y = ${worldPosition.y}`);
+        this.logger.debug(`Marker ${name}: world Y = ${worldPosition.y}`);
 
         // MR маркеры
         if (type === 'marker') {
@@ -468,7 +468,7 @@ export class MarkerParser {
     }
 
     private applyConnections(markers: Map<string, ParsedMarker>, connections: ConnectionInfo[]): void {
-        console.log(`=== Applying ${connections.length} connections ===`);
+        this.logger.debug(`=== Applying ${connections.length} connections ===`);
 
         let appliedCount = 0;
         let skippedCount = 0;
@@ -478,13 +478,13 @@ export class MarkerParser {
             const toMarker = markers.get(conn.to);
 
             if (!fromMarker) {
-                console.log(`WARNING: Source marker not found: ${conn.from}`);
+                this.logger.debug(`WARNING: Source marker not found: ${conn.from}`);
                 skippedCount++;
                 continue;
             }
 
             if (!toMarker) {
-                console.log(`WARNING: Target marker not found: ${conn.to}`);
+                this.logger.debug(`WARNING: Target marker not found: ${conn.to}`);
                 skippedCount++;
                 continue;
             }
@@ -492,19 +492,19 @@ export class MarkerParser {
             // Добавляем связь от from к to
             if (!fromMarker.connections.includes(conn.to)) {
                 fromMarker.connections.push(conn.to);
-                console.log(`Added connection: ${conn.from} -> ${conn.to}`);
+                this.logger.debug(`Added connection: ${conn.from} -> ${conn.to}`);
             }
 
             // Если двунаправленная, добавляем обратную связь
             if (conn.bidirectional && !toMarker.connections.includes(conn.from)) {
                 toMarker.connections.push(conn.from);
-                console.log(`Added reverse connection: ${conn.to} -> ${conn.from}`);
+                this.logger.debug(`Added reverse connection: ${conn.to} -> ${conn.from}`);
             }
 
             appliedCount++;
         }
 
-        console.log(`Connections applied: ${appliedCount}, skipped: ${skippedCount}`);
+        this.logger.debug(`Connections applied: ${appliedCount}, skipped: ${skippedCount}`);
 
         // Выводим статистику по маркерам со связями
         let markersWithConnections = 0;
@@ -514,10 +514,10 @@ export class MarkerParser {
             if (marker.connections.length > 0) {
                 markersWithConnections++;
                 totalConnections += marker.connections.length;
-                console.log(`Marker ${marker.id} has ${marker.connections.length} connections: ${marker.connections.join(', ')}`);
+                this.logger.debug(`Marker ${marker.id} has ${marker.connections.length} connections: ${marker.connections.join(', ')}`);
             }
         }
 
-        console.log(`Markers with connections: ${markersWithConnections}, total connections: ${totalConnections}`);
+        this.logger.debug(`Markers with connections: ${markersWithConnections}, total connections: ${totalConnections}`);
     }
 }

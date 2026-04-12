@@ -235,7 +235,7 @@ export class BuildingManager implements IBuildingManager {
         if (!this._data) {
             return new Map();
         }
-        console.log(`BuildingManager.getMarkers: returning ${this._data.markers.size} markers`);
+        this.logger.debug(`getMarkers: returning ${this._data.markers.size} markers`);
         return this._data.markers;
     }
 

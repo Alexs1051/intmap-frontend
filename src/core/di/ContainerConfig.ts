@@ -44,11 +44,11 @@ import { ConnectionScreen } from "../../features/ui/ConnectionScreen";
 import { FPSCounter } from "../../features/ui/FPSCounter";
 import { BuildingTitle } from "../../features/ui/BuildingTitle";
 import { AuthPopup } from "../../features/ui/AuthPopup";
-import { 
-  ICameraAnimator, 
-  ICameraInputHandler, 
-  ICameraManager, 
-  ICameraModeManager 
+import {
+  ICameraAnimator,
+  ICameraInputHandler,
+  ICameraManager,
+  ICameraModeManager
 } from "@shared/interfaces";
 
 
@@ -65,13 +65,13 @@ export function configureContainer(): void {
   container.bind<AssetLoader>(TYPES.AssetLoader).to(AssetLoader).inSingletonScope();
   container.bind<ResourceCache>(TYPES.ResourceCache).to(ResourceCache).inSingletonScope();
   container.bind<SceneManager>(TYPES.SceneManager).to(SceneManager).inSingletonScope();
-  
+
   // Camera components (привязываем к интерфейсам)
   container.bind<ICameraAnimator>(TYPES.CameraAnimator).to(CameraAnimator).inSingletonScope();
   container.bind<ICameraModeManager>(TYPES.CameraModeManager).to(CameraModeManager).inSingletonScope();
   container.bind<ICameraInputHandler>(TYPES.CameraInputHandler).to(CameraInputHandler).inSingletonScope();
   container.bind<ICameraManager>(TYPES.CameraManager).to(CameraManager).inSingletonScope();
-  
+
   // Feature Managers
   container.bind(TYPES.BackgroundManager).to(BackgroundManager).inSingletonScope();
   container.bind(TYPES.GridManager).to(GridManager).inSingletonScope();
@@ -79,7 +79,7 @@ export function configureContainer(): void {
   container.bind(TYPES.BuildingManager).to(BuildingManager).inSingletonScope();
   container.bind(TYPES.FloorManager).to(FloorManager).inSingletonScope();
   container.bind(TYPES.WallManager).to(WallManager).inSingletonScope();
-  
+
   // Building Components
   container.bind(TYPES.BuildingLoader).to(BuildingLoader).inSingletonScope();
   container.bind(TYPES.BuildingParser).to(BuildingParser).inSingletonScope();
@@ -92,11 +92,11 @@ export function configureContainer(): void {
   container.bind(TYPES.MarkerGraphRenderer).to(MarkerGraphRenderer).inSingletonScope();
   container.bind(TYPES.Pathfinder).to(Pathfinder).inSingletonScope();
   container.bind(TYPES.MarkerManager).to(MarkerManager).inSingletonScope();
-  
+
   // UI
   container.bind(TYPES.UIFactory).to(UIFactory).inSingletonScope();
   container.bind(TYPES.UIManager).to(UIManager).inSingletonScope();
-  
+
   // UI Components
   container.bind(TYPES.ControlPanel).to(ControlPanel).inSingletonScope();
   container.bind(TYPES.SearchBar).to(SearchBar).inSingletonScope();
@@ -106,8 +106,6 @@ export function configureContainer(): void {
   container.bind(TYPES.FPSCounter).to(FPSCounter).inSingletonScope();
   container.bind(TYPES.BuildingTitle).to(BuildingTitle).inSingletonScope();
   container.bind(TYPES.AuthPopup).to(AuthPopup).inSingletonScope();
-  
-  console.log("DI Container configured successfully");
 }
 
 export { container };

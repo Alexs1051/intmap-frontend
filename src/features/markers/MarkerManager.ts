@@ -214,7 +214,7 @@ export class MarkerManager implements IMarkerManager {
    * Основная логика видимости маркеров
    */
   public updateMarkersVisibility(): void {
-    console.log('updateMarkersVisibility called', {
+    this.logger.debug('updateMarkersVisibility called', {
       graphVisible: this._graphVisible,
       currentFloor: this._currentFloor,
       totalMarkers: this._markers.size,
@@ -415,15 +415,20 @@ export class MarkerManager implements IMarkerManager {
 
   private convertToMarkerData(parsedMarker: ParsedMarker): AnyMarkerData {
     let backgroundColor: RGBA;
+    let textColor: RGBA;
+
     switch (parsedMarker.type) {
       case 'marker':
         backgroundColor = { r: 0.2, g: 0.5, b: 0.8, a: 0.9 };
+        textColor = { r: 0, g: 0.5, b: 0, a: 1 };
         break;
       case 'flag':
         backgroundColor = { r: 0.9, g: 0.3, b: 0.2, a: 0.9 };
+        textColor = { r: 1, g: 1, b: 1, a: 1 };
         break;
       case 'waypoint':
         backgroundColor = { r: 0.3, g: 0.7, b: 0.3, a: 0.9 };
+        textColor = { r: 1, g: 1, b: 1, a: 1 };
         break;
     }
 
@@ -449,7 +454,7 @@ export class MarkerManager implements IMarkerManager {
       floor: parsedMarker.floorNumber || 1,
       iconName,
       backgroundColor,
-      textColor: { r: 1, g: 1, b: 1, a: 1 },
+      textColor,
       connections: parsedMarker.connections.map(targetId => ({
         fromId: parsedMarker.id,
         toId: targetId,
@@ -499,7 +504,7 @@ export class MarkerManager implements IMarkerManager {
       throw new Error("Scene not set before creating marker");
     }
 
-    const widget = new MarkerWidget(this.logger);
+    const widget = new MarkerWidget();
     const animator = new MarkerAnimator(this.logger, this.config);
 
     const marker = new Marker(

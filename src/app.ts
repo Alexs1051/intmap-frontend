@@ -1,7 +1,8 @@
 // app.ts
 import "reflect-metadata";
+import { Logger } from "./core/logger/Logger";
 
-console.log('=== APP STARTING ===');
+Logger.getInstance().getLogger('App').debug('=== APP STARTING ===');
 
 // Глобальный обработчик ошибок
 window.addEventListener('error', (event) => {
@@ -20,7 +21,6 @@ import { container, TYPES } from "./core/di/Container";
 import { configureContainer } from "./core/di/ContainerConfig";
 import { BabylonEngine } from "./core/engine/BabylonEngine";
 import { SceneManager } from "./core/scene/SceneManager";
-import { Logger } from "./core/logger/Logger";
 import { EventBus } from "./core/events/EventBus";
 import { EventType } from "./core/events/EventTypes";
 import { ConfigService } from "./core/config/ConfigService";
@@ -49,33 +49,33 @@ class App {
   private renderLoopId: number | null = null;
 
   constructor() {
-    console.log('App constructor start');
+    Logger.getInstance().getLogger('App').debug('App constructor start');
     const debug = document.getElementById('debug');
     if (debug) debug.innerHTML = 'Initializing...';
 
     try {
-      console.log('Configuring container...');
+      Logger.getInstance().getLogger('App').debug('Configuring container...');
       configureContainer();
-      console.log('Container configured');
+      Logger.getInstance().getLogger('App').debug('Container configured');
 
-      console.log('Getting dependencies...');
+      Logger.getInstance().getLogger('App').debug('Getting dependencies...');
       this.engine = container.get<BabylonEngine>(TYPES.BabylonEngine);
       this.sceneManager = container.get<SceneManager>(TYPES.SceneManager);
       this.logger = container.get<Logger>(TYPES.Logger).getLogger('App');
       this.eventBus = container.get<EventBus>(TYPES.EventBus);
       this.config = container.get<ConfigService>(TYPES.ConfigService);
-      console.log('Dependencies obtained');
+      Logger.getInstance().getLogger('App').debug('Dependencies obtained');
 
-      console.log('Setting up event handlers...');
+      Logger.getInstance().getLogger('App').debug('Setting up event handlers...');
       this.setupEventHandlers();
       this.setupConnectionHandling();
       this.setupLoadingHandlers();
 
-      console.log('Starting app...');
+      Logger.getInstance().getLogger('App').debug('Starting app...');
       this.start();
 
       this.logger.info(`Application initialized (v${this.config.get().version})`);
-      console.log('App constructor done');
+      Logger.getInstance().getLogger('App').debug('App constructor done');
 
       if (debug) debug.innerHTML = 'App started!';
 
@@ -107,7 +107,7 @@ class App {
     this.eventBus.on(EventType.LOADING_PROGRESS, (event) => {
       const overall = event.data.overall || 0;
       if (this.config.isDebug() && (overall === 0 || overall === 0.5 || overall === 1)) {
-        console.log(`Loading progress: ${(overall * 100).toFixed(1)}%`);
+        Logger.getInstance().getLogger('App').debug(`Loading progress: ${(overall * 100).toFixed(1)}%`);
       }
     });
 
@@ -175,7 +175,7 @@ class App {
     if (statusEl) statusEl.textContent = status;
 
     if (this.config.isDebug() && (percent === 0 || percent === 50 || percent === 100)) {
-      console.log(`Loading progress: ${percent}%`);
+      Logger.getInstance().getLogger('App').debug(`Loading progress: ${percent}%`);
     }
   }
 
@@ -348,7 +348,7 @@ class App {
 }
 
 window.addEventListener('load', () => {
-  console.log('Window loaded');
+  Logger.getInstance().getLogger('App').debug('Window loaded');
   try {
     const app = new App();
     (window as any).__APP__ = app;
