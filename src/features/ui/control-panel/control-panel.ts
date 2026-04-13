@@ -25,6 +25,7 @@ export class ControlPanel implements IControlPanel {
     private buttons: Map<string, HTMLButtonElement> = new Map();
     private listeners: ((event: ControlPanelEvent) => void)[] = [];
     private buttonStates: Map<string, boolean> = new Map();
+    private buttonsDisabled: boolean = false;
 
     private isLandscape: boolean = window.innerWidth > window.innerHeight;
 
@@ -84,7 +85,8 @@ export class ControlPanel implements IControlPanel {
         }> = [
                 { id: 'floor-up', defaultIcon: 'icons/ui/circle-arrow-up.png', tooltip: 'Следующий этаж', type: UIEventType.NEXT_FLOOR },
                 { id: 'floor-down', defaultIcon: 'icons/ui/circle-arrow-down.png', tooltip: 'Предыдущий этаж', type: UIEventType.PREV_FLOOR },
-                { id: 'view', defaultIcon: 'icons/ui/layers-off.png', activeIcon: 'icons/ui/layers.png', tooltip: 'Этаж/Здание', type: UIEventType.TOGGLE_VIEW_MODE },
+                { id: 'view', defaultIcon: 'icons/ui/expansion.png', activeIcon: 'icons/ui/expansion.png', tooltip: 'Этаж/Здание', type: UIEventType.TOGGLE_VIEW_MODE },
+                { id: 'expand', defaultIcon: 'icons/ui/layers-off.png', activeIcon: 'icons/ui/layers.png', tooltip: 'Раскрыть этажи', type: UIEventType.TOGGLE_FLOOR_EXPAND },
                 { id: 'walls', defaultIcon: 'icons/ui/eye-off.png', activeIcon: 'icons/ui/eye.png', tooltip: 'Прозрачность стен', type: UIEventType.TOGGLE_WALL_TRANSPARENCY },
                 { id: 'mode', defaultIcon: 'icons/ui/mode-3d.png', activeIcon: 'icons/ui/mode-2d.png', tooltip: 'Переключить 2D/3D', type: UIEventType.CAMERA_MODE_TOGGLE },
                 { id: 'theme', defaultIcon: 'icons/ui/night.png', activeIcon: 'icons/ui/day.png', tooltip: 'Сменить тему', type: UIEventType.TOGGLE_THEME },
@@ -142,6 +144,11 @@ export class ControlPanel implements IControlPanel {
     }
 
     private onButtonClick(buttonId: string, eventType: UIEventType): void {
+        if (this.buttonsDisabled) {
+            this.logger.debug('Button click ignored - buttons disabled');
+            return;
+        }
+
         const isActive = this.buttonStates.get(buttonId) || false;
         this.updateButtonState(buttonId, !isActive);
 
@@ -184,6 +191,19 @@ export class ControlPanel implements IControlPanel {
 
         this.buttonStates.set(buttonId, isActive);
         this.updateButtonAppearance(button, isActive);
+    }
+
+    public setButtonsEnabled(enabled: boolean): void {
+        this.buttonsDisabled = !enabled;
+        this.buttons.forEach((button) => {
+            button.style.pointerEvents = enabled ? 'auto' : 'none';
+            button.style.opacity = enabled ? '1' : '0.5';
+        });
+        this.logger.debug(`Buttons ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    public areButtonsDisabled(): boolean {
+        return this.buttonsDisabled;
     }
 
     public getButtonState(buttonId: string): boolean {

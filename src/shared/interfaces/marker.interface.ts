@@ -74,6 +74,8 @@ export interface IMarkerManager extends ILoadableComponent {
     update(deltaTime: number): void;
     dispose(): void;
 
+    setBuildingManager(buildingManager: any): void;
+
     setAllMarkersVisible(visible: boolean): void;
 
     setCurrentFloor(floor: number | 'all'): void;
@@ -83,6 +85,7 @@ export interface IMarkerManager extends ILoadableComponent {
     getToMarker(): string | null;
 
     updateMarkersVisibility(): void;
+    rebuildGraph(): void;
 }
 
 export interface IMarkerGraph {

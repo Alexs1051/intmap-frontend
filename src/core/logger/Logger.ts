@@ -17,7 +17,7 @@ export class Logger {
             this.configure(config);
         } else {
             this.transports.push(new ConsoleTransport({ level: types.LogLevel.DEBUG }));
-            this.transports.push(new MemoryTransport(1000, { level: types.LogLevel.INFO }));
+            this.transports.push(new MemoryTransport(1000, { level: types.LogLevel.DEBUG }));
         }
     }
 
@@ -151,7 +151,6 @@ export const logger = Logger.getInstance({
 
 // Отключаем логирование для большинства модулей, оставляем только маркеры
 Logger.disableLogger('ConfigService');
-Logger.disableLogger('BuildingManager');
 Logger.disableLogger('BuildingParser');
 Logger.disableLogger('Camera Controller');
 Logger.disableLogger('CameraInputHandler');
@@ -166,5 +165,10 @@ Logger.disableLogger('Marker Graph');
 Logger.disableLogger('Path Finder');
 Logger.disableLogger('EventBus');
 Logger.disableLogger('App');
+
+// Включаем логи для FloorExpander и FloorManager для отладки
+Logger.enableLogger('FloorExpander');
+Logger.enableLogger('FloorManager');
+Logger.enableLogger('BuildingManager');
 
 export { LogLevel } from "@shared/types";

@@ -24,6 +24,7 @@ export enum EventType {
   FLOOR_HIDDEN = 'floor:hidden',
   FLOOR_SWITCH_REQUEST = 'floor:switch:request',
   VIEW_MODE_CHANGED = 'view:mode:changed',
+  FLOOR_EXPAND_CHANGED = 'floor:expand:changed',
 
   // Стены
   WALL_TRANSPARENCY_TOGGLED = 'wall:transparency:toggled',

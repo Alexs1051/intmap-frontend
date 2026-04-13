@@ -4,23 +4,24 @@
 export enum UIEventType {
     // Поиск
     SEARCH_TOGGLE = 'search:toggle',
-    
+
     // Авторизация
     AUTH_TOGGLE = 'auth:toggle',
-    
+
     // Камера
     CAMERA_MODE_TOGGLE = 'camera:mode:toggle',
     RESET_CAMERA = 'camera:reset',
-    
+
     // Граф связей
     TOGGLE_GRAPH = 'graph:toggle',
-    
+
     // Тема оформления
     TOGGLE_THEME = 'theme:toggle',
-    
+
     // Здание
     TOGGLE_WALL_TRANSPARENCY = 'wall:transparency:toggle',
     TOGGLE_VIEW_MODE = 'view:mode:toggle',
+    TOGGLE_FLOOR_EXPAND = 'floor:expand:toggle',
     NEXT_FLOOR = 'floor:next',
     PREV_FLOOR = 'floor:prev',
     FLOOR_SELECT = 'floor:select'

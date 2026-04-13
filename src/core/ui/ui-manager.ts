@@ -36,7 +36,7 @@ export class UIManager implements IUIManager {
   private buildingManager?: IBuildingManager;
   private markerManager?: IMarkerManager;
 
-  private controlPanel?: IControlPanel;
+  public controlPanel?: IControlPanel;
   private searchBar?: ISearchBar;
   private popupManager?: IPopupManager;
   private markerDetailsPanel?: IMarkerDetailsPanel;
@@ -138,6 +138,11 @@ export class UIManager implements IUIManager {
       }
     });
 
+    this.eventBus.on(EventType.FLOOR_EXPAND_CHANGED, (event) => {
+      const expanded = event.data?.expanded;
+      this.logger.debug(`Floor expand state changed to: ${expanded}`);
+    });
+
     this.eventBus.on(EventType.GRAPH_VISIBILITY_CHANGED, (event) => {
       this.logger.debug(`Graph visibility changed to ${event.data?.visible}`);
     });
@@ -160,9 +165,11 @@ export class UIManager implements IUIManager {
       if (result.id && this.markerManager) {
         const marker = this.markerManager.getMarker(result.id);
         if (marker) {
+          this.controlPanel?.setButtonsEnabled(false);
           this.markerManager.focusOnMarker(marker.id, { distance: 8, duration: 1.0 });
           this.markerManager.setSelectedMarker(marker);
           this.markerDetailsPanel?.show(marker as any);
+          setTimeout(() => this.controlPanel?.setButtonsEnabled(true), 1200);
         }
       }
     });
@@ -173,7 +180,9 @@ export class UIManager implements IUIManager {
     );
 
     this.markerDetailsPanel?.setFocusCallback((marker: Marker) => {
+      this.controlPanel?.setButtonsEnabled(false);
       this.markerManager?.focusOnMarker(marker.id, { distance: 8, duration: 1.2 });
+      setTimeout(() => this.controlPanel?.setButtonsEnabled(true), 1400);
     });
 
     this.markerManager?.setOnMarkerSelected((marker: IMarker | null) => {
@@ -223,9 +232,15 @@ export class UIManager implements IUIManager {
         this.cameraManager?.toggleCameraMode();
         break;
       case UIEventType.RESET_CAMERA:
+        this.controlPanel?.setButtonsEnabled(false);
         this.cameraManager?.resetCamera();
+        setTimeout(() => this.controlPanel?.setButtonsEnabled(true), 1200);
         break;
       case UIEventType.TOGGLE_GRAPH:
+        if (this.cameraManager?.isAnimating) {
+          this.logger.debug('Camera animation in progress, ignoring graph toggle');
+          return;
+        }
         this.markerManager?.toggleGraph();
         break;
       case UIEventType.TOGGLE_THEME:
@@ -233,6 +248,9 @@ export class UIManager implements IUIManager {
         break;
       case UIEventType.TOGGLE_WALL_TRANSPARENCY:
         this.toggleWallTransparency();
+        break;
+      case UIEventType.TOGGLE_FLOOR_EXPAND:
+        this.toggleFloorExpand();
         break;
       case UIEventType.TOGGLE_VIEW_MODE:
         this.toggleViewMode();
@@ -258,16 +276,42 @@ export class UIManager implements IUIManager {
     }
   }
 
+  private async toggleFloorExpand(): Promise<void> {
+    if (this.buildingManager) {
+      // Блокируем кнопки перед анимацией
+      this.controlPanel?.setButtonsEnabled(false);
+
+      await this.buildingManager.floorManager.toggleFloorExpand();
+      const isExpanded = this.buildingManager.floorManager.getFloorExpandState();
+      const message = isExpanded ? 'Этажи раскрыты' : 'Этажи сжаты';
+      this.showInfo(message);
+
+      // Обновляем кнопку
+      this.controlPanel?.updateButtonState('expand', isExpanded);
+
+      // Разблокируем кнопки после анимации
+      this.controlPanel?.setButtonsEnabled(true);
+    } else {
+      this.logger.warn('BuildingManager not available');
+    }
+  }
+
   private toggleViewMode(): void {
     if (this.buildingManager) {
-      this.buildingManager.floorManager.toggleViewMode();
-      const mode = this.buildingManager.floorManager.getViewMode();
+      const floorManager = this.buildingManager.floorManager;
+      if (floorManager.isFloorAnimating?.()) {
+        this.logger.debug('Floor animation in progress, ignoring');
+        return;
+      }
+
+      floorManager.toggleViewMode();
+      const mode = floorManager.getViewMode();
       const message = mode === 'single' ? 'Режим: отдельный этаж' : 'Режим: всё здание';
       this.showInfo(message);
 
       // ✅ При смене режима обновляем видимость маркеров
       const floor = mode === 'single'
-        ? this.buildingManager.floorManager.currentFloor
+        ? floorManager.currentFloor
         : 'all';
       this.markerManager?.setCurrentFloor(floor);
     } else {
@@ -278,6 +322,11 @@ export class UIManager implements IUIManager {
   private nextFloor(): void {
     if (this.buildingManager) {
       const floorManager = this.buildingManager.floorManager;
+      if (floorManager.isFloorAnimating?.()) {
+        this.logger.debug('Floor animation in progress, ignoring');
+        return;
+      }
+
       const currentMode = floorManager.getViewMode();
       const currentFloor = floorManager.currentFloor;
       const maxFloor = floorManager.maxFloor;
@@ -294,6 +343,11 @@ export class UIManager implements IUIManager {
   private prevFloor(): void {
     if (this.buildingManager) {
       const floorManager = this.buildingManager.floorManager;
+      if (floorManager.isFloorAnimating?.()) {
+        this.logger.debug('Floor animation in progress, ignoring');
+        return;
+      }
+
       const currentMode = floorManager.getViewMode();
       const currentFloor = floorManager.currentFloor;
       const minFloor = floorManager.minFloor;

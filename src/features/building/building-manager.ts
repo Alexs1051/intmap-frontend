@@ -108,7 +108,18 @@ export class BuildingManager implements IBuildingManager {
         this._data.walls.forEach(element => this._wallManager.addWall(element));
         this._floorManager.showAllFloors();
 
+        // Инициализируем FloorManager после добавления всех этажей
+        (this._floorManager as any).initialize?.();
+
         this.logger.info(`Managers initialized. Floors: ${this._floorManager.floorCount}, Walls: ${this._wallManager.count}`);
+    }
+
+    /**
+     * Установить MarkerManager (вызывается после инициализации MarkerManager)
+     */
+    public setMarkerManager(markerManager: any): void {
+        (this._floorManager as any).setMarkerManager?.(markerManager);
+        this.logger.debug('MarkerManager set in BuildingManager -> FloorManager');
     }
 
     /**
@@ -205,6 +216,10 @@ export class BuildingManager implements IBuildingManager {
 
     public toggleWallTransparency(): void {
         this._wallManager.toggleTransparency();
+    }
+
+    public toggleFloorExpand(): void {
+        (this._floorManager as any).toggleFloorExpand?.();
     }
 
     public setWallTransparency(transparent: boolean): void {

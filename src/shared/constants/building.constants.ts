@@ -69,6 +69,18 @@ export const FLOOR_CONFIG = {
 } as const;
 
 /**
+ * Конфигурация раскрытия этажей
+ */
+export const FLOOR_EXPAND_CONFIG = {
+    /** Смещение между этажами при раскрытии (в метрах) */
+    FLOOR_OFFSET: 8.0,
+    /** Длительность анимации раскрытия/сворачивания (мс) */
+    ANIMATION_DURATION: 800,
+    /** Частота кадров анимации */
+    FRAME_RATE: 60
+} as const;
+
+/**
  * Конфигурация здания по умолчанию
  */
 export const BUILDING_DEFAULTS = {

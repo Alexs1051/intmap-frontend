@@ -23,6 +23,7 @@ export const TYPES = {
   BuildingAnimator: Symbol.for("BuildingAnimator"),
   FloorManager: Symbol.for("FloorManager"),
   WallManager: Symbol.for("WallManager"),
+  FloorExpander: Symbol.for("FloorExpander"),
 
   // UI Components
   ConnectionScreen: Symbol.for("ConnectionScreen"),

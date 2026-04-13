@@ -7,31 +7,53 @@ import { EventType } from "@core/events/event-types";
 import { BuildingElement, FloorData } from "@shared/types";
 import { FLOOR_CONFIG } from "@shared/constants";
 import { IFloorManager, IWallManager } from "@shared/interfaces";
+import { FloorExpander } from "./floor-expander";
 
 @injectable()
 export class FloorManager implements IFloorManager {
     private readonly logger: Logger;
     private readonly eventBus: EventBus;
     private wallManager?: IWallManager;
+    private floorExpander: FloorExpander;
 
     private readonly floors: Map<number, FloorData> = new Map();
     private readonly floorNodes: Map<number, TransformNode> = new Map();
     private currentFloorNum: number = FLOOR_CONFIG.DEFAULT_FLOOR;
     private viewMode: 'single' | 'all' = 'all';
+    private isExpanded: boolean = false;
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
-        @inject(TYPES.EventBus) eventBus: EventBus
+        @inject(TYPES.EventBus) eventBus: EventBus,
+        @inject(TYPES.FloorExpander) floorExpander: FloorExpander
     ) {
         this.logger = logger.getLogger('FloorManager');
         this.eventBus = eventBus;
+        this.floorExpander = floorExpander;
     }
 
-    public setScene(_scene: Scene): void {
+    public setScene(scene: Scene): void {
+        this.floorExpander.setScene(scene);
+    }
+
+    public setMarkerManager(markerManager: any): void {
+        this.floorExpander.setMarkerManager(markerManager);
+        this.logger.debug('MarkerManager set in FloorManager');
     }
 
     public async initialize(): Promise<void> {
         this.logger.debug("FloorManager initialized");
+
+        // Запоминаем оригинальные позиции этажей
+        if (this.floorNodes.size > 0) {
+            const allElements = new Map<string, BuildingElement>();
+            this.floors.forEach(floor => {
+                floor.elements.forEach(element => {
+                    allElements.set(element.name, element);
+                });
+            });
+            this.floorExpander.storeOriginalPositions(this.floorNodes, allElements);
+        }
     }
 
     public update(_deltaTime: number): void {
@@ -207,5 +229,90 @@ export class FloorManager implements IFloorManager {
         if (floors.length === 0) return 1;
         const last = floors[floors.length - 1];
         return last !== undefined ? last : 1;
+    }
+
+    /**
+     * Переключить режим раскрытия этажей
+     */
+    public async toggleFloorExpand(): Promise<void> {
+        if (this.isExpanded) {
+            await this.collapseFloors();
+        } else {
+            await this.expandFloors();
+        }
+    }
+
+    /**
+     * Раскрыть этажи
+     */
+    public async expandFloors(): Promise<void> {
+        if (this.isExpanded) {
+            this.logger.debug('expandFloors: already expanded, skipping');
+            return;
+        }
+
+        this.logger.info('Expanding floors');
+
+        // Собираем все элементы
+        const allElements = new Map<string, BuildingElement>();
+        this.floors.forEach(floor => {
+            floor.elements.forEach(element => {
+                allElements.set(element.name, element);
+            });
+        });
+
+        // Создаём Map<number, BuildingElement[]> для floorElements
+        const floorElementsMap = new Map<number, BuildingElement[]>();
+        this.floors.forEach((floorData, floorNum) => {
+            floorElementsMap.set(floorNum, floorData.elements);
+        });
+
+        this.logger.debug(`expandFloors: ${this.floorNodes.size} floors, ${allElements.size} elements, ${this.floors.size} floor data entries`);
+
+        await this.floorExpander.expand(this.floorNodes, floorElementsMap, allElements);
+        this.isExpanded = true;
+        this.eventBus.emit(EventType.FLOOR_EXPAND_CHANGED, { expanded: true });
+        this.logger.info('expandFloors complete');
+    }
+
+    /**
+     * Свернуть этажи
+     */
+    public async collapseFloors(): Promise<void> {
+        if (!this.isExpanded) return;
+
+        this.logger.info('Collapsing floors');
+
+        // Собираем все элементы
+        const allElements = new Map<string, BuildingElement>();
+        this.floors.forEach(floor => {
+            floor.elements.forEach(element => {
+                allElements.set(element.name, element);
+            });
+        });
+
+        // Создаём Map<number, BuildingElement[]> для floorElements
+        const floorElementsMap = new Map<number, BuildingElement[]>();
+        this.floors.forEach((floorData, floorNum) => {
+            floorElementsMap.set(floorNum, floorData.elements);
+        });
+
+        await this.floorExpander.collapse(this.floorNodes, floorElementsMap, allElements);
+        this.isExpanded = false;
+        this.eventBus.emit(EventType.FLOOR_EXPAND_CHANGED, { expanded: false });
+    }
+
+    /**
+     * Проверить, раскрыты ли этажи
+     */
+    public getFloorExpandState(): boolean {
+        return this.isExpanded;
+    }
+
+    /**
+     * Проверить, выполняется ли анимация этажей
+     */
+    public isFloorAnimating(): boolean {
+        return this.floorExpander.getIsAnimating();
     }
 }

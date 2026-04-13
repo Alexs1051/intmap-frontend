@@ -65,6 +65,10 @@ export interface IControlPanel {
     updateButtonState(buttonId: string, isActive: boolean): void;
     /** Получить состояние кнопки */
     getButtonState(buttonId: string): boolean;
+    /** Включить/выключить все кнопки */
+    setButtonsEnabled(enabled: boolean): void;
+    /** Проверить, отключены ли кнопки */
+    areButtonsDisabled(): boolean;
     /** Установить состояние авторизации */
     setAuthState(userInfo: UserInfo): void;
     /** Обновить кнопки этажей */

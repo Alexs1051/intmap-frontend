@@ -9,3 +9,4 @@ export * from './api.constants';
 export * from './colors.constants';
 
 export { CONFIG_DEFAULTS } from './config.defaults';
+export { FLOOR_EXPAND_CONFIG } from './building.constants';

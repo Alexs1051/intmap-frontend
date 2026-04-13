@@ -45,6 +45,7 @@ export class MarkerManager implements IMarkerManager {
   private _currentFloor: number | 'all' = 1;
   private _fromMarkerId: string | null = null;
   private _toMarkerId: string | null = null;
+  private _buildingManager: any = null;
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -72,6 +73,11 @@ export class MarkerManager implements IMarkerManager {
 
   public setWallManager(wallManager: IWallManager): void {
     this.wallManager = wallManager;
+  }
+
+  public setBuildingManager(buildingManager: any): void {
+    this._buildingManager = buildingManager;
+    this.logger.debug('BuildingManager set in MarkerManager');
   }
 
   private setupHoverDetection(): void {
@@ -580,6 +586,15 @@ export class MarkerManager implements IMarkerManager {
   }
 
   public toggleGraph(): void {
+    // Проверяем, не выполняется ли анимация этажей
+    try {
+      const buildingManager = (this as any)._buildingManager;
+      if (buildingManager && buildingManager.floorManager && buildingManager.floorManager.isFloorAnimating?.()) {
+        this.logger.debug('Ignoring graph toggle - floor animation in progress');
+        return;
+      }
+    } catch { }
+
     this._graphVisible = !this._graphVisible;
     this.logger.debug(`Toggling graph to: ${this._graphVisible}`);
 
@@ -595,6 +610,32 @@ export class MarkerManager implements IMarkerManager {
 
     this.eventBus.emit(EventType.GRAPH_VISIBILITY_CHANGED, { visible: this._graphVisible });
     this.logger.info(`Graph ${this._graphVisible ? 'shown' : 'hidden'}`);
+  }
+
+  /**
+   * Полностью перестроить граф с текущими позициями маркеров
+   */
+  public rebuildGraph(): void {
+    // Проверяем, не выполняется ли анимация этажей
+    try {
+      if (this._buildingManager && this._buildingManager.floorManager && this._buildingManager.floorManager.isFloorAnimating?.()) {
+        this.logger.debug('Ignoring graph rebuild - floor animation in progress');
+        return;
+      }
+    } catch { }
+
+    this.logger.debug('Rebuilding graph with current marker positions');
+    // Скрываем
+    this._graphRenderer.hide();
+    this._graphRenderer.clear();
+    // Перестраиваем
+    this._graphRenderer.renderAll();
+    // Показываем
+    this._graphRenderer.show();
+    this._graphVisible = true;
+    this.updateMarkersVisibility();
+
+    this.logger.info('Graph rebuilt');
   }
 
   public clearSelection(): void {

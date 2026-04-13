@@ -25,6 +25,7 @@ import { BuildingAnimator } from "@features/building/building-animator";
 import { FloorManager } from "@features/building/floor-manager";
 import { WallManager } from "@features/building/wall-manager";
 import { BuildingManager } from "@features/building/building-manager";
+import { FloorExpander } from "@features/building/floor-expander";
 
 // Импортируем Marker компоненты
 import { MarkerManager } from "@features/markers/marker-manager";
@@ -90,6 +91,7 @@ export function configureContainer(): void {
   container.bind(TYPES.BuildingManager).to(BuildingManager).inSingletonScope();
   container.bind(TYPES.FloorManager).to(FloorManager).inSingletonScope();
   container.bind(TYPES.WallManager).to(WallManager).inSingletonScope();
+  container.bind(TYPES.FloorExpander).to(FloorExpander).inSingletonScope();
 
   // Building Components
   container.bind(TYPES.BuildingLoader).to(BuildingLoader).inSingletonScope();

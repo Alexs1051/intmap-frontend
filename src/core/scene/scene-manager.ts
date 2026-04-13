@@ -214,6 +214,12 @@ export class SceneManager implements ISceneManager {
             if (this.buildingManager) {
                 this.logger.debug("Loading building model...");
 
+                // Блокируем кнопки на время загрузки
+                try {
+                    const uiManager = container.get<any>(TYPES.UIManager);
+                    uiManager?.controlPanel?.setButtonsEnabled(false);
+                } catch { }
+
                 this.eventBus.emit(EventType.LOADING_PROGRESS, {
                     component: 'building',
                     progress: 0,
@@ -241,6 +247,12 @@ export class SceneManager implements ISceneManager {
             }
 
             await this.initializeComponents();
+
+            // Разблокируем кнопки после полной инициализации
+            try {
+                const uiManager = container.get<any>(TYPES.UIManager);
+                uiManager?.controlPanel?.setButtonsEnabled(true);
+            } catch { }
 
             this.logger.info("All resources loaded successfully");
 
@@ -270,6 +282,18 @@ export class SceneManager implements ISceneManager {
                     scene: this._scene
                 });
                 this.logger.info("UIManager initialized");
+
+                // Устанавливаем MarkerManager в FloorManager -> FloorExpander
+                try {
+                    if (this.buildingManager && this.markerManager) {
+                        this.buildingManager.setMarkerManager(this.markerManager);
+                        this.markerManager.setBuildingManager(this.buildingManager);
+                        this.logger.debug('MarkerManager set in BuildingManager -> FloorManager -> FloorExpander');
+                        this.logger.debug('BuildingManager set in MarkerManager');
+                    }
+                } catch (error) {
+                    this.logger.warn("Failed to set MarkerManager in FloorManager", error);
+                }
             } catch (error) {
                 this.logger.error("Error initializing UIManager", error);
             }

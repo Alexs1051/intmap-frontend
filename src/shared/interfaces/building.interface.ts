@@ -33,6 +33,11 @@ export interface IFloorManager extends ISceneComponent {
     getViewMode(): 'single' | 'all';
     setViewMode(mode: 'single' | 'all'): void;
     toggleViewMode(): void;
+    toggleFloorExpand(): Promise<void>;
+    expandFloors(): Promise<void>;
+    collapseFloors(): Promise<void>;
+    getFloorExpandState(): boolean;
+    isFloorAnimating(): boolean;
     hasFloor(floorNumber: number): boolean;
     readonly currentFloor: number;
     readonly floorNumbers: number[];
@@ -61,7 +66,9 @@ export interface IBuildingManager extends ILoadableComponent {
     animateConstruction(): Promise<void>;
     reloadBuilding(modelUrl: string): Promise<void>;
     toggleWallTransparency(): void;
+    toggleFloorExpand(): void;
     setWallTransparency(transparent: boolean): void;
+    setMarkerManager(markerManager: any): void;
     getElement(name: string): BuildingElement | undefined;
     getElementsByType(type: ElementType): BuildingElement[];
     dispose(): void;
