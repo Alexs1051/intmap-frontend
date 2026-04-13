@@ -1,8 +1,8 @@
 import { Vector3 } from "@babylonjs/core";
-import { Logger } from "../../core/logger/Logger";
-import { EventBus } from "../../core/events/EventBus";
-import { EventType } from "../../core/events/EventTypes";
-import { MarkerGraph } from "./graph/MarkerGraph";
+import { Logger } from "@core/logger/logger";
+import { EventBus } from "@core/events/event-bus";
+import { EventType } from "@core/events/event-types";
+import { MarkerGraph } from "./graph/marker-graph";
 import { PathNode, PathResult } from "@shared/types";
 import { RoutePoint, RouteResult, RouteSegment } from "@shared/types/dto";
 

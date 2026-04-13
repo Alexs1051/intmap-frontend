@@ -1,7 +1,7 @@
 // app.ts
 import "reflect-metadata";
-import { Logger } from "./core/logger/Logger";
-import { showCriticalError, updateDebug } from "./core/utils/ui-helpers";
+import { Logger } from "@core/logger/logger";
+import { showCriticalError, updateDebug } from "@core/utils/ui-helpers";
 
 Logger.getInstance().getLogger('App').debug('=== APP STARTING ===');
 
@@ -16,25 +16,16 @@ window.addEventListener('unhandledrejection', (event) => {
   updateDebug(`Promise Error: ${event.reason?.message || event.reason}`);
 });
 
-import { container, TYPES } from "./core/di/Container";
-import { configureContainer } from "./core/di/ContainerConfig";
-import { BabylonEngine } from "./core/engine/BabylonEngine";
-import { SceneManager } from "./core/scene/SceneManager";
-import { EventBus } from "./core/events/EventBus";
-import { EventType } from "./core/events/EventTypes";
-import { ConfigService } from "./core/config/ConfigService";
-import { LoadingHandler } from "./core/ui/LoadingHandler";
+import { container, TYPES } from "@core/di/container";
+import { configureContainer } from "@core/di/container-config";
+import { BabylonEngine } from "@core/engine/babylon-engine";
+import { SceneManager } from "@core/scene/scene-manager";
+import { EventBus } from "@core/events/event-bus";
+import { EventType } from "@core/events/event-types";
+import { ConfigService } from "@core/config/config-service";
+import { LoadingHandler } from "@core/ui/loading-handler";
 
 import './styles/main.css';
-import './styles/animations.css';
-import './styles/components/control-panel.css';
-import './styles/components/search-bar.css';
-import './styles/components/marker-details-panel.css';
-import './styles/components/popup-manager.css';
-import './styles/components/connection-screen.css';
-import './styles/components/fps-counter.css';
-import './styles/components/building-title.css';
-import './styles/components/auth-popup.css';
 
 /**
  * Главный класс приложения
@@ -185,6 +176,12 @@ class App {
         if (cameraManager) {
           cameraManager.setDimensions(dimensions);
           cameraManager.setTargetPosition(center);
+        }
+
+        // Устанавливаем WallManager в MarkerManager для правильного порядка рендеринга
+        if (markerManager && buildingManager.wallManager) {
+          markerManager.setWallManager(buildingManager.wallManager);
+          this.logger.info('WallManager set in MarkerManager');
         }
       }
 

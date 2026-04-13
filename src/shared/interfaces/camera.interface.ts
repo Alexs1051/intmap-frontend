@@ -1,5 +1,5 @@
 import { ArcRotateCamera, Scene, Vector3 } from "@babylonjs/core";
-import { CameraMode, CameraTransform, BuildingDimensions } from "../types";
+import { CameraMode, CameraTransform, BuildingDimensions } from "@shared/types";
 import { ILoadableComponent } from "./scene.interface";
 
 export interface ICameraManager extends ILoadableComponent {

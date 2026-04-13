@@ -1,7 +1,7 @@
 import { injectable } from "inversify";
 import * as types from "@shared/types";
 import { ILogTransport } from "@shared/interfaces";
-import { ConsoleTransport, MemoryTransport } from "./LogTransport";
+import { ConsoleTransport, MemoryTransport } from "./log-transport";
 
 @injectable()
 export class Logger {

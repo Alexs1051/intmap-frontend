@@ -24,8 +24,9 @@ export const MARKER_WIDGET = {
     SHADOW_ALPHA: 0.6,
 
     // Пути к иконкам
-    ICON_PATH_WAYPOINT: "/icons/waypoint.png",
-    ICON_PATH_INFO: "/icons/info.png",
+    ICON_PATH_MARKER: "/icons/marker/target.png",
+    ICON_PATH_FLAG: "/icons/marker/circle-flag.png",
+    ICON_PATH_WAYPOINT: "/icons/marker/unknown.png",
 
     // Plane
     PLANE_BASE_SIZE: 1.5,
@@ -66,11 +67,11 @@ export const MARKER_ANIMATOR = {
  */
 export const MARKER_COLORS = {
     /** Обычный маркер */
-    MARKER: { background: { r: 0.3, g: 0.5, b: 0.9, a: 0.9 }, text: { r: 1, g: 1, b: 1, a: 1 } },
+    MARKER: { background: { r: 0.2, g: 0.7, b: 0.3, a: 0.9 }, text: { r: 1, g: 1, b: 1, a: 1 } },
     /** Флаг */
-    FLAG: { background: { r: 0.9, g: 0.3, b: 0.3, a: 0.9 }, text: { r: 1, g: 1, b: 1, a: 1 } },
+    FLAG: { background: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, text: { r: 0.3, g: 0.5, b: 0.9, a: 1 } },
     /** Узел навигации */
-    WAYPOINT: { background: { r: 0.2, g: 0.7, b: 0.3, a: 0.9 }, text: { r: 1, g: 1, b: 1, a: 1 } }
+    WAYPOINT: { background: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, text: { r: 0.9, g: 0.3, b: 0.3, a: 1 } }
 } as const;
 
 /**

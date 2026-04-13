@@ -1,4 +1,5 @@
-import { ParsedMarker, AnyMarkerData, MarkerType, RGBA } from "../../shared/types";
+import { ParsedMarker, AnyMarkerData, MarkerType, RGBA } from "@shared/types";
+import { MARKER_COLORS } from "@shared/constants";
 import markerTemplate from '../../data/templates/marker.md';
 import flagTemplate from '../../data/templates/flag.md';
 
@@ -31,32 +32,15 @@ export function convertParsedToMarkerData(parsedMarker: ParsedMarker): AnyMarker
  * Получить стиль маркера (цвета и иконка) по типу
  */
 function getMarkerStyle(type: string): { backgroundColor: RGBA; textColor: RGBA; iconName: string } {
-  switch (type) {
-    case 'marker':
-      return {
-        backgroundColor: { r: 0.2, g: 0.5, b: 0.8, a: 0.9 },
-        textColor: { r: 0, g: 0.5, b: 0, a: 1 },
-        iconName: 'location_on'
-      };
-    case 'flag':
-      return {
-        backgroundColor: { r: 0.9, g: 0.3, b: 0.2, a: 0.9 },
-        textColor: { r: 1, g: 1, b: 1, a: 1 },
-        iconName: 'flag'
-      };
-    case 'waypoint':
-      return {
-        backgroundColor: { r: 0.3, g: 0.7, b: 0.3, a: 0.9 },
-        textColor: { r: 1, g: 1, b: 1, a: 1 },
-        iconName: 'circle'
-      };
-    default:
-      return {
-        backgroundColor: { r: 0.2, g: 0.5, b: 0.8, a: 0.9 },
-        textColor: { r: 1, g: 1, b: 1, a: 1 },
-        iconName: '📍'
-      };
-  }
+  // Маппинг строковых типов на ключи MARKER_COLORS
+  const colorKey = type.toUpperCase() as keyof typeof MARKER_COLORS;
+  const colors = MARKER_COLORS[colorKey] ?? MARKER_COLORS.MARKER;
+
+  return {
+    backgroundColor: colors.background,
+    textColor: colors.text,
+    iconName: type === 'marker' ? 'location_on' : type === 'flag' ? 'flag' : 'circle'
+  };
 }
 
 /**

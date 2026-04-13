@@ -1,4 +1,4 @@
-import { ConnectionDirection } from "../enum/marker.enum";
+import { ConnectionDirection } from "@shared/types/enum/marker.enum";
 
 export interface GraphNode {
     markerId: string;

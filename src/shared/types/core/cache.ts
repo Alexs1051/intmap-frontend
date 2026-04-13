@@ -1,4 +1,4 @@
-import { CacheStrategy } from "../enum/core.enum";
+import { CacheStrategy } from "@shared/types/enum/core.enum";
 
 export interface ICachedResource<T> {
     data: T;

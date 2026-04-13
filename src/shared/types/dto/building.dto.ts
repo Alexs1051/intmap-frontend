@@ -1,5 +1,5 @@
 import { AbstractMesh, TransformNode, StandardMaterial, PBRMaterial, Vector3 } from "@babylonjs/core";
-import { ElementType } from "../enum/building.enum";
+import { ElementType } from "@shared/types/enum/building.enum";
 
 /**
  * Элемент здания (стена, пол, окно, дверь и т.д.)
@@ -17,6 +17,8 @@ export interface BuildingElement {
     isVisible: boolean;
     /** Оригинальный материал элемента (для восстановления) */
     originalMaterial?: StandardMaterial | PBRMaterial | null;
+    /** Прозрачный материал элемента (создаётся динамически) */
+    transparentMaterial?: StandardMaterial | PBRMaterial | null;
     /** Оригинальная позиция элемента (для сброса анимации) */
     originalPosition: Vector3;
     /** Оригинальный поворот элемента */

@@ -1,7 +1,8 @@
 import { Mesh, Ray, Scene, TransformNode, Vector3 } from "@babylonjs/core";
-import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA } from "../types";
-import { MarkerGraph } from "../../features/markers/graph/MarkerGraph";
+import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA } from "@shared/types";
+import { MarkerGraph } from "@features/markers/graph/marker-graph";
 import { ICameraManager } from "./camera.interface";
+import { IWallManager } from "./building.interface";
 import { ILoadableComponent } from "./scene.interface";
 
 export interface IMarker {
@@ -47,6 +48,7 @@ export interface IMarkerManager extends ILoadableComponent {
 
     setScene(scene: Scene): void;
     setCameraManager(cameraManager: ICameraManager): void;
+    setWallManager(wallManager: IWallManager): void;
     handleScenePick(ray: Ray): boolean;
 
     createMarker(data: MarkerData): IMarker;

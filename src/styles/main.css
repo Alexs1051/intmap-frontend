@@ -1,13 +1,26 @@
+/* === Variables & Animations === */
 @import './variables.css';
 @import './animations.css';
 
+/* === Component styles === */
+@import './components/control-panel.css';
+@import './components/search-bar.css';
+@import './components/marker-details-panel.css';
+@import './components/popup-manager.css';
+@import './components/connection-screen.css';
+@import './components/fps-counter.css';
+@import './components/building-title.css';
+@import './components/auth-popup.css';
+
+/* === Base / Reset === */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -20,8 +33,14 @@ canvas {
   height: 100%;
   display: block;
   touch-action: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: auto !important;
 }
 
+/* === Scrollbar === */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -41,6 +60,7 @@ canvas {
   background: rgba(255, 255, 255, 0.5);
 }
 
+/* === Base interactive === */
 button {
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -50,9 +70,32 @@ button:active {
   transform: scale(0.98);
 }
 
+/* === Debug panel === */
+#debug {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #0f0;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px;
+  z-index: 10000;
+  border-radius: 4px;
+  max-width: 90%;
+  word-break: break-word;
+}
+
+/* === Responsive === */
 @media (max-width: 768px) {
   ::-webkit-scrollbar {
     width: 4px;
     height: 4px;
+  }
+
+  button {
+    width: 40px !important;
+    height: 40px !important;
+    font-size: 16px !important;
   }
 }

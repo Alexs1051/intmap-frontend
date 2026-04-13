@@ -1,4 +1,4 @@
-import { NotificationType, UIEventType } from "../enum/ui.enum";
+import { NotificationType, UIEventType } from "@shared/types/enum/ui.enum";
 
 /**
  * Информация о пользователе

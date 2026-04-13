@@ -1,7 +1,7 @@
-import { Scene, Vector3, AbstractMesh, TransformNode } from "@babylonjs/core";
-import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions } from "../types";
+import { Scene, Vector3, AbstractMesh, TransformNode, Mesh } from "@babylonjs/core";
+import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions } from "@shared/types";
 import { ISceneComponent, ILoadableComponent } from "./scene.interface";
-import { ParsedMarker, ParsedRoom } from "../types/dto/building.dto";
+import { ParsedMarker, ParsedRoom } from "@shared/types/dto/building.dto";
 
 export interface IBuildingLoader {
     setScene(scene: Scene): void;
@@ -49,6 +49,8 @@ export interface IWallManager extends ISceneComponent {
     hideAllWalls(): void;
     toggleTransparency(): void;
     setTransparency(transparent: boolean): void;
+    /** Назначает rendering group для маркера, чтобы он отображался поверх стен */
+    assignMarkerRenderingGroup(mesh: Mesh): void;
     readonly count: number;
     readonly isTransparent: boolean;
 }

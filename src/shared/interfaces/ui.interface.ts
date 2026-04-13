@@ -1,9 +1,9 @@
 import { Scene } from "@babylonjs/core";
-import { Marker } from "../../features/markers/Marker";
+import { Marker } from "@features/markers/marker";
 import {
     UIEvent, UserInfo, NotificationType, SearchResult,
     PopupOptions, BuildingOption, AuthResult
-} from "../types";
+} from "@shared/types";
 import { ICameraManager, IBuildingManager, IMarkerManager } from "./index";
 
 /**

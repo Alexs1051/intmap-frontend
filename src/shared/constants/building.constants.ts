@@ -39,11 +39,21 @@ export const BUILDING_ANIMATION = {
  */
 export const WALL_CONFIG = {
     /** Прозрачность стен (0-1) */
-    TRANSPARENT_ALPHA: 0.5,
+    TRANSPARENT_ALPHA: 0.3,
     /** Прозрачность по умолчанию */
     DEFAULT_TRANSPARENT: false,
     /** Режим рентгена по умолчанию */
-    XRAY_ENABLED: false
+    XRAY_ENABLED: false,
+    /** Rendering group для стен (меньше = рисуется раньше) */
+    WALL_RENDERING_GROUP: 0,
+    /** Rendering group для меток (больше = рисуется поверх стен) */
+    MARKER_RENDERING_GROUP: 1,
+    /** Отключить запись в depth buffer для прозрачных стен */
+    DISABLE_DEPTH_WRITE: true,
+    /** Использовать depth pre-pass для сохранения геометрии */
+    USE_DEPTH_PRE_PASS: true,
+    /** Множитель цвета для прозрачных стен (уменьшает насыщенность) */
+    TRANSPARENT_COLOR_SCALE: 0.7
 } as const;
 
 /**

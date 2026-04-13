@@ -1,5 +1,5 @@
 import { Vector3 } from "@babylonjs/core";
-import { MarkerType } from "../enum/marker.enum";
+import { MarkerType } from "@shared/types/enum/marker.enum";
 
 export interface RGBA {
     r: number;

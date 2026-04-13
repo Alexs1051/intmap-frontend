@@ -73,21 +73,16 @@ module.exports = {
     }),
     new CopyWebpackPlugin({
       patterns: [
-        { 
+        {
           from: path.resolve(__dirname, 'public/index.html'),
           to: path.resolve(__dirname, 'dist/index.html')
         },
-        { 
-          from: path.resolve(__dirname, 'public/styles'),
-          to: path.resolve(__dirname, 'dist/styles'),
-          noErrorOnMissing: true
-        },
-        { 
+        {
           from: path.resolve(__dirname, 'public/models'),
           to: path.resolve(__dirname, 'dist/models'),
           noErrorOnMissing: true
         },
-        { 
+        {
           from: path.resolve(__dirname, 'public/icons'),
           to: path.resolve(__dirname, 'dist/icons'),
           noErrorOnMissing: false

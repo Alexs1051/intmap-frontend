@@ -1,4 +1,4 @@
-import { LogLevel } from "../enum/core.enum";
+import { LogLevel } from "@shared/types/enum/core.enum";
 
 export interface IFormattedLog {
     timestamp: string;

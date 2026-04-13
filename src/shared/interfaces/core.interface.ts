@@ -1,4 +1,4 @@
-import { LogLevel } from "../types";
+import { LogLevel } from "@shared/types";
 
 export interface ILogTransport {
     log(level: LogLevel, module: string, message: string, data?: any): void;

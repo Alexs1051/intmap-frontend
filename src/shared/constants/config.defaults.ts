@@ -1,4 +1,4 @@
-import { IAppConfig } from "../types";
+import { IAppConfig } from "@shared/types";
 
 export const CONFIG_DEFAULTS: IAppConfig = {
     apiUrl: '/api',

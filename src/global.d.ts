@@ -1,5 +1,5 @@
 import * as BABYLON from '@babylonjs/core';
-import { IAppConfig } from './shared/types';
+import { IAppConfig } from '@shared/types';
 
 /**
  * Публичный интерфейс экземпляра приложения

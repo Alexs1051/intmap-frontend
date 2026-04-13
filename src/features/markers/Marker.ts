@@ -1,15 +1,27 @@
 import { Scene, Vector3, Mesh, ActionManager, Color3, ExecuteCodeAction, SetValueAction } from "@babylonjs/core";
-import { Logger } from "../../core/logger/Logger";
-import { EventBus } from "../../core/events/EventBus";
-import { EventType } from "../../core/events/EventTypes";
-import { MarkerWidget } from "./components/MarkerWidget";
-import { MarkerAnimator } from "./MarkerAnimator";
-import type { RGBA, AnyMarkerData } from "../../shared/types";
-import { MarkerType } from "../../shared/types";
+import { Logger } from "@core/logger/logger";
+import { EventBus } from "@core/events/event-bus";
+import { EventType } from "@core/events/event-types";
+import { MarkerWidget } from "./components/marker-widget";
+import { MarkerAnimator } from "./marker-animator";
+import type { RGBA, AnyMarkerData } from "@shared/types";
+import { MarkerType } from "@shared/types";
 import { IMarker } from "@shared/interfaces";
+import { MARKER_COLORS } from "@shared/constants";
 
-const DEFAULT_BG_COLOR: RGBA = { r: 0.2, g: 0.5, b: 0.8, a: 0.9 };
-const DEFAULT_TEXT_COLOR: RGBA = { r: 1, g: 1, b: 1, a: 1 };
+/**
+ * Получает цвета маркера по умолчанию для указанного типа
+ */
+function getDefaultColorsForType(type: MarkerType): { backgroundColor: RGBA; textColor: RGBA } {
+  // Маппинг: MarkerType -> MARKER_COLORS keys
+  const colorKey = type.toUpperCase() as keyof typeof MARKER_COLORS;
+  const colors = MARKER_COLORS[colorKey] ?? MARKER_COLORS.MARKER;
+
+  return {
+    backgroundColor: colors.background,
+    textColor: colors.text
+  };
+}
 
 /**
  * Маркер на карте
@@ -60,12 +72,14 @@ export class Marker implements IMarker {
     const widget = new MarkerWidget();
     const animator = new MarkerAnimator(logger);
 
-    const bgColorData = data.backgroundColor ?? DEFAULT_BG_COLOR;
-    const textColorData = data.textColor ?? DEFAULT_TEXT_COLOR;
+    const defaultColors = getDefaultColorsForType(data.type);
+    const bgColorData = data.backgroundColor ?? defaultColors.backgroundColor;
+    const textColorData = data.textColor ?? defaultColors.textColor;
     const iconName = data.iconName ?? Marker.getDefaultIconForType(data.type);
 
     const bgColor = new Color3(bgColorData.r, bgColorData.g, bgColorData.b);
     const fgColor = new Color3(textColorData.r, textColorData.g, textColorData.b);
+    const bgAlpha = bgColorData.a;
 
     const textForWidget = data.type === MarkerType.MARKER ? data.name : undefined;
 
@@ -78,7 +92,8 @@ export class Marker implements IMarker {
       fgColor,
       marker._type,
       iconName,
-      textForWidget
+      textForWidget,
+      bgAlpha
     ).then(() => {
       marker.setupInteractivity(scene);
       marker.playSpawnAnimation();
@@ -255,11 +270,11 @@ export class Marker implements IMarker {
   }
 
   public get backgroundColor(): RGBA {
-    return this._data.backgroundColor ?? DEFAULT_BG_COLOR;
+    return this._data.backgroundColor ?? getDefaultColorsForType(this._type).backgroundColor;
   }
 
   public get textColor(): RGBA {
-    return this._data.textColor ?? DEFAULT_TEXT_COLOR;
+    return this._data.textColor ?? getDefaultColorsForType(this._type).textColor;
   }
 
   public get position(): Vector3 {

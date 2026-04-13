@@ -1,5 +1,5 @@
 import { Vector3 } from "@babylonjs/core";
-import { CameraMode } from "../enum/camera.enum";
+import { CameraMode } from "@shared/types/enum/camera.enum";
 
 /**
  * Трансформация камеры (положение в пространстве)
