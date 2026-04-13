@@ -17,19 +17,3 @@ export interface IEvent<T = any> {
  * Обработчик события
  */
 export type EventHandler<T = any> = (event: IEvent<T>) => void;
-
-/**
- * Подписка на событие
- */
-export interface ISubscription {
-    /** ID подписки */
-    id: string;
-    /** Тип события */
-    eventType: string;
-    /** Обработчик */
-    handler: EventHandler;
-    /** Приоритет (выше = раньше) */
-    priority?: number;
-    /** Выполнить один раз */
-    once?: boolean;
-}

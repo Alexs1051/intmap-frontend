@@ -1,53 +1,39 @@
 import { Scene, Vector3, MeshBuilder, Color3, LinesMesh, StandardMaterial, Mesh } from "@babylonjs/core";
-import { injectable, inject } from "inversify";
-import { TYPES } from "../../../core/di/Container";
-import { Logger } from "../../../core/logger/Logger";
-import { EventBus } from "../../../core/events/EventBus";
-import { EventType } from "../../../core/events/EventTypes";
 import { MarkerGraph } from "./MarkerGraph";
 import { Marker } from "../Marker";
 import { IMarkerGraphRenderer, GraphRendererConfig, IMarkerManager, IMarker } from "@shared/interfaces";
 import { MarkerType } from "@shared/types";
+import { GRAPH_RENDERER } from "@shared/constants";
 
 const DEFAULT_CONFIG: GraphRendererConfig = {
-    lineColor: new Color3(0.3, 0.6, 1.0),
-    lineThickness: 0.1,
-    showArrows: true,
-    arrowSize: 0.8,
-    activeColor: new Color3(0.3, 0.6, 1.0),
-    inactiveOpacity: 0.3,
-    routeColor: new Color3(1, 0.5, 0),
-    routeAnimationSpeed: 0.2
+    lineColor: new Color3(GRAPH_RENDERER.LINE_COLOR.r, GRAPH_RENDERER.LINE_COLOR.g, GRAPH_RENDERER.LINE_COLOR.b),
+    lineThickness: GRAPH_RENDERER.LINE_THICKNESS,
+    showArrows: GRAPH_RENDERER.SHOW_ARROWS,
+    arrowSize: GRAPH_RENDERER.ARROW_SIZE,
+    activeColor: new Color3(GRAPH_RENDERER.ACTIVE_COLOR.r, GRAPH_RENDERER.ACTIVE_COLOR.g, GRAPH_RENDERER.ACTIVE_COLOR.b),
+    inactiveOpacity: GRAPH_RENDERER.INACTIVE_OPACITY,
+    routeColor: new Color3(GRAPH_RENDERER.ROUTE_COLOR.r, GRAPH_RENDERER.ROUTE_COLOR.g, GRAPH_RENDERER.ROUTE_COLOR.b),
+    routeAnimationSpeed: GRAPH_RENDERER.ROUTE_ANIMATION_SPEED
 };
 
-@injectable()
+/**
+ * Рендерер графа маркеров
+ * Отрисовывает линии связей между waypoint и стрелки направления
+ */
 export class MarkerGraphRenderer implements IMarkerGraphRenderer {
-    private logger: Logger;
-    private eventBus: EventBus;
-    private config: GraphRendererConfig;
     private scene?: Scene;
     private graph?: MarkerGraph;
     private markerManager?: IMarkerManager;
+    private config: GraphRendererConfig = DEFAULT_CONFIG;
 
     private _lines: Map<string, LinesMesh> = new Map();
     private _arrows: Map<string, LinesMesh[]> = new Map();
     private _routeSegments: Mesh[] = [];
     private _visible: boolean = false;
-    private _animationFrame: number | null = null;
-
-    constructor(
-        @inject(TYPES.Logger) logger: Logger,
-        @inject(TYPES.EventBus) eventBus: EventBus
-    ) {
-        this.logger = logger.getLogger('MarkerGraphRenderer');
-        this.eventBus = eventBus;
-        this.config = { ...DEFAULT_CONFIG };
-    }
 
     public initialize(scene: Scene, graph: MarkerGraph): void {
         this.scene = scene;
         this.graph = graph;
-        this.logger.debug("Renderer initialized");
     }
 
     public setMarkerManager(markerManager: IMarkerManager): void {
@@ -55,95 +41,59 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
     }
 
     /**
-     * Обновить видимость графа в зависимости от видимых waypoint
+     * Обновить видимость графа
      */
     public updateVisibility(): void {
-        if (!this._visible) {
+        if (!this._visible || !this.markerManager || !this.graph) {
             this.hide();
             return;
         }
 
-        if (!this.markerManager || !this.graph) {
-            this.logger.warn("Cannot update visibility: markerManager or graph not set");
-            return;
-        }
-
-        // Получаем все маркеры через IMarkerManager
         const allMarkers = this.markerManager.getAllMarkers();
-
-        // Фильтруем видимые waypoint
-        const visibleWaypoints = allMarkers.filter((marker: IMarker) =>
-            marker.type === MarkerType.WAYPOINT && marker.isVisible
+        const visibleWaypoints = allMarkers.filter((m: IMarker) =>
+            m.type === MarkerType.WAYPOINT && m.isVisible
         );
 
-        const visibleIds = new Set(visibleWaypoints.map((marker: IMarker) => marker.id));
+        const visibleIds = new Set(visibleWaypoints.map((m: IMarker) => m.id));
 
-        // Скрываем ВСЕ линии и стрелки
+        // Скрываем все
         this._lines.forEach(line => line.setEnabled(false));
         this._arrows.forEach(arrows => arrows.forEach(arrow => arrow.setEnabled(false)));
 
-        // Если нет видимых waypoint - выходим
-        if (visibleWaypoints.length === 0) {
-            this.logger.debug("No visible waypoints, hiding all connections");
-            return;
-        }
+        if (visibleWaypoints.length === 0) return;
 
-        // Показываем только связи между видимыми waypoint
+        // Показываем связи между видимыми waypoint
         let visibleCount = 0;
         visibleWaypoints.forEach((marker: IMarker) => {
-            const graphMarker = this.graph!.getMarker(marker.id);
-            if (!graphMarker) return;
-
             const neighbors = this.graph!.getNeighbors(marker.id);
-            const waypointNeighbors = neighbors.filter((neighbor: Marker) =>
-                neighbor.type === MarkerType.WAYPOINT && visibleIds.has(neighbor.id)
+            const waypointNeighbors = neighbors.filter((n: Marker) =>
+                n.type === MarkerType.WAYPOINT && visibleIds.has(n.id)
             );
 
-            waypointNeighbors.forEach((neighbor: Marker) => {
+            waypointNeighbors.forEach(neighbor => {
                 const edgeId = this.getEdgeId(marker.id, neighbor.id);
                 const line = this._lines.get(edgeId);
-                if (line) {
-                    line.setEnabled(true);
-                    visibleCount++;
-                }
-
+                if (line) { line.setEnabled(true); visibleCount++; }
                 const arrows = this._arrows.get(edgeId);
-                if (arrows) {
-                    arrows.forEach(arrow => arrow.setEnabled(true));
-                }
+                if (arrows) arrows.forEach(arrow => arrow.setEnabled(true));
             });
         });
-
-        this.logger.debug(`Updated visibility: ${visibleCount} connections visible out of ${this._lines.size}`);
     }
 
     public renderAll(): void {
-        if (!this.scene || !this.graph) {
-            this.logger.warn("Cannot render: scene or graph not set");
-            return;
-        }
-
+        if (!this.scene || !this.graph) return;
         this.clear();
 
-        const markers = this.graph.getAllMarkers();
+        const waypoints = this.graph.getAllMarkers().filter((m: Marker) => m.type === MarkerType.WAYPOINT);
         const processed = new Set<string>();
 
-        // Рендерим ТОЛЬКО связи между waypoint
-        const waypoints = markers.filter((marker: Marker) => marker.type === MarkerType.WAYPOINT);
-
-        this.logger.debug(`MarkerGraphRenderer.renderAll: ${waypoints.length} waypoints in graph`);
-
-        waypoints.forEach((marker: Marker) => {
+        waypoints.forEach(marker => {
             const neighbors = this.graph!.getNeighbors(marker.id);
-            // Показываем связи только с другими waypoint
-            const waypointNeighbors = neighbors.filter((neighbor: Marker) => neighbor.type === MarkerType.WAYPOINT);
+            const waypointNeighbors = neighbors.filter(n => n.type === MarkerType.WAYPOINT);
 
-            this.logger.debug(`Waypoint ${marker.id} has ${waypointNeighbors.length} waypoint neighbors`);
-
-            waypointNeighbors.forEach((neighbor: Marker) => {
+            waypointNeighbors.forEach(neighbor => {
                 const edgeId = this.getEdgeId(marker.id, neighbor.id);
                 if (processed.has(edgeId)) return;
-
                 if (this.graph!.hasConnection(marker.id, neighbor.id)) {
                     this.renderConnection(marker, neighbor);
                     processed.add(edgeId);
@@ -151,26 +101,16 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
             });
         });
 
-        // По умолчанию скрываем все линии, пока граф не включен
         this.hide();
-
-        this.logger.debug(`Rendered ${this._lines.size} connections between waypoints`);
-        this.eventBus.emit(EventType.GRAPH_RENDERED, { edges: this._lines.size });
     }
 
     public renderForMarker(markerId: string): void {
         if (!this.scene || !this.graph) return;
-
         const marker = this.graph.getMarker(markerId);
-        if (!marker) return;
-
-        // Только для waypoint
-        if (marker.type !== MarkerType.WAYPOINT) return;
+        if (!marker || marker.type !== MarkerType.WAYPOINT) return;
 
         const neighbors = this.graph.getNeighbors(markerId);
-        const waypointNeighbors = neighbors.filter(n => n.type === MarkerType.WAYPOINT);
-
-        waypointNeighbors.forEach(neighbor => {
+        neighbors.filter(n => n.type === MarkerType.WAYPOINT).forEach(neighbor => {
             this.renderConnection(marker, neighbor);
         });
     }
@@ -179,16 +119,10 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
         const edgeId = this.getEdgeId(marker1.id, marker2.id);
         if (this._lines.has(edgeId)) return;
 
-        const pos1 = marker1.position;
-        const pos2 = marker2.position;
-
-        this.logger.debug(`Rendering connection: ${marker1.id} -> ${marker2.id}`);
-
-        const line = this.createLine(pos1, pos2, this.config.lineColor);
+        const line = this.createLine(marker1.position, marker2.position, this.config.lineColor);
         this._lines.set(edgeId, line);
 
         if (this.config.showArrows) {
-            this.logger.debug(`Creating arrows for: ${marker1.id} -> ${marker2.id}`);
             this.createArrows(marker1, marker2, edgeId);
         }
     }
@@ -301,84 +235,37 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
 
     public highlightPath(markerIds: string[]): void {
         this.clearRoute();
+        if (markerIds.length < 2 || !this.scene || !this.graph) return;
 
-        if (markerIds.length < 2) return;
-
-        this.logger.debug(`Highlighting path with ${markerIds.length} markers`);
-
-        if (!this.scene) {
-            this.logger.error('Scene not set in MarkerGraphRenderer!');
-            return;
-        }
-
-        if (!this.graph) {
-            this.logger.error('Graph not set in MarkerGraphRenderer!');
-            return;
-        }
-
-        let createdCount = 0;
-
+        // Сферы на точках маршрута
         for (const markerId of markerIds) {
             if (!markerId) continue;
-
             const marker = this.graph.getMarker(markerId);
-            if (!marker) {
-                this.logger.warn(`Marker ${markerId} not found`);
-                continue;
-            }
+            if (!marker) continue;
 
-            const sphere = MeshBuilder.CreateSphere("routeSphere", {
-                diameter: 0.6,
-                segments: 8
-            }, this.scene);
-
-            sphere.position = new Vector3(
-                marker.position.x,
-                marker.position.y + 0.3,
-                marker.position.z
-            );
+            const sphere = MeshBuilder.CreateSphere("routeSphere", { diameter: 0.6, segments: 8 }, this.scene);
+            sphere.position = new Vector3(marker.position.x, marker.position.y + 0.3, marker.position.z);
 
             const material = new StandardMaterial("routeSphereMat", this.scene);
             material.diffuseColor = new Color3(1, 0.3, 0);
             material.emissiveColor = new Color3(0.5, 0.1, 0);
             sphere.material = material;
-
             this._routeSegments.push(sphere);
-            createdCount++;
         }
 
+        // Линии между точками
         for (let i = 0; i < markerIds.length - 1; i++) {
-            const fromId = markerIds[i];
-            const toId = markerIds[i + 1];
-
-            if (!fromId || !toId) continue;
-
-            const fromMarker = this.graph.getMarker(fromId);
-            const toMarker = this.graph.getMarker(toId);
-
+            const fromMarker = this.graph.getMarker(markerIds[i]!);
+            const toMarker = this.graph.getMarker(markerIds[i + 1]!);
             if (!fromMarker || !toMarker) continue;
 
-            const start = new Vector3(
-                fromMarker.position.x,
-                fromMarker.position.y + 0.3,
-                fromMarker.position.z
-            );
-            const end = new Vector3(
-                toMarker.position.x,
-                toMarker.position.y + 0.3,
-                toMarker.position.z
-            );
-
-            const points = [start, end];
-            const line = MeshBuilder.CreateLines("routeLine", { points }, this.scene);
+            const start = new Vector3(fromMarker.position.x, fromMarker.position.y + 0.3, fromMarker.position.z);
+            const end = new Vector3(toMarker.position.x, toMarker.position.y + 0.3, toMarker.position.z);
+            const line = MeshBuilder.CreateLines("routeLine", { points: [start, end] }, this.scene);
             line.color = new Color3(1, 0.3, 0);
             line.alpha = 1;
-
             this._routeSegments.push(line);
-            createdCount++;
         }
-
-        this.logger.debug(`Created ${createdCount} route elements (${this._routeSegments.length} total)`);
     }
 
     public resetHighlight(): void {
@@ -400,52 +287,28 @@ export class MarkerGraphRenderer implements IMarkerGraphRenderer {
     }
 
     public clearRoute(): void {
-        if (this._animationFrame !== null) {
-            cancelAnimationFrame(this._animationFrame);
-            this._animationFrame = null;
-        }
-
-        this._routeSegments.forEach(segment => {
-            try {
-                segment.dispose();
-            } catch (e) {
-                // ignore
-            }
-        });
+        this._routeSegments.forEach(segment => { try { segment.dispose(); } catch { } });
         this._routeSegments = [];
     }
 
     public show(): void {
-        if (!this.markerManager) {
-            this.logger.warn("Cannot show: markerManager not set");
-            return;
-        }
-
         this._visible = true;
-
         this.updateVisibility();
-
-        this.eventBus.emit(EventType.GRAPH_SHOWN);
     }
 
     public hide(): void {
         this._lines.forEach(line => line.setEnabled(false));
         this._arrows.forEach(arrows => arrows.forEach(arrow => arrow.setEnabled(false)));
         this._visible = false;
-        this.eventBus.emit(EventType.GRAPH_HIDDEN);
     }
 
     public clear(): void {
         this.clearRoute();
-
         this._lines.forEach(line => line.dispose());
         this._lines.clear();
-
         this._arrows.forEach(arrows => arrows.forEach(arrow => arrow.dispose()));
         this._arrows.clear();
-
         this._visible = false;
-        this.logger.debug("Renderer cleared");
     }
 
     private getEdgeId(id1: string, id2: string): string {

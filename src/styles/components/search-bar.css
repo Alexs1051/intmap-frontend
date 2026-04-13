@@ -102,9 +102,10 @@
   flex-shrink: 0;
 }
 
-.search-result-icon {
-  font-size: 24px;
-  font-family: 'Material Icons', 'Material Symbols Outlined';
+.search-result-icon-img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .search-result-text {

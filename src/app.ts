@@ -1,20 +1,19 @@
 // app.ts
 import "reflect-metadata";
 import { Logger } from "./core/logger/Logger";
+import { showCriticalError, updateDebug } from "./core/utils/ui-helpers";
 
 Logger.getInstance().getLogger('App').debug('=== APP STARTING ===');
 
 // Глобальный обработчик ошибок
 window.addEventListener('error', (event) => {
   console.error('Global error:', event.error);
-  const debug = document.getElementById('debug');
-  if (debug) debug.innerHTML = `Error: ${event.error?.message || event.message}`;
+  updateDebug(`Error: ${event.error?.message || event.message}`);
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled rejection:', event.reason);
-  const debug = document.getElementById('debug');
-  if (debug) debug.innerHTML = `Promise Error: ${event.reason?.message || event.reason}`;
+  updateDebug(`Promise Error: ${event.reason?.message || event.reason}`);
 });
 
 import { container, TYPES } from "./core/di/Container";
@@ -24,6 +23,7 @@ import { SceneManager } from "./core/scene/SceneManager";
 import { EventBus } from "./core/events/EventBus";
 import { EventType } from "./core/events/EventTypes";
 import { ConfigService } from "./core/config/ConfigService";
+import { LoadingHandler } from "./core/ui/LoadingHandler";
 
 import './styles/main.css';
 import './styles/animations.css';
@@ -45,48 +45,49 @@ class App {
   private logger!: Logger;
   private eventBus!: EventBus;
   private config!: ConfigService;
+  private loadingHandler!: LoadingHandler;
   private isRunning: boolean = false;
   private renderLoopId: number | null = null;
 
   constructor() {
-    Logger.getInstance().getLogger('App').debug('App constructor start');
-    const debug = document.getElementById('debug');
-    if (debug) debug.innerHTML = 'Initializing...';
+    this.logger = Logger.getInstance().getLogger('App');
+    this.logger.debug('App constructor start');
+    updateDebug('Initializing...');
 
     try {
-      Logger.getInstance().getLogger('App').debug('Configuring container...');
       configureContainer();
-      Logger.getInstance().getLogger('App').debug('Container configured');
+      this.logger.debug('Container configured');
 
-      Logger.getInstance().getLogger('App').debug('Getting dependencies...');
-      this.engine = container.get<BabylonEngine>(TYPES.BabylonEngine);
-      this.sceneManager = container.get<SceneManager>(TYPES.SceneManager);
-      this.logger = container.get<Logger>(TYPES.Logger).getLogger('App');
-      this.eventBus = container.get<EventBus>(TYPES.EventBus);
-      this.config = container.get<ConfigService>(TYPES.ConfigService);
-      Logger.getInstance().getLogger('App').debug('Dependencies obtained');
+      this.initDependencies();
+      this.logger.debug('Dependencies obtained');
 
-      Logger.getInstance().getLogger('App').debug('Setting up event handlers...');
       this.setupEventHandlers();
       this.setupConnectionHandling();
       this.setupLoadingHandlers();
 
-      Logger.getInstance().getLogger('App').debug('Starting app...');
       this.start();
 
       this.logger.info(`Application initialized (v${this.config.get().version})`);
-      Logger.getInstance().getLogger('App').debug('App constructor done');
-
-      if (debug) debug.innerHTML = 'App started!';
+      updateDebug('App started!');
 
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      console.error('Failed to initialize application:', error);
-      if (debug) debug.innerHTML = `Error: ${error.message}`;
-      this.showError(error.message);
+      this.handleInitError(err);
     }
   }
 
+  /**
+   * Инициализировать зависимости из DI контейнера
+   */
+  private initDependencies(): void {
+    this.engine = container.get<BabylonEngine>(TYPES.BabylonEngine);
+    this.sceneManager = container.get<SceneManager>(TYPES.SceneManager);
+    this.eventBus = container.get<EventBus>(TYPES.EventBus);
+    this.config = container.get<ConfigService>(TYPES.ConfigService);
+  }
+
+  /**
+   * Настроить обработчики событий
+   */
   private setupEventHandlers(): void {
     window.addEventListener('error', (event) => {
       this.logger.error('Global error', {
@@ -107,7 +108,7 @@ class App {
     this.eventBus.on(EventType.LOADING_PROGRESS, (event) => {
       const overall = event.data.overall || 0;
       if (this.config.isDebug() && (overall === 0 || overall === 0.5 || overall === 1)) {
-        Logger.getInstance().getLogger('App').debug(`Loading progress: ${(overall * 100).toFixed(1)}%`);
+        this.logger.debug(`Loading progress: ${(overall * 100).toFixed(1)}%`);
       }
     });
 
@@ -120,6 +121,9 @@ class App {
     });
   }
 
+  /**
+   * Настроить обработку состояния соединения
+   */
   private setupConnectionHandling(): void {
     const handleOnline = () => {
       this.logger.info('Connection restored');
@@ -139,54 +143,22 @@ class App {
     }
   }
 
+  /**
+   * Настроить обработчики загрузки
+   */
   private setupLoadingHandlers(): void {
-    this.eventBus.on(EventType.LOADING_PROGRESS, (data: any) => {
-      const progress = data.data?.overall || data.overall || 0;
-      const component = data.data?.component || data.component || 'ресурсов';
-      this.updateLoadingProgress(progress, `Загрузка: ${component}...`);
-    });
-
-    this.eventBus.on(EventType.LOADING_START, () => {
-      this.updateLoadingProgress(0, 'Начало загрузки...');
-    });
-
-    this.eventBus.on(EventType.LOADING_COMPLETE, () => {
-      setTimeout(() => {
-        this.hideLoadingScreen();
-      }, 500);
-    });
-
-    this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
-      this.hideLoadingScreen();
-      const errorData = data.data || data;
-      const errorMessage = errorData.error?.message || errorData.error || errorData.message || "Неизвестная ошибка";
-      this.showError(`Ошибка загрузки: ${errorMessage}`);
-    });
+    this.loadingHandler = new LoadingHandler(this.eventBus, this.config);
+    this.loadingHandler.setup();
   }
 
-  private updateLoadingProgress(progress: number, status: string): void {
-    const percent = Math.floor(progress * 100);
-    const bar = document.getElementById('loading-bar');
-    const percentEl = document.getElementById('loading-percent');
-    const statusEl = document.getElementById('loading-status');
-
-    if (bar) bar.style.width = `${percent}%`;
-    if (percentEl) percentEl.textContent = `${percent}%`;
-    if (statusEl) statusEl.textContent = status;
-
-    if (this.config.isDebug() && (percent === 0 || percent === 50 || percent === 100)) {
-      Logger.getInstance().getLogger('App').debug(`Loading progress: ${percent}%`);
-    }
-  }
-
-  private hideLoadingScreen(): void {
-    const loadingEl = document.getElementById('app-loading');
-    if (loadingEl) {
-      loadingEl.classList.add('hidden');
-      setTimeout(() => {
-        loadingEl.style.display = 'none';
-      }, 500);
-    }
+  /**
+   * Обработка ошибки инициализации
+   */
+  private handleInitError(err: unknown): void {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('Failed to initialize application:', error);
+    updateDebug(`Error: ${error.message}`);
+    showCriticalError(error.message);
   }
 
   private async start(): Promise<void> {
@@ -267,7 +239,7 @@ class App {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       this.logger.error('Failed to start application', error);
-      this.showError(error.message);
+      showCriticalError(error.message);
     }
   }
 
@@ -309,34 +281,6 @@ class App {
     }
     this.engine.stopRenderLoop();
     this.logger.info('Application stopped');
-  }
-
-  private showError(errorMessage: string): void {
-    const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = `
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #ff4444;
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-family: monospace;
-      z-index: 10000;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-      max-width: 90%;
-      word-break: break-word;
-      text-align: center;
-    `;
-    errorDiv.textContent = `❌ Error: ${errorMessage}`;
-    document.body.appendChild(errorDiv);
-
-    setTimeout(() => {
-      if (errorDiv.parentNode) {
-        errorDiv.remove();
-      }
-    }, 5000);
   }
 
   public dispose(): void {

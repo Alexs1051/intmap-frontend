@@ -4,29 +4,23 @@ import { TYPES } from "../../core/di/Container";
 import { Logger } from "../../core/logger/Logger";
 import { EventBus } from "../../core/events/EventBus";
 import { EventType } from "../../core/events/EventTypes";
-import { ConfigService } from "../../core/config/ConfigService";
 import { Marker } from "./Marker";
-import { MarkerWidget } from "./components/MarkerWidget";
-import { MarkerAnimator } from "./MarkerAnimator";
 import { MarkerGraph } from "./graph/MarkerGraph";
 import { MarkerGraphRenderer } from "./graph/MarkerGraphRenderer";
 import { Pathfinder } from "./Pathfinder";
-import { container } from "../../core/di/Container";
-import { MarkerType, AnyMarkerData, FocusOptions, PathResult, ParsedMarker, RGBA } from "../../shared/types";
+import { MarkerType, AnyMarkerData, FocusOptions, PathResult } from "../../shared/types";
 import { ICameraManager, IMarkerManager, IBuildingManager } from "@shared/interfaces";
-
-// Шаблоны описаний (импортируются как raw строки через webpack asset/source)
-import markerTemplate from '../../data/templates/marker.md';
-import flagTemplate from '../../data/templates/flag.md';
+import { container } from "../../core/di/Container";
+import { convertParsedToMarkerData } from "./marker-helpers";
 
 /**
  * Менеджер маркеров
+ * Отвечает за создание, управление и отображение маркеров
  */
 @injectable()
 export class MarkerManager implements IMarkerManager {
   private logger: Logger;
   private eventBus: EventBus;
-  private config: ConfigService;
   private scene?: Scene;
   private cameraManager?: ICameraManager;
 
@@ -46,23 +40,20 @@ export class MarkerManager implements IMarkerManager {
   private readonly doubleClickThreshold: number = 300;
   private raycasterActive: boolean = false;
 
-  // Новые поля для логики видимости
-  private _selectedForPathMarkers: Set<string> = new Set(); // Маркеры "Сюда/Отсюда"
+  private _selectedForPathMarkers: Set<string> = new Set();
   private _currentFloor: number | 'all' = 1;
-  private _fromMarkerId: string | null = null;  // "Отсюда"
-  private _toMarkerId: string | null = null;    // "Сюда"
+  private _fromMarkerId: string | null = null;
+  private _toMarkerId: string | null = null;
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
     @inject(TYPES.EventBus) eventBus: EventBus,
-    @inject(TYPES.ConfigService) configService: ConfigService,
     @inject(TYPES.MarkerGraph) graph: MarkerGraph,
     @inject(TYPES.MarkerGraphRenderer) graphRenderer: MarkerGraphRenderer,
     @inject(TYPES.Pathfinder) pathfinder: Pathfinder
   ) {
     this.logger = logger.getLogger('MarkerManager');
     this.eventBus = eventBus;
-    this.config = configService;
     this._graph = graph;
     this._graphRenderer = graphRenderer;
     this._pathfinder = pathfinder;
@@ -163,8 +154,7 @@ export class MarkerManager implements IMarkerManager {
       this.logger.info(`Loading ${markersFromBuilding.size} markers from building data`);
 
       for (const [, markerData] of markersFromBuilding) {
-        this.logger.debug(`Creating marker ${markerData.id} on floor ${markerData.floorNumber}`);
-        const anyMarkerData = this.convertToMarkerData(markerData);
+        const anyMarkerData = convertParsedToMarkerData(markerData);
         this.createMarker(anyMarkerData);
       }
 
@@ -417,81 +407,6 @@ export class MarkerManager implements IMarkerManager {
     };
   }
 
-  private convertToMarkerData(parsedMarker: ParsedMarker): AnyMarkerData {
-    let backgroundColor: RGBA;
-    let textColor: RGBA;
-
-    switch (parsedMarker.type) {
-      case 'marker':
-        backgroundColor = { r: 0.2, g: 0.5, b: 0.8, a: 0.9 };
-        textColor = { r: 0, g: 0.5, b: 0, a: 1 };
-        break;
-      case 'flag':
-        backgroundColor = { r: 0.9, g: 0.3, b: 0.2, a: 0.9 };
-        textColor = { r: 1, g: 1, b: 1, a: 1 };
-        break;
-      case 'waypoint':
-        backgroundColor = { r: 0.3, g: 0.7, b: 0.3, a: 0.9 };
-        textColor = { r: 1, g: 1, b: 1, a: 1 };
-        break;
-    }
-
-    let iconName: string;
-    switch (parsedMarker.type) {
-      case 'marker':
-        iconName = 'location_on';
-        break;
-      case 'flag':
-        iconName = 'flag';
-        break;
-      case 'waypoint':
-        iconName = 'circle';
-        break;
-    }
-
-    return {
-      id: parsedMarker.id,
-      name: parsedMarker.displayName,
-      type: parsedMarker.type === 'marker' ? MarkerType.MARKER :
-        parsedMarker.type === 'flag' ? MarkerType.FLAG : MarkerType.WAYPOINT,
-      position: parsedMarker.position,
-      floor: parsedMarker.floorNumber || 1,
-      iconName,
-      backgroundColor,
-      textColor,
-      connections: parsedMarker.connections.map(targetId => ({
-        fromId: parsedMarker.id,
-        toId: targetId,
-        direction: 'two-way' as const
-      })),
-      description: this.generateDescription(parsedMarker)
-    };
-  }
-
-  private generateDescription(parsedMarker: ParsedMarker): string {
-    // Waypoint не имеют описания
-    if (parsedMarker.type === 'waypoint') {
-      return '';
-    }
-
-    // Flag - шаблон с QR-кодом
-    if (parsedMarker.type === 'flag') {
-      const flagName = parsedMarker.displayName || `Флаг ${parsedMarker.metadata?.number || 'unknown'}`;
-      const qrUrl = parsedMarker.metadata?.qr || `https://example.com/flag/${parsedMarker.metadata?.number || 'unknown'}`;
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
-
-      return flagTemplate
-        .replace('{{FLAG_NAME}}', flagName)
-        .replace('{{QR_IMAGE}}', `![QR-код](${qrImageUrl})`)
-        .replace(/{{\w+}}/g, ''); // Убираем оставшиеся плейсхолдеры
-    }
-
-    // Marker - шаблон с названием и описанием
-    return markerTemplate
-      .replace('{{NAME}}', parsedMarker.displayName)
-      .replace('{{DESCRIPTION}}', `Краткое описание для "${parsedMarker.displayName}".`);
-  }
-
   public update(_deltaTime: number): void {
     if (!this.cameraManager) return;
 
@@ -503,17 +418,12 @@ export class MarkerManager implements IMarkerManager {
 
   public createMarker(data: AnyMarkerData): Marker {
     if (!this.scene) {
-      throw new Error("Scene not set before creating marker");
+      throw new Error("Scene not set");
     }
 
-    const widget = new MarkerWidget();
-    const animator = new MarkerAnimator(this.logger, this.config);
-
-    const marker = new Marker(
+    const marker = Marker.create(
       this.logger,
       this.eventBus,
-      widget,
-      animator,
       this.scene,
       data
     );
@@ -524,15 +434,9 @@ export class MarkerManager implements IMarkerManager {
     this._markers.set(data.id, marker);
     this._graph.addNode(marker);
 
-    if (marker.type === MarkerType.WAYPOINT) {
-      // Waypoint видны только если граф включен И на правильном этаже
-      const isCorrectFloor = marker.floor === this._currentFloor;
-      marker.setVisible(isCorrectFloor && this._graphVisible);
-    } else {
-      // Обычные маркеры видны на правильном этаже
-      const isCorrectFloor = this._currentFloor === 'all' || marker.floor === this._currentFloor;
-      marker.setVisible(isCorrectFloor);
-    }
+    const isCorrectFloor = this._currentFloor === 'all' || marker.floor === this._currentFloor;
+    const showWaypoint = isCorrectFloor && this._graphVisible;
+    marker.setVisible(marker.type === MarkerType.WAYPOINT ? showWaypoint : isCorrectFloor);
 
     this.eventBus.emit(EventType.MARKER_ADDED, { marker: marker.id });
     return marker;

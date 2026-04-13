@@ -1,37 +1,30 @@
-import { injectable } from "inversify";
 import { Logger } from "../../core/logger/Logger";
 import { CameraMode } from "../../shared/types";
 import { ICameraInputHandler, ICameraManager } from "@shared/interfaces";
 
-interface PointerState {
-  isRightPressed: boolean;   // ПКМ - вращение
-  isMiddlePressed: boolean;  // СКМ - панорамирование
-  lastX: number;
-  lastY: number;
-}
-
-@injectable()
+/**
+ * Обработчик ввода камеры (ПКМ, СКМ, колёсико)
+ * Перехватывает события canvas и передаёт дельты в CameraManager
+ */
 export class CameraInputHandler implements ICameraInputHandler {
-  private readonly logger = Logger.getInstance().getLogger('CameraInputHandler');
   private canvas: HTMLCanvasElement | null = null;
   private currentMode: CameraMode = CameraMode.ORBIT;
+  private logger: Logger;
 
   private readonly ROTATION_SENSITIVITY = 1.0;
   private readonly PAN_SENSITIVITY = 1.0;
 
-  private pointerState: PointerState = {
-    isRightPressed: false,
-    isMiddlePressed: false,
-    lastX: 0,
-    lastY: 0
-  };
+  private isRightPressed = false;
+  private isMiddlePressed = false;
+  private lastX = 0;
+  private lastY = 0;
 
   private onOrbitRotate?: (dx: number, dy: number) => void;
   private onOrbitPan?: (dx: number, dy: number) => void;
   private onOrbitZoom?: (delta: number) => void;
 
   constructor() {
-    this.logger.info('CameraInputHandler initialized');
+    this.logger = Logger.getInstance().getLogger('CameraInputHandler');
   }
 
   public setCameraManager(_cameraManager: ICameraManager): void {
@@ -68,49 +61,43 @@ export class CameraInputHandler implements ICameraInputHandler {
   }
 
   private onPointerDown(e: PointerEvent): void {
-    this.logger.debug(`Pointer down: ${e.button}`);
-
-    if (e.button === 2) { // ПКМ - вращение
-      this.pointerState.isRightPressed = true;
-      this.pointerState.lastX = e.clientX;
-      this.pointerState.lastY = e.clientY;
+    if (e.button === 2) {
+      this.isRightPressed = true;
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
       e.preventDefault();
       e.stopPropagation();
       this.canvas?.setPointerCapture(e.pointerId);
       if (this.canvas) this.canvas.style.cursor = 'grabbing';
-      this.logger.debug('RKM pressed - rotation mode');
-    } else if (e.button === 1) { // СКМ - панорамирование
-      this.pointerState.isMiddlePressed = true;
-      this.pointerState.lastX = e.clientX;
-      this.pointerState.lastY = e.clientY;
+    } else if (e.button === 1) {
+      this.isMiddlePressed = true;
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
       e.preventDefault();
       e.stopPropagation();
       this.canvas?.setPointerCapture(e.pointerId);
       if (this.canvas) this.canvas.style.cursor = 'move';
-      this.logger.debug('MMB pressed - pan mode');
     }
   }
 
   private onPointerMove(e: PointerEvent): void {
-    if (this.pointerState.isRightPressed) {
-      const deltaX = (e.clientX - this.pointerState.lastX) * this.ROTATION_SENSITIVITY;
-      const deltaY = (e.clientY - this.pointerState.lastY) * this.ROTATION_SENSITIVITY;
-
-      if ((deltaX !== 0 || deltaY !== 0) && this.onOrbitRotate) {
-        this.onOrbitRotate(-deltaX, -deltaY);
-        this.pointerState.lastX = e.clientX;
-        this.pointerState.lastY = e.clientY;
+    if (this.isRightPressed) {
+      const deltaX = (e.clientX - this.lastX) * this.ROTATION_SENSITIVITY;
+      const deltaY = (e.clientY - this.lastY) * this.ROTATION_SENSITIVITY;
+      if (deltaX !== 0 || deltaY !== 0) {
+        this.onOrbitRotate?.(-deltaX, -deltaY);
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
       }
       e.preventDefault();
       e.stopPropagation();
-    } else if (this.pointerState.isMiddlePressed) {
-      const deltaX = (e.clientX - this.pointerState.lastX) * this.PAN_SENSITIVITY;
-      const deltaY = (e.clientY - this.pointerState.lastY) * this.PAN_SENSITIVITY;
-
-      if ((deltaX !== 0 || deltaY !== 0) && this.onOrbitPan) {
-        this.onOrbitPan(deltaX, deltaY);
-        this.pointerState.lastX = e.clientX;
-        this.pointerState.lastY = e.clientY;
+    } else if (this.isMiddlePressed) {
+      const deltaX = (e.clientX - this.lastX) * this.PAN_SENSITIVITY;
+      const deltaY = (e.clientY - this.lastY) * this.PAN_SENSITIVITY;
+      if (deltaX !== 0 || deltaY !== 0) {
+        this.onOrbitPan?.(deltaX, deltaY);
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
       }
       e.preventDefault();
       e.stopPropagation();
@@ -119,15 +106,13 @@ export class CameraInputHandler implements ICameraInputHandler {
 
   private onPointerUp(e: PointerEvent): void {
     if (e.button === 2) {
-      this.pointerState.isRightPressed = false;
+      this.isRightPressed = false;
       if (this.canvas) this.canvas.style.cursor = 'default';
       this.canvas?.releasePointerCapture(e.pointerId);
-      this.logger.debug('RKM released');
     } else if (e.button === 1) {
-      this.pointerState.isMiddlePressed = false;
+      this.isMiddlePressed = false;
       if (this.canvas) this.canvas.style.cursor = 'default';
       this.canvas?.releasePointerCapture(e.pointerId);
-      this.logger.debug('MMB released');
     }
   }
 
@@ -157,16 +142,11 @@ export class CameraInputHandler implements ICameraInputHandler {
 
   public setMode(mode: CameraMode): void {
     this.currentMode = mode;
-    this.pointerState.isRightPressed = false;
-    this.pointerState.isMiddlePressed = false;
-  }
-
-  public canInteractWithUI(): boolean {
-    return !this.pointerState.isRightPressed && !this.pointerState.isMiddlePressed;
+    this.isRightPressed = false;
+    this.isMiddlePressed = false;
   }
 
   public dispose(): void {
     this.removeCanvasListeners();
-    this.logger.info('CameraInputHandler disposed');
   }
 }

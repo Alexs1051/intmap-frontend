@@ -4,6 +4,10 @@ import { BuildingElement } from "../../shared/types";
 import { BUILDING_ANIMATION } from "../../shared/constants";
 import { IBuildingAnimator } from "@shared/interfaces";
 
+/**
+ * Аниматор строительства здания
+ * Анимация "падения" элементов здания сверху вниз
+ */
 @injectable()
 export class BuildingAnimator implements IBuildingAnimator {
     private readonly START_HEIGHT = BUILDING_ANIMATION.START_HEIGHT_OFFSET * 10;
@@ -19,34 +23,36 @@ export class BuildingAnimator implements IBuildingAnimator {
         this.scene = scene;
     }
 
+    /**
+     * Анимировать строительство здания (поэтажное "падение" элементов)
+     */
     public async animateConstruction(
         floors: Map<number, BuildingElement[]>,
         wallsByFloor: Map<number, BuildingElement[]>
     ): Promise<void> {
         if (!this.scene) throw new Error("Scene not set");
 
-        // ✅ Сортируем от меньшего к большему (1,2,3,4) - нижние этажи первыми
         const floorNumbers = Array.from(floors.keys()).sort((a, b) => a - b);
         const maxFloor = Math.max(...floorNumbers);
         const minFloor = Math.min(...floorNumbers);
-        
+
         const animations: Promise<void>[] = [];
 
         floorNumbers.forEach((floorNum) => {
             const floorElements = floors.get(floorNum) || [];
             const wallElements = wallsByFloor.get(floorNum) || [];
-            
-            // ✅ Чем ниже этаж, тем быстрее падает
+
+            // Чем ниже этаж, тем быстрее падает
             const speedRatio = 1 + ((maxFloor - floorNum) * (this.SPEED_FACTOR - 1) / (maxFloor - minFloor || 1));
             const duration = this.BASE_DURATION / speedRatio;
-            
-            // ✅ Чем ниже этаж, тем меньше задержка (1-й этаж падает сразу)
+
+            // Чем ниже этаж, тем меньше задержка
             const startDelay = (floorNum - minFloor) * this.FLOOR_DELAY;
-            
+
             floorElements.forEach(element => {
                 animations.push(this.animateElementDrop(element, startDelay, duration));
             });
-            
+
             wallElements.forEach((wall, index) => {
                 const wallDelay = startDelay + this.WALL_DELAY + (index * this.WALL_STAGGER);
                 animations.push(this.animateElementDrop(wall, wallDelay, duration * 0.9));
@@ -56,18 +62,21 @@ export class BuildingAnimator implements IBuildingAnimator {
         await Promise.all(animations);
     }
 
+    /**
+     * Анимировать падение одного элемента
+     */
     private animateElementDrop(element: BuildingElement, delay: number, duration: number): Promise<void> {
         return new Promise((resolve) => {
             const mesh = element.mesh;
-            
+
             if (!mesh.metadata?.originalPosition) {
                 mesh.metadata ??= {};
                 mesh.metadata.originalPosition = mesh.position.clone();
             }
-            
+
             const originalY = mesh.metadata.originalPosition.y;
             const startY = originalY + this.START_HEIGHT;
-            
+
             mesh.position.y = startY;
             mesh.isVisible = true;
 
@@ -91,7 +100,7 @@ export class BuildingAnimator implements IBuildingAnimator {
                 anim.setEasingFunction(easing);
 
                 mesh.animations = [anim];
-                
+
                 this.scene!.beginAnimation(mesh, 0, frames, false, 1.0, () => {
                     mesh.position.y = originalY;
                     resolve();

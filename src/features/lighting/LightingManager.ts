@@ -1,101 +1,73 @@
-import { Scene, HemisphericLight, DirectionalLight, Vector3, Color3, ShadowGenerator } from "@babylonjs/core";
+import { Scene, HemisphericLight, DirectionalLight, Vector3, Color3, ShadowGenerator, AbstractMesh } from "@babylonjs/core";
 import { injectable, inject } from "inversify";
 import { TYPES } from "../../core/di/Container";
 import { Logger } from "../../core/logger/Logger";
+import { LIGHTING } from "../../shared/constants";
 import { ILightingManager, ILoadableComponent } from "@shared/interfaces";
 
 /**
- * Конфигурация освещения по умолчанию
- */
-const DEFAULT_LIGHTING_CONFIG = {
-  hemisphericIntensity: 0.8,
-  directionalIntensity: 1.2,
-  hemisphericColor: new Color3(1, 1, 1),
-  directionalColor: new Color3(1, 1, 1),
-  lightDirection: new Vector3(-1, -2, -1),
-  shadowsEnabled: false,
-  shadowMapSize: 1024
-};
-
-/**
  * Менеджер освещения
- * Управляет всеми источниками света в сцене
+ * Управляет источниками света и тенями сцены
  */
 @injectable()
 export class LightingManager implements ILightingManager, ILoadableComponent {
   private scene!: Scene;
   private logger: Logger;
-  
+
   private hemisphericLight!: HemisphericLight;
   private directionalLight!: DirectionalLight;
   private shadowGenerator: ShadowGenerator | null = null;
-  private _isInitialized: boolean = false;
-  private shadowsEnabled: boolean = DEFAULT_LIGHTING_CONFIG.shadowsEnabled;
-  private lightConfig = { ...DEFAULT_LIGHTING_CONFIG };
+  private isInitializedFlag: boolean = false;
+  private shadowsEnabled: boolean = LIGHTING.SHADOWS_ENABLED;
 
-  constructor(
-    @inject(TYPES.Logger) logger: Logger  ) {
+  private hemisphericIntensityValue: number = LIGHTING.HEMISPHERIC_INTENSITY;
+  private directionalIntensityValue: number = LIGHTING.DIRECTIONAL_INTENSITY;
+  private hemisphericColor: Color3 = LIGHTING.HEMISPHERIC_COLOR;
+  private directionalColor: Color3 = LIGHTING.DIRECTIONAL_COLOR;
+  private lightDirection: Vector3 = LIGHTING.DIRECTION;
+
+  constructor(@inject(TYPES.Logger) logger: Logger) {
     this.logger = logger.getLogger('LightingManager');
   }
 
-  /**
-   * Установить сцену (вызывается SceneManager после создания)
-   */
   public setScene(scene: Scene): void {
     this.scene = scene;
-    this.logger.debug("Scene set");
   }
 
   public async load(onProgress?: (progress: number) => void): Promise<void> {
-    this.logger.debug("Loading lighting manager");
-    
     if (!this.scene) {
-      this.logger.error("Scene not set before load");
       throw new Error("Scene not set");
     }
-    
+
     onProgress?.(0.3);
-    
-    // Создаем освещение
     this.createHemisphericLight();
-    
+
     onProgress?.(0.6);
-    
     this.createDirectionalLight();
-    
+
     onProgress?.(0.9);
-    
-    // Настраиваем тени, если включены
     if (this.shadowsEnabled) {
       this.enableShadows();
     }
-    
+
     onProgress?.(1.0);
-    this.logger.info("Lighting manager loaded");
+    this.logger.info("Lighting loaded");
   }
 
   public async initialize(): Promise<void> {
-    this.logger.debug("Initializing lighting manager");
-    
-    if (this._isInitialized) return;
-    
-    // Применяем начальные настройки
-    this.setIntensity(
-      this.lightConfig.hemisphericIntensity,
-      this.lightConfig.directionalIntensity
-    );
-    this.setLightDirection(this.lightConfig.lightDirection);
-    
-    this._isInitialized = true;
-    this.logger.info("Lighting manager initialized");
+    if (this.isInitializedFlag) return;
+
+    this.applyIntensity();
+    this.applyDirection();
+
+    this.isInitializedFlag = true;
+    this.logger.info("Lighting initialized");
   }
 
-  public update(_deltaTime: number): void {
-    // Освещение не требует обновления
-  }
+  public update(_deltaTime: number): void { }
 
   /**
-   * Создать окружающее освещение
+   * Создать окружающее освещение (hemispheric)
    */
   private createHemisphericLight(): void {
     this.hemisphericLight = new HemisphericLight(
@@ -103,10 +75,10 @@ export class LightingManager implements ILightingManager, ILoadableComponent {
       new Vector3(0, 1, 0),
       this.scene
     );
-    this.hemisphericLight.diffuse = this.lightConfig.hemisphericColor;
-    this.hemisphericLight.specular = new Color3(0.1, 0.1, 0.1);
-    this.hemisphericLight.groundColor = new Color3(0.5, 0.5, 0.5);
-    this.hemisphericLight.intensity = this.lightConfig.hemisphericIntensity;
+    this.hemisphericLight.diffuse = this.hemisphericColor;
+    this.hemisphericLight.specular = LIGHTING.HEMISPHERIC_SPECULAR;
+    this.hemisphericLight.groundColor = LIGHTING.GROUND_COLOR;
+    this.hemisphericLight.intensity = this.hemisphericIntensityValue;
   }
 
   /**
@@ -115,13 +87,34 @@ export class LightingManager implements ILightingManager, ILoadableComponent {
   private createDirectionalLight(): void {
     this.directionalLight = new DirectionalLight(
       "directionalLight",
-      this.lightConfig.lightDirection,
+      this.lightDirection,
       this.scene
     );
-    this.directionalLight.diffuse = this.lightConfig.directionalColor;
-    this.directionalLight.specular = new Color3(0.5, 0.5, 0.5);
-    this.directionalLight.intensity = this.lightConfig.directionalIntensity;
-    this.directionalLight.position = new Vector3(20, 30, 20);
+    this.directionalLight.diffuse = this.directionalColor;
+    this.directionalLight.specular = LIGHTING.DIRECTIONAL_SPECULAR;
+    this.directionalLight.intensity = this.directionalIntensityValue;
+    this.directionalLight.position = LIGHTING.POSITION;
+  }
+
+  /**
+   * Применить текущие значения интенсивности
+   */
+  private applyIntensity(): void {
+    if (this.hemisphericLight) {
+      this.hemisphericLight.intensity = this.hemisphericIntensityValue;
+    }
+    if (this.directionalLight) {
+      this.directionalLight.intensity = this.directionalIntensityValue;
+    }
+  }
+
+  /**
+   * Применить направление света
+   */
+  private applyDirection(): void {
+    if (this.directionalLight) {
+      this.directionalLight.direction = this.lightDirection.normalize();
+    }
   }
 
   /**
@@ -129,18 +122,14 @@ export class LightingManager implements ILightingManager, ILoadableComponent {
    */
   private enableShadows(): void {
     if (!this.directionalLight) {
-      this.logger.warn("Cannot enable shadows: directional light not created");
+      this.logger.warn("Cannot enable shadows: directional light not ready");
       return;
     }
-    
-    this.shadowGenerator = new ShadowGenerator(
-      this.lightConfig.shadowMapSize,
-      this.directionalLight
-    );
-    
+
+    this.shadowGenerator = new ShadowGenerator(LIGHTING.SHADOW_MAP_SIZE, this.directionalLight);
     this.shadowGenerator.useBlurExponentialShadowMap = true;
-    this.shadowGenerator.blurScale = 2;
-    
+    this.shadowGenerator.blurScale = LIGHTING.SHADOW_BLUR_SCALE;
+
     this.logger.info("Shadows enabled");
   }
 
@@ -148,34 +137,31 @@ export class LightingManager implements ILightingManager, ILoadableComponent {
    * Отключить тени
    */
   private disableShadows(): void {
-    if (this.shadowGenerator) {
-      this.shadowGenerator.dispose();
-      this.shadowGenerator = null;
-    }
+    this.shadowGenerator?.dispose();
+    this.shadowGenerator = null;
     this.logger.info("Shadows disabled");
   }
 
-  // === Публичные методы ===
-
+  /**
+   * Установить интенсивность освещения (0-2)
+   */
   public setIntensity(hemispheric: number, directional: number): void {
-    this.lightConfig.hemisphericIntensity = Math.max(0, Math.min(2, hemispheric));
-    this.lightConfig.directionalIntensity = Math.max(0, Math.min(2, directional));
-    
-    if (this.hemisphericLight) {
-      this.hemisphericLight.intensity = this.lightConfig.hemisphericIntensity;
-    }
-    if (this.directionalLight) {
-      this.directionalLight.intensity = this.lightConfig.directionalIntensity;
-    }
+    this.hemisphericIntensityValue = this.clampIntensity(hemispheric);
+    this.directionalIntensityValue = this.clampIntensity(directional);
+    this.applyIntensity();
   }
 
+  /**
+   * Установить направление света
+   */
   public setLightDirection(direction: Vector3): void {
-    this.lightConfig.lightDirection = direction.normalize();
-    if (this.directionalLight) {
-      this.directionalLight.direction = this.lightConfig.lightDirection;
-    }
+    this.lightDirection = direction;
+    this.applyDirection();
   }
 
+  /**
+   * Включить/выключить тени
+   */
   public setShadowsEnabled(enabled: boolean): void {
     this.shadowsEnabled = enabled;
     if (enabled) {
@@ -185,62 +171,55 @@ export class LightingManager implements ILightingManager, ILoadableComponent {
     }
   }
 
+  /**
+   * Установить цвет направленного света
+   */
   public setLightColor(color: Color3): void {
-    this.lightConfig.directionalColor = color;
+    this.directionalColor = color;
     if (this.directionalLight) {
       this.directionalLight.diffuse = color;
-    }
-  }
-
-  public setHemisphericColor(color: Color3): void {
-    this.lightConfig.hemisphericColor = color;
-    if (this.hemisphericLight) {
-      this.hemisphericLight.diffuse = color;
     }
   }
 
   /**
    * Добавить объект в генератор теней
    */
-  public addShadowCaster(mesh: any): void {
-    if (this.shadowGenerator && mesh) {
-      this.shadowGenerator.addShadowCaster(mesh);
-    }
+  public addShadowCaster(mesh: AbstractMesh): void {
+    this.shadowGenerator?.addShadowCaster(mesh);
   }
 
   /**
    * Удалить объект из генератора теней
    */
-  public removeShadowCaster(mesh: any): void {
-    if (this.shadowGenerator && mesh) {
-      this.shadowGenerator.removeShadowCaster(mesh);
-    }
+  public removeShadowCaster(mesh: AbstractMesh): void {
+    this.shadowGenerator?.removeShadowCaster(mesh);
   }
 
   public dispose(): void {
-    if (this.shadowGenerator) {
-      this.shadowGenerator.dispose();
-    }
-    if (this.hemisphericLight) {
-      this.hemisphericLight.dispose();
-    }
-    if (this.directionalLight) {
-      this.directionalLight.dispose();
-    }
+    this.shadowGenerator?.dispose();
+    this.hemisphericLight?.dispose();
+    this.directionalLight?.dispose();
     this.logger.info("LightingManager disposed");
+  }
+
+  /**
+   * Ограничить интенсивность допустимым диапазоном
+   */
+  private clampIntensity(value: number): number {
+    return Math.max(LIGHTING.MIN_INTENSITY, Math.min(LIGHTING.MAX_INTENSITY, value));
   }
 
   // Геттеры
   public get isInitialized(): boolean {
-    return this._isInitialized;
+    return this.isInitializedFlag;
   }
 
   public get hemisphericIntensity(): number {
-    return this.lightConfig.hemisphericIntensity;
+    return this.hemisphericIntensityValue;
   }
 
   public get directionalIntensity(): number {
-    return this.lightConfig.directionalIntensity;
+    return this.directionalIntensityValue;
   }
 
   public get shadowsActive(): boolean {

@@ -6,6 +6,10 @@ import { BUILDING_PARSER } from "../../shared/constants";
 import { IBuildingParser } from "@shared/interfaces";
 import { MarkerParser } from './MarkerParser';
 
+/**
+ * Парсер загруженной GLB модели здания
+ * Разбирает меши на элементы: этажи, стены, окна, двери, лестницы, маркеры, комнаты
+ */
 @injectable()
 export class BuildingParser implements IBuildingParser {
     private logger: Logger;
@@ -23,18 +27,6 @@ export class BuildingParser implements IBuildingParser {
             ...loadResult.transformNodes
         ];
 
-        this.logger.debug('=== ALL OBJECTS ===');
-        allObjects.forEach(obj => {
-            this.logger.debug(`Object: ${obj.name}, Type: ${obj.getClassName()}, Parent: ${obj.parent?.name || 'null'}`);
-        });
-
-        const markersFound = allObjects.filter(obj =>
-            obj.name.startsWith('MR_') ||
-            obj.name.startsWith('FL_') ||
-            obj.name.startsWith('WP_')
-        );
-        this.logger.debug(`Found ${markersFound.length} potential markers:`, markersFound.map(m => m.name));
-
         const result: BuildingParseResult = {
             elements: new Map(),
             floors: new Map(),
@@ -49,44 +41,43 @@ export class BuildingParser implements IBuildingParser {
 
         // 1. Находим все ноды этажей
         this.findFloorNodes(allObjects, result.floorNodes);
-        this.logger.debug(`Found ${result.floorNodes.size} floor nodes`);
 
         // 2. Создаём карту этажей для всех объектов
         const floorNodeMap = new Map<AbstractMesh | TransformNode, number>();
         result.floorNodes.forEach((node, floorNum) => {
             floorNodeMap.set(node, floorNum);
-            this.logger.debug(`Floor node mapping: ${node.name} -> floor ${floorNum}`);
         });
 
-        // 3. Обрабатываем строительные элементы (стены, полы и т.д.)
+        // 3. Обрабатываем строительные элементы
         this.processMeshes(allObjects, result, floorNodeMap);
 
-        // 4. Парсим маркеры и комнаты с передачей карты этажей
+        // 4. Парсим маркеры и комнаты
         const { markers, rooms } = this.markerParser.parseMarkersAndRooms(allObjects, floorNodeMap);
         result.markers = markers;
         result.rooms = rooms;
 
-        this.logger.info(`Parsing complete: ${result.elements.size} elements, ${result.floors.size} floors, ${result.walls.length} walls, ${result.markers.size} markers, ${result.rooms.size} rooms`);
-
-        if (result.floors.size > 0) {
-            this.logger.info(`Floor numbers: ${Array.from(result.floors.keys()).join(', ')}`);
-        }
+        this.logger.info(`Parsed: ${result.elements.size} elements, ${result.floors.size} floors, ${result.walls.length} walls, ${result.markers.size} markers, ${result.rooms.size} rooms`);
 
         return result;
     }
 
+    /**
+     * Найти TransformNode этажей по префиксу
+     */
     private findFloorNodes(objects: (AbstractMesh | TransformNode)[], floorNodes: Map<number, TransformNode>): void {
         objects.forEach(obj => {
             if (obj.name.startsWith(this.config.FLOOR_PREFIX) && obj instanceof TransformNode) {
                 const floorNum = this.extractFloorNumber(obj.name);
                 if (floorNum !== null) {
                     floorNodes.set(floorNum, obj);
-                    this.logger.debug(`Found floor node ${floorNum}: ${obj.name}`);
                 }
             }
         });
     }
 
+    /**
+     * Обработать меши и распределить по категориям
+     */
     private processMeshes(
         objects: (AbstractMesh | TransformNode)[],
         result: BuildingParseResult,
@@ -102,29 +93,17 @@ export class BuildingParser implements IBuildingParser {
                 return;
             }
 
-            // Пропускаем маркеры - они будут обработаны MarkerParser
-            if (obj.name.startsWith('MR_') || obj.name.startsWith('FL_') || obj.name.startsWith('WP_')) {
-                return;
-            }
+            // Пропускаем маркеры - их обрабатывает MarkerParser
+            if (MarkerUtils.isMarker(obj.name)) return;
 
-            let floorNumber: number | null = null;
-
-            let parent = obj.parent;
-            while (parent) {
-                if (parent.name && parent.name.startsWith(this.config.FLOOR_PREFIX)) {
-                    floorNumber = this.extractFloorNumber(parent.name);
-                    break;
-                }
-                parent = parent.parent;
-            }
-
+            const floorNumber = this.findParentFloorNumber(obj);
             const type = this.determineType(obj.name);
 
             const element: BuildingElement = {
                 name: obj.name,
                 mesh: obj instanceof AbstractMesh ? obj : null as any,
                 type,
-                floorNumber: floorNumber !== null ? floorNumber : undefined,
+                floorNumber: floorNumber ?? undefined,
                 isVisible: true,
                 originalMaterial: (obj instanceof AbstractMesh ? obj.material : null) as any,
                 originalPosition: obj.position.clone(),
@@ -138,19 +117,22 @@ export class BuildingParser implements IBuildingParser {
                 this.categorizeElement(element, result, floorNumber);
             }
 
-            if (obj.getChildMeshes && obj.getChildMeshes().length > 0) {
-                this.processMeshes(obj.getChildMeshes(), result, floorNodeMap);
+            const children = obj.getChildMeshes?.() ?? [];
+            if (children.length > 0) {
+                this.processMeshes(children, result, floorNodeMap);
             }
         });
     }
 
+    /**
+     * Определить тип элемента по имени
+     */
     private determineType(name: string): ElementType {
-        if (name.startsWith('Room_')) return 'floor';
         if (name.startsWith(this.config.WALL_PREFIX)) return 'wall';
         if (name.startsWith(this.config.WINDOW_PREFIX)) return 'window';
         if (name.startsWith(this.config.DOOR_PREFIX)) return 'door';
         if (name.startsWith(this.config.STAIR_PREFIX)) return 'stair';
-        if (name.startsWith(this.config.FLOOR_PREFIX)) return 'other';
+        if (name.startsWith(this.config.FLOOR_PREFIX)) return 'floor';
 
         const lowerName = name.toLowerCase();
         if (lowerName.includes('window')) return 'window';
@@ -159,18 +141,38 @@ export class BuildingParser implements IBuildingParser {
         if (lowerName.includes('wall')) return 'wall';
         if (lowerName.includes('room')) return 'floor';
 
-        return 'other' as ElementType;
+        return 'other';
     }
 
+    /**
+     * Извлечь номер этажа из имени
+     */
     private extractFloorNumber(name: string): number | null {
         const match = name.match(/_(\d+)(?:_|\.|$)/);
-        if (match && match[1]) {
+        if (match?.[1]) {
             const parsed = parseInt(match[1], 10);
             return isNaN(parsed) ? null : parsed;
         }
         return null;
     }
 
+    /**
+     * Найти номер этажа по родительской цепочке
+     */
+    private findParentFloorNumber(obj: AbstractMesh | TransformNode): number | null {
+        let parent = obj.parent;
+        while (parent) {
+            if (parent.name?.startsWith(this.config.FLOOR_PREFIX)) {
+                return this.extractFloorNumber(parent.name);
+            }
+            parent = parent.parent;
+        }
+        return null;
+    }
+
+    /**
+     * Категоризировать элемент по типу
+     */
     private categorizeElement(element: BuildingElement, result: BuildingParseResult, floorNumber: number | null): void {
         switch (element.type) {
             case 'floor':
@@ -181,25 +183,10 @@ export class BuildingParser implements IBuildingParser {
                 }
                 break;
             case 'wall':
-                result.walls.push(element);
-                if (floorNumber !== null && element.floorNumber === undefined) {
-                    element.floorNumber = floorNumber;
-                }
-                break;
             case 'window':
-                result.windows.push(element);
-                if (floorNumber !== null && element.floorNumber === undefined) {
-                    element.floorNumber = floorNumber;
-                }
-                break;
             case 'door':
-                result.doors.push(element);
-                if (floorNumber !== null && element.floorNumber === undefined) {
-                    element.floorNumber = floorNumber;
-                }
-                break;
             case 'stair':
-                result.stairs.push(element);
+                result[`${element.type}s` as keyof Pick<BuildingParseResult, 'walls' | 'windows' | 'doors' | 'stairs'>].push(element);
                 if (floorNumber !== null && element.floorNumber === undefined) {
                     element.floorNumber = floorNumber;
                 }
@@ -207,3 +194,10 @@ export class BuildingParser implements IBuildingParser {
         }
     }
 }
+
+// Временная утилита, пока MarkerUtils не экспортирован
+const MarkerUtils = {
+    isMarker(name: string): boolean {
+        return name.startsWith('MR_') || name.startsWith('FL_') || name.startsWith('WP_');
+    }
+};

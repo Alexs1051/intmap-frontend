@@ -52,12 +52,11 @@ export class BuildingManager implements IBuildingManager {
     }
 
     public async load(onProgress?: (progress: number) => void): Promise<void> {
-        this.logger.debug("BuildingManager load called");
         onProgress?.(1);
     }
 
     public async initialize(): Promise<void> {
-        this.logger.debug("BuildingManager initialized");
+        // Инициализация происходит в loadBuilding
     }
 
     public update(_deltaTime: number): void {
@@ -69,10 +68,9 @@ export class BuildingManager implements IBuildingManager {
         onProgress?: (progress: number) => void
     ): Promise<void> {
         if (!this.scene) {
-            throw new Error("Scene not set before load");
+            throw new Error("Scene not set");
         }
 
-        this.logger.info(`Loading building: ${modelUrl}`);
         this.eventBus.emit(EventType.LOADING_START, { url: modelUrl, type: 'building' });
 
         try {
@@ -91,11 +89,9 @@ export class BuildingManager implements IBuildingManager {
 
             onProgress?.(1.0);
             this._isLoaded = true;
-            this.logger.info(`Building loaded. Elements: ${this._data.elements.size}, Floors: ${this._data.floors.size}, Walls: ${this._data.walls.length}, Markers: ${this._data.markers.size}`);
             this.eventBus.emit(EventType.BUILDING_LOADED, { dimensions: this._dimensions });
 
         } catch (error) {
-            this.logger.error("Failed to load building", error);
             this.eventBus.emit(EventType.LOADING_ERROR, { error });
             throw error;
         }
@@ -115,41 +111,46 @@ export class BuildingManager implements IBuildingManager {
         this.logger.info(`Managers initialized. Floors: ${this._floorManager.floorCount}, Walls: ${this._wallManager.count}`);
     }
 
+    /**
+     * Вычислить габариты здания из bounding box элементов
+     */
     private calculateDimensions(): void {
         if (!this._data) return;
 
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
-
-        this._data.elements.forEach(element => {
-            const bbox = element.mesh.getBoundingInfo();
-            minX = Math.min(minX, bbox.boundingBox.minimum.x);
-            maxX = Math.max(maxX, bbox.boundingBox.maximum.x);
-            minY = Math.min(minY, bbox.boundingBox.minimum.y);
-            maxY = Math.max(maxY, bbox.boundingBox.maximum.y);
-            minZ = Math.min(minZ, bbox.boundingBox.minimum.z);
-            maxZ = Math.max(maxZ, bbox.boundingBox.maximum.z);
-        });
-
+        const bounds = this.computeBounds();
         this._dimensions = {
-            height: Math.max(10, maxY - minY),
-            width: Math.max(10, maxX - minX),
-            depth: Math.max(10, maxZ - minZ)
+            height: Math.max(10, bounds.maxY - bounds.minY),
+            width: Math.max(10, bounds.maxX - bounds.minX),
+            depth: Math.max(10, bounds.maxZ - bounds.minZ)
         };
     }
 
+    /**
+     * Вычислить центр здания
+     */
     private calculateCenter(): void {
         if (!this._data) {
             this._center = Vector3.Zero();
             return;
         }
 
+        const bounds = this.computeBounds();
+        this._center = new Vector3(
+            (bounds.minX + bounds.maxX) / 2,
+            (bounds.minY + bounds.maxY) / 2,
+            (bounds.minZ + bounds.maxZ) / 2
+        );
+    }
+
+    /**
+     * Вычислить bounding box всех элементов
+     */
+    private computeBounds(): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
         let minX = Infinity, maxX = -Infinity;
         let minY = Infinity, maxY = -Infinity;
         let minZ = Infinity, maxZ = -Infinity;
 
-        this._data.elements.forEach(element => {
+        this._data!.elements.forEach(element => {
             const bbox = element.mesh.getBoundingInfo();
             minX = Math.min(minX, bbox.boundingBox.minimum.x);
             maxX = Math.max(maxX, bbox.boundingBox.maximum.x);
@@ -159,7 +160,7 @@ export class BuildingManager implements IBuildingManager {
             maxZ = Math.max(maxZ, bbox.boundingBox.maximum.z);
         });
 
-        this._center = new Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+        return { minX, maxX, minY, maxY, minZ, maxZ };
     }
 
     public async animateConstruction(): Promise<void> {

@@ -7,3 +7,4 @@ export * from './color';
 export * from './error';
 export * from './pagination';
 export * from './result';
+export * from './scene';

@@ -19,6 +19,13 @@ import {
 import { MarkerType } from "../../../shared/types";
 import { MARKER_WIDGET } from "../../../shared/constants";
 
+// Кэш для измерения текста
+let textMeasureCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Виджет маркера (GUI на плоскости)
+ * Отображает иконку, текст и обрабатывает состояния (выделение, from/to)
+ */
 export class MarkerWidget {
   public root!: TransformNode;
   public mesh!: any;
@@ -57,47 +64,31 @@ export class MarkerWidget {
     icon: string,
     text?: string
   ) {
-    // -------------------------
-    // ROOT
-    // -------------------------
     this.root = new TransformNode("markerRoot", scene);
     this.root.position = position;
 
-    // -------------------------
     // Рассчитываем размеры ДО создания plane
-    // -------------------------
     const isMarker = type === MarkerType.MARKER;
-    const iconSize = isMarker ? 32 : 48;
-
-    // Предварительно измеряем ширину текста (используем дважды: для container и для textBlock)
-    const textWidthPx = (isMarker && text)
-      ? Math.ceil(this.measureTextWidth(text, 18, "bold", "Arial, sans-serif"))
-      : 0;
+    const iconSize = isMarker ? MARKER_WIDGET.ICON_SIZE_MARKER : MARKER_WIDGET.ICON_SIZE_FLAG;
+    const textWidthPx = (isMarker && text) ? this.measureTextWidth(text, MARKER_WIDGET.FONT_SIZE) : 0;
 
     let containerWidth: number;
     let containerHeight: number;
 
     if (isMarker && text) {
-      // Для маркера с текстом: прямоугольный контейнер
-      containerWidth = iconSize + textWidthPx + 26; // icon + text + panel padding (8px) + textContainer padding (8px) + container padding (6px) + запас
-      containerHeight = Math.max(iconSize + 18, 50);
+      containerWidth = iconSize + textWidthPx + MARKER_WIDGET.PADDING_HORIZONTAL;
+      containerHeight = Math.max(iconSize + MARKER_WIDGET.PADDING_VERTICAL, MARKER_WIDGET.MIN_HEIGHT);
     } else {
-      // Для flag/waypoint: квадратный контейнер (только иконка)
-      containerWidth = iconSize + 30;
-      containerHeight = iconSize + 30;
+      containerWidth = iconSize + MARKER_WIDGET.PADDING_HORIZONTAL;
+      containerHeight = iconSize + MARKER_WIDGET.PADDING_HORIZONTAL;
     }
 
-    // Пропорции для plane (чтобы текстура не искажалась)
+    // Пропорции plane
     const planeAspect = containerWidth / containerHeight;
-    const planeBaseSize = 1.5;
+    const planeBaseSize = MARKER_WIDGET.PLANE_BASE_SIZE;
     const planeWidth = planeBaseSize * planeAspect;
     const planeHeight = planeBaseSize;
 
-    console.log(`[MarkerWidget] Container size: ${containerWidth}x${containerHeight}, iconSize: ${iconSize}, type: ${isMarker ? 'MARKER' : 'FLAG/WP'}, hasText: ${!!text}, planeSize: ${planeWidth.toFixed(2)}x${planeHeight.toFixed(2)}`);
-
-    // -------------------------
-    // PLANE (размер соответствует пропорциям текстуры)
-    // -------------------------
     this.plane = MeshBuilder.CreatePlane("markerPlane", {
       width: planeWidth,
       height: planeHeight
@@ -105,23 +96,17 @@ export class MarkerWidget {
 
     this.plane.parent = this.root;
     this.mesh = this.plane;
-
-    // Отражаем по X, чтобы при billboard текст не был зеркальным
-    this.plane.scaling.x = -1;
+    this.plane.scaling.x = -1; // Зеркалим, чтобы текст не был отражённым
 
     const material = new StandardMaterial("markerMat", scene);
     material.disableLighting = true;
     material.emissiveColor = Color3.White();
     this.plane.material = material;
 
-    // -------------------------
-    // TEXTURE (ровно по размеру контейнера)
-    // -------------------------
+    // Текстура
     this.texture = AdvancedDynamicTexture.CreateForMesh(this.plane, containerWidth, containerHeight, false);
 
-    // -------------------------
-    // CONTAINER (фон) - заполняет 100% текстуры
-    // -------------------------
+    // Фон (container)
     this.container = new Rectangle();
     this.container.thickness = 0;
     this.container.cornerRadius = 12;
@@ -131,28 +116,52 @@ export class MarkerWidget {
     this.container.height = "100%";
     this.container.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     this.container.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    // Padding для outline (чтобы outline не обрезался)
-    this.container.paddingLeft = "3px";
-    this.container.paddingRight = "3px";
-    this.container.paddingTop = "3px";
-    this.container.paddingBottom = "3px";
-
+    this.container.paddingLeft = MARKER_WIDGET.OUTLINE_PADDING;
+    this.container.paddingRight = MARKER_WIDGET.OUTLINE_PADDING;
+    this.container.paddingTop = MARKER_WIDGET.OUTLINE_PADDING;
+    this.container.paddingBottom = MARKER_WIDGET.OUTLINE_PADDING;
     this.texture.addControl(this.container);
 
-    // -------------------------
-    // PANEL (layout: иконка + текст горизонтально)
-    // -------------------------
+    // Панель (иконка + текст горизонтально)
     this.panel = new StackPanel();
     this.panel.name = "markerPanel";
     this.panel.isVertical = false;
     this.panel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     this.panel.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    this.panel.paddingLeft = "4px";
-    this.panel.paddingRight = "4px";
-
+    this.panel.paddingLeft = MARKER_WIDGET.PANEL_PADDING;
+    this.panel.paddingRight = MARKER_WIDGET.PANEL_PADDING;
     this.container.addControl(this.panel);
 
-    // Контейнер для иконки с тенью
+    await this.createIcon(icon, fgColor, iconSize);
+
+    // Текст - только для MARKER
+    if (type === MarkerType.MARKER && text) {
+      this.createText(text, fgColor, textWidthPx);
+    }
+
+    this.plane.metadata = { widget: this };
+  }
+
+  // -------------------------
+  // ICON PATH
+  // -------------------------
+  private getIconPath(iconName: string): string {
+    const iconMap: { [key: string]: string } = {
+      location_on: MARKER_WIDGET.ICON_PATH_WAYPOINT,
+      flag: MARKER_WIDGET.ICON_PATH_INFO,
+      circle: MARKER_WIDGET.ICON_PATH_WAYPOINT,
+      "📍": MARKER_WIDGET.ICON_PATH_WAYPOINT,
+      "🚩": MARKER_WIDGET.ICON_PATH_INFO,
+      "🔘": MARKER_WIDGET.ICON_PATH_WAYPOINT
+    };
+
+    return iconMap[iconName] || MARKER_WIDGET.ICON_PATH_WAYPOINT;
+  }
+
+  /**
+   * Создать иконку с тенью
+   */
+  private async createIcon(icon: string, fgColor: Color3, iconSize: number): Promise<void> {
     const iconContainer = new Rectangle("iconContainer");
     iconContainer.name = "markerIconContainer";
     iconContainer.width = iconSize + "px";
@@ -160,20 +169,22 @@ export class MarkerWidget {
     iconContainer.background = "";
     iconContainer.thickness = 0;
 
-    // Тень (чёрная иконка, смещённая вниз-вправо)
     const iconPath = this.getIconPath(icon);
-    const tintedIconUrl = await this.tintImage(iconPath, fgColor);
-    const blackIconUrl = await this.tintImage(iconPath, new Color3(0, 0, 0));
+    const [tintedIconUrl, blackIconUrl] = await Promise.all([
+      this.tintImage(iconPath, fgColor),
+      this.tintImage(iconPath, new Color3(0, 0, 0))
+    ]);
 
+    // Тень
     const iconShadow = new Image("iconShadow", blackIconUrl);
     iconShadow.width = iconSize + "px";
     iconShadow.height = iconSize + "px";
     iconShadow.stretch = Image.STRETCH_UNIFORM;
     iconShadow.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
     iconShadow.verticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-    iconShadow.paddingLeft = "2px";
-    iconShadow.paddingTop = "2px";
-    iconShadow.alpha = 0.6;
+    iconShadow.paddingLeft = MARKER_WIDGET.SHADOW_OFFSET;
+    iconShadow.paddingTop = MARKER_WIDGET.SHADOW_OFFSET;
+    iconShadow.alpha = MARKER_WIDGET.SHADOW_ALPHA;
     iconContainer.addControl(iconShadow);
 
     // Основная иконка
@@ -186,85 +197,65 @@ export class MarkerWidget {
     iconContainer.addControl(this.iconImage);
 
     this.panel.addControl(iconContainer);
-
-    // -------------------------
-    // TEXT - только для MARKER
-    // -------------------------
-    if (type === MarkerType.MARKER && text) {
-      // Контейнер для текста с тенью (наложение)
-      const textContainerWidth = textWidthPx + 8; // text width + internal padding
-      const textContainer = new Rectangle("textContainer");
-      textContainer.width = textContainerWidth + "px";
-      textContainer.height = "100%";
-      textContainer.background = "";
-      textContainer.thickness = 0;
-
-      // Тень текста (чёрная, смещённая вниз)
-      this.textShadow = new TextBlock();
-      this.textShadow.name = "markerTextShadow";
-      this.textShadow.text = text;
-      this.textShadow.fontSize = 18;
-      this.textShadow.color = "black";
-      this.textShadow.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-      this.textShadow.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-      this.textShadow.fontFamily = "Arial, sans-serif";
-      this.textShadow.fontWeight = "bold";
-      this.textShadow.width = "100%";
-      this.textShadow.height = "100%";
-      this.textShadow.paddingLeft = "2px";
-      this.textShadow.paddingTop = "2px";
-      this.textShadow.alpha = 0.6;
-
-      textContainer.addControl(this.textShadow);
-
-      // Основной текст
-      this.textBlock = new TextBlock();
-      this.textBlock.name = "markerText";
-      this.textBlock.text = text;
-      this.textBlock.fontSize = 18;
-      this.textBlock.color = this.toRGBA(fgColor);
-      this.textBlock.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
-      this.textBlock.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
-      this.textBlock.fontFamily = "Arial, sans-serif";
-      this.textBlock.fontWeight = "bold";
-      this.textBlock.width = "100%";
-      this.textBlock.height = "100%";
-
-      textContainer.addControl(this.textBlock);
-
-      this.panel.addControl(textContainer);
-      console.log(`[MarkerWidget] Text added: "${text}", textWidth: ${textWidthPx}px`);
-    }
-
-    console.log(`[MarkerWidget] Final container width: ${this.container.width}, height: ${this.container.height}`);
-
-    this.plane.metadata = { widget: this };
   }
 
-  // -------------------------
-  // ICON PATH
-  // -------------------------
-  private getIconPath(iconName: string): string {
-    const iconMap: { [key: string]: string } = {
-      location_on: "/icons/waypoint.png",
-      flag: "/icons/info.png",
-      circle: "/icons/waypoint.png",
-      "📍": "/icons/waypoint.png",
-      "🚩": "/icons/info.png",
-      "🔘": "/icons/waypoint.png"
-    };
+  /**
+   * Создать текст с тенью
+   */
+  private createText(text: string, fgColor: Color3, textWidthPx: number): void {
+    const textContainerWidth = textWidthPx + MARKER_WIDGET.TEXT_PADDING;
+    const textContainer = new Rectangle("textContainer");
+    textContainer.width = textContainerWidth + "px";
+    textContainer.height = "100%";
+    textContainer.background = "";
+    textContainer.thickness = 0;
 
-    return iconMap[iconName] || "/icons/waypoint.png";
+    // Тень
+    this.textShadow = new TextBlock();
+    this.textShadow.name = "markerTextShadow";
+    this.textShadow.text = text;
+    this.textShadow.fontSize = MARKER_WIDGET.FONT_SIZE;
+    this.textShadow.color = "black";
+    this.textShadow.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.textShadow.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    this.textShadow.fontFamily = MARKER_WIDGET.FONT_FAMILY;
+    this.textShadow.fontWeight = "bold";
+    this.textShadow.width = "100%";
+    this.textShadow.height = "100%";
+    this.textShadow.paddingLeft = MARKER_WIDGET.SHADOW_OFFSET;
+    this.textShadow.paddingTop = MARKER_WIDGET.SHADOW_OFFSET;
+    this.textShadow.alpha = MARKER_WIDGET.SHADOW_ALPHA;
+    textContainer.addControl(this.textShadow);
+
+    // Основной текст
+    this.textBlock = new TextBlock();
+    this.textBlock.name = "markerText";
+    this.textBlock.text = text;
+    this.textBlock.fontSize = MARKER_WIDGET.FONT_SIZE;
+    this.textBlock.color = this.toRGBA(fgColor);
+    this.textBlock.textHorizontalAlignment = Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.textBlock.textVerticalAlignment = Control.VERTICAL_ALIGNMENT_CENTER;
+    this.textBlock.fontFamily = MARKER_WIDGET.FONT_FAMILY;
+    this.textBlock.fontWeight = "bold";
+    this.textBlock.width = "100%";
+    this.textBlock.height = "100%";
+    textContainer.addControl(this.textBlock);
+
+    this.panel.addControl(textContainer);
   }
 
   // -------------------------
   // MEASURE TEXT WIDTH
   // -------------------------
-  private measureTextWidth(text: string, fontSize: number, fontWeight: string, fontFamily: string): number {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return text.length * 10; // fallback
-    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  private measureTextWidth(text: string, fontSize: number): number {
+    // Переиспользуем canvas для производительности
+    if (!textMeasureCanvas) {
+      textMeasureCanvas = document.createElement('canvas');
+    }
+    const ctx = textMeasureCanvas.getContext('2d');
+    if (!ctx) return text.length * 10;
+
+    ctx.font = `bold ${fontSize}px ${MARKER_WIDGET.FONT_FAMILY}`;
     return ctx.measureText(text).width;
   }
 

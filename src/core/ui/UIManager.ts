@@ -4,6 +4,7 @@ import { TYPES } from "../di/Container";
 import { Logger } from "../logger/Logger";
 import { EventBus } from "../events/EventBus";
 import { UIFactory } from "./UIFactory";
+import { RouteManager } from "../route/RouteManager";
 import { UIEventType, NotificationType, SearchResult } from "../../shared/types";
 import { Marker } from "../../features/markers/Marker";
 import { EventType } from "../events/EventTypes";
@@ -29,6 +30,7 @@ export class UIManager implements IUIManager {
   private logger: Logger;
   private eventBus: EventBus;
   private factory: UIFactory;
+  private routeManager: RouteManager;
 
   private cameraManager?: ICameraManager;
   private buildingManager?: IBuildingManager;
@@ -47,17 +49,16 @@ export class UIManager implements IUIManager {
   private _showFPS: boolean = true;
   private _currentTheme: 'light' | 'dark' = 'dark';
 
-  private fromMarkerId: string | null = null;
-  private toMarkerId: string | null = null;
-
   constructor(
     @inject(TYPES.Logger) logger: Logger,
     @inject(TYPES.EventBus) eventBus: EventBus,
-    @inject(TYPES.UIFactory) factory: UIFactory
+    @inject(TYPES.UIFactory) factory: UIFactory,
+    @inject(TYPES.RouteManager) routeManager: RouteManager
   ) {
     this.logger = logger.getLogger('UIManager');
     this.eventBus = eventBus;
     this.factory = factory;
+    this.routeManager = routeManager;
 
     this.logger.debug("UIManager created");
   }
@@ -66,6 +67,11 @@ export class UIManager implements IUIManager {
     this.cameraManager = dependencies.cameraManager;
     this.buildingManager = dependencies.buildingManager;
     this.markerManager = dependencies.markerManager;
+
+    // Set dependencies for RouteManager
+    if (this.markerManager && this.cameraManager) {
+      this.routeManager.setDependencies(this.markerManager, this.cameraManager);
+    }
 
     this.logger.debug('UIManager.initialize: markerManager =', this.markerManager);
 
@@ -86,7 +92,7 @@ export class UIManager implements IUIManager {
     }
 
     this.setupCallbacks();
-    this.setupEventBusListeners(); // ✅ Добавляем подписки на EventBus
+    this.setupEventBusListeners();
     this.loadTheme();
 
     this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
@@ -172,8 +178,9 @@ export class UIManager implements IUIManager {
 
     this.markerManager?.setOnMarkerSelected((marker: IMarker | null) => {
       if (marker) {
-        this.markerDetailsPanel?.updateFromState(this.fromMarkerId === marker.id);
-        this.markerDetailsPanel?.updateToState(this.toMarkerId === marker.id);
+        const routeState = this.routeManager.getRouteState();
+        this.markerDetailsPanel?.updateFromState(routeState.fromMarkerId === marker.id);
+        this.markerDetailsPanel?.updateToState(routeState.toMarkerId === marker.id);
         this.markerDetailsPanel?.show(marker as any);
       } else {
         this.markerDetailsPanel?.hide();
@@ -183,61 +190,25 @@ export class UIManager implements IUIManager {
 
   // ✅ Обработка кнопки "Отсюда"
   private handleFromMarkerToggle(marker: Marker): void {
-    const markerId = marker.id;
-
-    if (this.fromMarkerId === markerId) {
-      // Деактивируем
-      this.markerManager?.setFromMarker('');
-      this.fromMarkerId = null;
-      this.markerDetailsPanel?.updateFromState(false);
-    } else {
-      // Активируем (автоматически деактивирует предыдущий)
-      this.markerManager?.setFromMarker(markerId);
-      this.fromMarkerId = markerId;
-      this.markerDetailsPanel?.updateFromState(true);
-    }
+    this.routeManager.setFromMarker(marker.id);
 
     // Обновляем состояние панели
+    const routeState = this.routeManager.getRouteState();
     this.markerDetailsPanel?.updateRouteState(
-      this.fromMarkerId,
-      this.toMarkerId
+      routeState.fromMarkerId,
+      routeState.toMarkerId
     );
-
-    // Если есть оба маркера - строим путь
-    if (this.fromMarkerId && this.toMarkerId) {
-      this.calculateAndShowRoute();
-    } else {
-      this.clearRoute();
-    }
   }
 
   private handleToMarkerToggle(marker: Marker): void {
-    const markerId = marker.id;
-
-    if (this.toMarkerId === markerId) {
-      // Деактивируем
-      this.markerManager?.setToMarker('');
-      this.toMarkerId = null;
-      this.markerDetailsPanel?.updateToState(false);
-    } else {
-      // Активируем (автоматически деактивирует предыдущий)
-      this.markerManager?.setToMarker(markerId);
-      this.toMarkerId = markerId;
-      this.markerDetailsPanel?.updateToState(true);
-    }
+    this.routeManager.setToMarker(marker.id);
 
     // Обновляем состояние панели
+    const routeState = this.routeManager.getRouteState();
     this.markerDetailsPanel?.updateRouteState(
-      this.fromMarkerId,
-      this.toMarkerId
+      routeState.fromMarkerId,
+      routeState.toMarkerId
     );
-
-    // Если есть оба маркера - строим путь
-    if (this.fromMarkerId && this.toMarkerId) {
-      this.calculateAndShowRoute();
-    } else {
-      this.clearRoute();
-    }
   }
 
   private handleControlPanelEvent(event: { type: UIEventType; floor?: number }): void {
@@ -336,43 +307,8 @@ export class UIManager implements IUIManager {
     }
   }
 
-  private calculateAndShowRoute(): void {
-    this.logger.debug('calculateAndShowRoute called', { fromId: this.fromMarkerId, toId: this.toMarkerId });
-
-    if (!this.fromMarkerId || !this.toMarkerId || !this.markerManager) {
-      this.logger.debug('Missing from/to or markerManager');
-      return;
-    }
-
-    const result = this.markerManager.findPath(this.fromMarkerId, this.toMarkerId);
-    this.logger.debug('Path result:', result);
-
-    if (result && result.path && result.path.length > 0) {
-      // Извлекаем markerId из PathNode[]
-      const pathIds: string[] = result.path.map(node => node.markerId);
-      this.logger.debug('Highlighting path:', pathIds);
-
-      this.markerManager.highlightPath(pathIds);
-
-      const distance = result.totalDistance?.toFixed(1) || '?';
-      this.showInfo(`Маршрут: ${distance}м, ${pathIds.length} точек`);
-
-      if (this.cameraManager && result.path.length > 0) {
-        // Собираем позиции всех точек маршрута
-        const positions = result.path.map(node => node.position);
-
-        // Используем существующий метод focusOnRoute
-        this.cameraManager.focusOnRoute(positions, 1.5);
-      }
-    } else {
-      this.logger.debug('Path not found');
-      this.showError('Маршрут не найден');
-      this.clearRoute();
-    }
-  }
-
   private clearRoute(): void {
-    this.markerManager?.clearPathHighlight();
+    this.routeManager.clearRoute();
   }
 
   private toggleTheme(): void {

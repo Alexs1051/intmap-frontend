@@ -7,13 +7,20 @@ import { EventType, IEvent } from "./EventTypes";
 type EventHandler<T = any> = (event: IEvent<T>) => void;
 
 /**
+ * Обёртка обработчика с флагом once
+ */
+interface IHandlerWrapper {
+  handler: EventHandler;
+  once: boolean;
+}
+
+/**
  * Шина событий - реализует паттерн Observer
  * Позволяет компонентам общаться без прямой зависимости
  */
 @injectable()
 export class EventBus {
-  private handlers: Map<EventType, Set<EventHandler>> = new Map();
-  private onceHandlers: Map<EventType, Set<EventHandler>> = new Map();
+  private handlers: Map<EventType, Set<IHandlerWrapper>> = new Map();
   private debugMode: boolean = false;
 
   constructor() {
@@ -27,10 +34,6 @@ export class EventBus {
         this.debugMode = true;
       }
     }
-
-    if (this.debugMode) {
-      // Debug mode enabled
-    }
   }
 
   /**
@@ -38,9 +41,6 @@ export class EventBus {
    */
   public setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
-    if (enabled) {
-      // Debug mode enabled
-    }
   }
 
   /**
@@ -54,7 +54,8 @@ export class EventBus {
       this.handlers.set(type, new Set());
     }
 
-    this.handlers.get(type)!.add(handler as EventHandler);
+    const wrapper: IHandlerWrapper = { handler: handler as EventHandler, once: false };
+    this.handlers.get(type)!.add(wrapper);
 
     // Возвращаем функцию для отписки
     return () => this.off(type, handler);
@@ -67,13 +68,14 @@ export class EventBus {
    * @returns Функция для отписки
    */
   public once<T = any>(type: EventType, handler: EventHandler<T>): () => void {
-    if (!this.onceHandlers.has(type)) {
-      this.onceHandlers.set(type, new Set());
+    if (!this.handlers.has(type)) {
+      this.handlers.set(type, new Set());
     }
 
-    this.onceHandlers.get(type)!.add(handler as EventHandler);
+    const wrapper: IHandlerWrapper = { handler: handler as EventHandler, once: true };
+    this.handlers.get(type)!.add(wrapper);
 
-    return () => this.offOnce(type, handler);
+    return () => this.off(type, handler);
   }
 
   /**
@@ -84,22 +86,12 @@ export class EventBus {
   public off(type: EventType, handler: EventHandler): void {
     const handlers = this.handlers.get(type);
     if (handlers) {
-      handlers.delete(handler);
-      if (handlers.size === 0) {
-        this.handlers.delete(type);
-      }
-    }
-  }
-
-  /**
-   * Отписаться от однократного события
-   */
-  private offOnce(type: EventType, handler: EventHandler): void {
-    const handlers = this.onceHandlers.get(type);
-    if (handlers) {
-      handlers.delete(handler);
-      if (handlers.size === 0) {
-        this.onceHandlers.delete(type);
+      const toRemove = Array.from(handlers).find(w => w.handler === handler);
+      if (toRemove) {
+        handlers.delete(toRemove);
+        if (handlers.size === 0) {
+          this.handlers.delete(type);
+        }
       }
     }
   }
@@ -110,10 +102,8 @@ export class EventBus {
   public offAll(type?: EventType): void {
     if (type) {
       this.handlers.delete(type);
-      this.onceHandlers.delete(type);
     } else {
       this.handlers.clear();
-      this.onceHandlers.clear();
     }
   }
 
@@ -136,30 +126,29 @@ export class EventBus {
       console.debug(`[EventBus] ${type}`, event);
     }
 
-    // Вызываем постоянные обработчики
+    // Получаем обработчики
     const handlers = this.handlers.get(type);
-    if (handlers) {
-      handlers.forEach(handler => {
-        try {
-          handler(event);
-        } catch (error) {
-          console.error(`Error in event handler for ${type}:`, error);
-        }
-      });
-    }
+    if (!handlers || handlers.size === 0) return;
 
-    // Вызываем однократные обработчики
-    const onceHandlers = this.onceHandlers.get(type);
-    if (onceHandlers) {
-      onceHandlers.forEach(handler => {
-        try {
-          handler(event);
-        } catch (error) {
-          console.error(`Error in once event handler for ${type}:`, error);
+    // Копируем для безопасного удаления во время итерации
+    const handlersCopy = Array.from(handlers);
+    const toRemove: IHandlerWrapper[] = [];
+
+    // Вызываем обработчики
+    handlersCopy.forEach(wrapper => {
+      try {
+        wrapper.handler(event);
+        // Если once - помечаем для удаления
+        if (wrapper.once) {
+          toRemove.push(wrapper);
         }
-      });
-      this.onceHandlers.delete(type);
-    }
+      } catch (error) {
+        console.error(`Error in event handler for ${type}:`, error);
+      }
+    });
+
+    // Удаляем once обработчики
+    toRemove.forEach(wrapper => handlers.delete(wrapper));
   }
 
   /**
@@ -179,17 +168,13 @@ export class EventBus {
    * Проверить, есть ли подписчики на событие
    */
   public hasListeners(type: EventType): boolean {
-    const hasHandlers = this.handlers.has(type) && this.handlers.get(type)!.size > 0;
-    const hasOnceHandlers = this.onceHandlers.has(type) && this.onceHandlers.get(type)!.size > 0;
-    return hasHandlers || hasOnceHandlers;
+    return this.handlers.has(type) && this.handlers.get(type)!.size > 0;
   }
 
   /**
    * Получить количество подписчиков на событие
    */
   public listenerCount(type: EventType): number {
-    const handlersCount = this.handlers.get(type)?.size || 0;
-    const onceHandlersCount = this.onceHandlers.get(type)?.size || 0;
-    return handlersCount + onceHandlersCount;
+    return this.handlers.get(type)?.size || 0;
   }
 }

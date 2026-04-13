@@ -1,6 +1,4 @@
-import { Scene, Vector3, Mesh, ActionManager, SetValueAction, Color3, ExecuteCodeAction } from "@babylonjs/core";
-import { injectable, inject } from "inversify";
-import { TYPES } from "../../core/di/Container";
+import { Scene, Vector3, Mesh, ActionManager, Color3, ExecuteCodeAction, SetValueAction } from "@babylonjs/core";
 import { Logger } from "../../core/logger/Logger";
 import { EventBus } from "../../core/events/EventBus";
 import { EventType } from "../../core/events/EventTypes";
@@ -12,12 +10,10 @@ import { IMarker } from "@shared/interfaces";
 
 const DEFAULT_BG_COLOR: RGBA = { r: 0.2, g: 0.5, b: 0.8, a: 0.9 };
 const DEFAULT_TEXT_COLOR: RGBA = { r: 1, g: 1, b: 1, a: 1 };
-const DEFAULT_ICON_NAME: string = '📍';
 
 /**
  * Маркер на карте
  */
-@injectable()
 export class Marker implements IMarker {
   private logger: Logger;
   private eventBus: EventBus;
@@ -35,12 +31,11 @@ export class Marker implements IMarker {
   public onClick: (marker: Marker) => void = () => { };
   public onDoubleClick: (marker: Marker) => void = () => { };
 
-  constructor(
-    @inject(TYPES.Logger) logger: Logger,
-    @inject(TYPES.EventBus) eventBus: EventBus,
-    @inject(TYPES.MarkerWidget) widget: MarkerWidget,
-    @inject(TYPES.MarkerAnimator) animator: MarkerAnimator,
-    scene: Scene,
+  private constructor(
+    logger: Logger,
+    eventBus: EventBus,
+    widget: MarkerWidget,
+    animator: MarkerAnimator,
     data: AnyMarkerData
   ) {
     this.logger = logger.getLogger('Marker');
@@ -51,44 +46,53 @@ export class Marker implements IMarker {
     this._id = data.id;
     this._type = data.type;
     this._data = data;
+  }
+
+  /**
+   * Фабричный метод для создания маркера
+   */
+  static create(
+    logger: Logger,
+    eventBus: EventBus,
+    scene: Scene,
+    data: AnyMarkerData
+  ): Marker {
+    const widget = new MarkerWidget();
+    const animator = new MarkerAnimator(logger);
 
     const bgColorData = data.backgroundColor ?? DEFAULT_BG_COLOR;
     const textColorData = data.textColor ?? DEFAULT_TEXT_COLOR;
-    const iconName = data.iconName ?? this.getDefaultIconForType(data.type);
+    const iconName = data.iconName ?? Marker.getDefaultIconForType(data.type);
 
     const bgColor = new Color3(bgColorData.r, bgColorData.g, bgColorData.b);
     const fgColor = new Color3(textColorData.r, textColorData.g, textColorData.b);
 
-    // Асинхронная инициализация
-    // Текст передаётся только для MARKER, для FLAG/WAYPOINT - undefined
     const textForWidget = data.type === MarkerType.MARKER ? data.name : undefined;
 
-    this.widget.initialize(
+    const marker = new Marker(logger, eventBus, widget, animator, data);
+
+    widget.initialize(
       scene,
       data.position,
       bgColor,
       fgColor,
-      this._type,
+      marker._type,
       iconName,
       textForWidget
     ).then(() => {
-      this.setupInteractivity(scene);
-      this.playSpawnAnimation();
+      marker.setupInteractivity(scene);
+      marker.playSpawnAnimation();
     });
 
-    this.logger.debug(`Marker created: ${data.id} (${data.name})`);
+    return marker;
   }
 
-  private getDefaultIconForType(type: MarkerType): string {
+  private static getDefaultIconForType(type: MarkerType): string {
     switch (type) {
-      case MarkerType.MARKER:
-        return '📍';
-      case MarkerType.FLAG:
-        return '🚩';
-      case MarkerType.WAYPOINT:
-        return '🔘';
-      default:
-        return DEFAULT_ICON_NAME;
+      case MarkerType.MARKER: return '📍';
+      case MarkerType.FLAG: return '🚩';
+      case MarkerType.WAYPOINT: return '🔘';
+      default: return '📍';
     }
   }
 
@@ -189,9 +193,10 @@ export class Marker implements IMarker {
     this._isFromMarker = isFrom;
     this.widget.setAsFromMarker(isFrom);
 
-    // Обновляем визуал при необходимости
-    if (isFrom) {
-      this.setAsToMarker(false); // Не может быть одновременно и From, и To
+    // Не может быть одновременно и From, и To
+    if (isFrom && this._isToMarker) {
+      this._isToMarker = false;
+      this.widget.setAsToMarker(false);
     }
   }
 
@@ -200,9 +205,10 @@ export class Marker implements IMarker {
     this._isToMarker = isTo;
     this.widget.setAsToMarker(isTo);
 
-    // Обновляем визуал при необходимости
-    if (isTo) {
-      this.setAsFromMarker(false); // Не может быть одновременно и From, и To
+    // Не может быть одновременно и From, и To
+    if (isTo && this._isFromMarker) {
+      this._isFromMarker = false;
+      this.widget.setAsFromMarker(false);
     }
   }
 
@@ -241,7 +247,7 @@ export class Marker implements IMarker {
   }
 
   public get iconName(): string {
-    return this._data.iconName ?? this.getDefaultIconForType(this._type);
+    return this._data.iconName ?? Marker.getDefaultIconForType(this._type);
   }
 
   public get floor(): number {

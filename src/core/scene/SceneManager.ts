@@ -6,6 +6,7 @@ import { Logger } from "../logger/Logger";
 import { EventBus } from "../events/EventBus";
 import { EventType } from "../events/EventTypes";
 import { container } from "../di/Container";
+import { ISceneComponentRegistration } from "@shared/types";
 import {
     IBuildingManager,
     ICameraManager,
@@ -51,8 +52,8 @@ export class SceneManager implements ISceneManager {
         this.logger.info("SceneManager initialized");
     }
 
-    private registerComponents(): void {
-        const componentConfigs = [
+    private getComponentConfigs(): ISceneComponentRegistration[] {
+        return [
             { name: 'camera', type: TYPES.CameraManager, setScene: true, isLoadable: true },
             { name: 'background', type: TYPES.BackgroundManager, setScene: true, isLoadable: true },
             { name: 'grid', type: TYPES.GridManager, setScene: true, isLoadable: true },
@@ -60,66 +61,85 @@ export class SceneManager implements ISceneManager {
             { name: 'building', type: TYPES.BuildingManager, setScene: true, isLoadable: true },
             { name: 'markers', type: TYPES.MarkerManager, setScene: true, isLoadable: true }
         ];
+    }
 
-        for (const config of componentConfigs) {
-            try {
-                if (container.isBound(config.type)) {
-                    const component = container.get<any>(config.type);
+    private registerComponents(): void {
+        const configs = this.getComponentConfigs();
 
-                    if (config.setScene && component && typeof component.setScene === 'function') {
-                        component.setScene(this._scene);
-                    }
-
-                    this.registerComponent(config.name, component as ISceneComponent);
-
-                    // Сохраняем ссылки на менеджеры
-                    switch (config.name) {
-                        case 'camera':
-                            this.cameraManager = component;
-                            break;
-                        case 'building':
-                            this.buildingManager = component;
-                            break;
-                        case 'markers':
-                            this.markerManager = component;
-                            break;
-                        case 'background':
-                            break;
-                        case 'grid':
-                            break;
-                        case 'lighting':
-                            break;
-                    }
-
-                    this.logger.info(`${config.name} registered`);
-                }
-            } catch (error) {
-                this.logger.error(`Failed to register ${config.name}`, error);
-            }
+        for (const config of configs) {
+            this.registerComponentByConfig(config);
         }
 
-        try {
-            if (container.isBound(TYPES.CameraAnimator)) {
-                const cameraAnimator = container.get<any>(TYPES.CameraAnimator);
-                if (cameraAnimator && typeof cameraAnimator.setScene === 'function') {
-                    cameraAnimator.setScene(this._scene);
-                }
-            }
-        } catch (error) {
-            this.logger.error("Failed to setup CameraAnimator", error);
-        }
+        // Setup CameraAnimator separately
+        this.setupOptionalComponent(TYPES.CameraAnimator);
 
-        try {
-            if (container.isBound(TYPES.UIManager)) {
-                this.uiManager = container.get<IUIManager>(TYPES.UIManager);
-                this.logger.info("UIManager obtained from container");
-            }
-        } catch (error) {
-            this.logger.error("Failed to get UIManager", error);
-        }
+        // Get UIManager from container
+        this.setupOptionalManager(TYPES.UIManager, 'uiManager');
 
+        // Link marker and camera
         if (this.markerManager && this.cameraManager) {
             this.markerManager.setCameraManager(this.cameraManager);
+        }
+    }
+
+    private registerComponentByConfig(config: ISceneComponentRegistration): void {
+        try {
+            if (!container.isBound(config.type)) {
+                this.logger.warn(`Component ${config.name} not bound in container`);
+                return;
+            }
+
+            const component = container.get<any>(config.type);
+
+            if (config.setScene && component?.setScene) {
+                component.setScene(this._scene);
+            }
+
+            this.registerComponent(config.name, component);
+
+            // Save manager references
+            this.saveManagerReference(config.name, component);
+
+            this.logger.info(`${config.name} registered`);
+        } catch (error) {
+            this.logger.error(`Failed to register ${config.name}`, error);
+        }
+    }
+
+    private saveManagerReference(name: string, component: any): void {
+        const managerMap: Record<string, string> = {
+            'camera': 'cameraManager',
+            'building': 'buildingManager',
+            'markers': 'markerManager'
+        };
+
+        const propName = managerMap[name];
+        if (propName) {
+            (this as any)[propName] = component;
+        }
+    }
+
+    private setupOptionalComponent(type: symbol): void {
+        try {
+            if (container.isBound(type)) {
+                const component = container.get<any>(type);
+                if (component?.setScene) {
+                    component.setScene(this._scene);
+                }
+            }
+        } catch (error) {
+            this.logger.error(`Failed to setup optional component: ${type.toString()}`, error);
+        }
+    }
+
+    private setupOptionalManager(type: symbol, propName: string): void {
+        try {
+            if (container.isBound(type)) {
+                (this as any)[propName] = container.get<any>(type);
+                this.logger.info(`${propName} obtained from container`);
+            }
+        } catch (error) {
+            this.logger.error(`Failed to get ${propName}`, error);
         }
     }
 
@@ -286,24 +306,30 @@ export class SceneManager implements ISceneManager {
             return;
         }
 
-        const canvas = this._scene.getEngine().getRenderingCanvas();
+        const canvas = this.getCanvas();
         if (!canvas) {
             this.logger.warn("Cannot setup marker click handler: canvas not found");
             return;
         }
 
         canvas.addEventListener('click', (event) => {
-            if (!this.markerManager) return;
-
             const rect = canvas.getBoundingClientRect();
             const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
             const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
             const ray = this._scene.createPickingRay(x, y, null, this._scene.activeCamera);
 
-            this.markerManager.handleScenePick(ray);
+            this.markerManager!.handleScenePick(ray);
         });
 
         this.logger.info("Marker click handler setup complete");
+    }
+
+    private getCanvas(): HTMLCanvasElement | null {
+        try {
+            return this._scene.getEngine().getRenderingCanvas();
+        } catch {
+            return null;
+        }
     }
 
     private createEmergencyCamera(): void {
@@ -407,24 +433,5 @@ export class SceneManager implements ISceneManager {
 
     public getUIManager(): IUIManager | undefined {
         return this.uiManager;
-    }
-
-    public getEngine(): BabylonEngine {
-        return this.engine;
-    }
-
-    public updateCanvas(canvas: HTMLCanvasElement): void {
-        // Обновляем ссылку на canvas в движке
-        const babylonEngine = this.engine.getEngine();
-        // @ts-ignore
-        babylonEngine._gl = null;
-        // @ts-ignore
-        babylonEngine._canvas = canvas;
-        babylonEngine.resize();
-
-        // Обновляем ссылку в сцене
-        this._scene.getEngine().resize();
-
-        this.logger.info('Canvas updated in engine');
     }
 }

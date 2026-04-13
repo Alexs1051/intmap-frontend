@@ -25,15 +25,3 @@ export interface ILoadingState {
     /** Ошибка загрузки (если есть) */
     error?: Error;
 }
-
-/**
- * Опции загрузки
- */
-export interface ILoadOptions {
-    /** Таймаут в миллисекундах */
-    timeout?: number;
-    /** Количество попыток при ошибке */
-    retries?: number;
-    /** Приоритет загрузки */
-    priority?: 'high' | 'normal' | 'low';
-}

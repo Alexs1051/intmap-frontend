@@ -1,8 +1,5 @@
 import { Scene, Animation, Vector3, Color3, EasingFunction, SineEase, BackEase, TransformNode } from "@babylonjs/core";
-import { injectable, inject } from "inversify";
-import { TYPES } from "../../core/di/Container";
 import { Logger } from "../../core/logger/Logger";
-import { ConfigService } from "../../core/config/ConfigService";
 import { IMarkerAnimatorConfig } from "@shared/types";
 
 const DEFAULT_CONFIG: IMarkerAnimatorConfig = {
@@ -18,7 +15,6 @@ const DEFAULT_CONFIG: IMarkerAnimatorConfig = {
 /**
  * Аниматор маркеров
  */
-@injectable()
 export class MarkerAnimator {
     private logger: Logger;
     private config: IMarkerAnimatorConfig;
@@ -26,16 +22,9 @@ export class MarkerAnimator {
     private activeAnimations: Map<TransformNode, Animation> = new Map();
     private _isAnimating: boolean = false;
 
-    constructor(
-        @inject(TYPES.Logger) logger: Logger,
-        @inject(TYPES.ConfigService) configService: ConfigService
-    ) {
+    constructor(logger: Logger) {
         this.logger = logger.getLogger('MarkerAnimator');
-        
-        const fullConfig = configService.get();
-        const customConfig = fullConfig.markerAnimator || {};
-        
-        this.config = { ...DEFAULT_CONFIG, ...customConfig };
+        this.config = DEFAULT_CONFIG;
     }
 
     /**
@@ -59,7 +48,7 @@ export class MarkerAnimator {
         } else {
             await this.playDeselectAnimation(node);
         }
-        
+
         this._isAnimating = false;
     }
 
@@ -79,7 +68,7 @@ export class MarkerAnimator {
         this.stopCurrentAnimation(node);
 
         const targetScale = hovered ? this.config.hoverScale : this.config.normalScale;
-        
+
         const animScale = new Animation(
             "markerHoverAnim",
             "scaling",
@@ -101,7 +90,7 @@ export class MarkerAnimator {
 
         node.animations = [animScale];
         this.activeAnimations.set(node, animScale);
-        
+
         this.scene.beginAnimation(node, 0, 10, false);
     }
 
@@ -114,13 +103,13 @@ export class MarkerAnimator {
         const OPTIMAL_DISTANCE = 20;
         const MIN_SCALE = 0.5;
         const MAX_SCALE = 2.5;
-        
+
         let targetScale = distance / OPTIMAL_DISTANCE;
         targetScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, targetScale));
-        
+
         const currentScale = node.scaling.x;
         const newScale = this.lerp(currentScale, targetScale, 0.1);
-        
+
         node.scaling.setAll(newScale);
     }
 
@@ -131,7 +120,7 @@ export class MarkerAnimator {
         if (!node || !this.scene) return;
 
         node.scaling.setAll(0);
-        
+
         const animScale = new Animation(
             "markerSpawnAnim",
             "scaling",
@@ -153,7 +142,7 @@ export class MarkerAnimator {
 
         node.animations = [animScale];
         this.activeAnimations.set(node, animScale);
-        
+
         return new Promise((resolve) => {
             this.scene?.beginAnimation(node, 0, 20, false, 1.0, () => resolve());
         });
@@ -186,7 +175,7 @@ export class MarkerAnimator {
 
         node.animations = [animScale];
         this.activeAnimations.set(node, animScale);
-        
+
         return new Promise((resolve) => {
             this.scene?.beginAnimation(node, 0, 15, false, 1.0, () => resolve());
         });
@@ -218,7 +207,7 @@ export class MarkerAnimator {
 
         node.animations = [animScale];
         this.activeAnimations.set(node, animScale);
-        
+
         return new Promise((resolve) => {
             this.scene?.beginAnimation(node, 0, 30, false, 1.0, () => resolve());
         });
@@ -249,7 +238,7 @@ export class MarkerAnimator {
 
         node.animations = [animScale];
         this.activeAnimations.set(node, animScale);
-        
+
         return new Promise((resolve) => {
             this.scene?.beginAnimation(node, 0, 15, false, 1.0, () => resolve());
         });

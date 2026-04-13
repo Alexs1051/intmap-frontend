@@ -8,6 +8,7 @@ export * from './core/color';
 export * from './core/error';
 export * from './core/pagination';
 export * from './core/result';
+export * from './core/scene';
 
 // Enums
 export * from './enum/camera.enum';

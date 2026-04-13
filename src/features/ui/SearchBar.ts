@@ -54,6 +54,7 @@ export class SearchBar implements ISearchBar {
 
     this.container = document.createElement('div');
     this.container.className = 'search-container';
+    this.container.addEventListener('click', (e) => e.stopPropagation());
 
     const inputWrapper = document.createElement('div');
     inputWrapper.className = 'search-input-wrapper';
@@ -182,33 +183,20 @@ export class SearchBar implements ISearchBar {
   private performSearch(): void {
     const query = this.input.value.toLowerCase().trim();
 
-    this.logger.debug(`Searching for: "${query}"`);
-    this.logger.debug(`Available markers count: ${this.allMarkers.length}`);
-
     if (query.length < this.config.MIN_QUERY_LENGTH) {
       this.clearResults();
       return;
     }
 
-    // Поиск по имени (без фильтрации по типу)
     const filtered = this.allMarkers
       .filter(m => {
         const nameMatch = m.name.toLowerCase().includes(query);
         const typeMatch = m.type.toLowerCase().includes(query);
         const floorMatch = m.floor && m.floor.toString().includes(query);
         const idMatch = m.id.toLowerCase().includes(query);
-
-        const matches = nameMatch || typeMatch || floorMatch || idMatch;
-
-        if (matches) {
-          this.logger.debug(`Match found: ${m.name} (${m.id})`);
-        }
-
-        return matches;
+        return nameMatch || typeMatch || floorMatch || idMatch;
       })
       .slice(0, this.config.MAX_RESULTS);
-
-    this.logger.debug(`Found ${filtered.length} results`);
 
     this.showResults(filtered);
     this.onSearchCallback?.(query);
@@ -251,17 +239,18 @@ export class SearchBar implements ISearchBar {
     const iconWrapper = document.createElement('div');
     iconWrapper.className = 'search-result-icon-wrapper';
 
-    const iconSpan = document.createElement('span');
-    iconSpan.className = 'search-result-icon';
-    iconSpan.textContent = result.iconName || '📍';
-    iconSpan.style.fontFamily = "'Material Icons', 'Material Symbols Outlined'";
-
+    const iconImg = document.createElement('img');
+    iconImg.className = 'search-result-icon-img';
+    iconImg.src = this.getIconPath(result.iconName || 'location_on');
+    // Применяем цвет foreground к иконке через SVG feColorMatrix filter
     if (result.textColor) {
       const tc = result.textColor;
-      iconSpan.style.color = `rgba(${tc.r * 255}, ${tc.g * 255}, ${tc.b * 255}, 1)`;
+      const svgFilter = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="tint"><feColorMatrix type="matrix" values="0 0 0 0 ${tc.r} 0 0 0 0 ${tc.g} 0 0 0 0 ${tc.b} 0 0 0 1 0"/></filter></svg>`;
+      const encodedFilter = encodeURIComponent(svgFilter);
+      iconImg.style.filter = `url("data:image/svg+xml;utf8,${encodedFilter}#tint")`;
     }
 
-    iconWrapper.appendChild(iconSpan);
+    iconWrapper.appendChild(iconImg);
 
     const textContainer = document.createElement('div');
     textContainer.className = 'search-result-text';
@@ -314,6 +303,19 @@ export class SearchBar implements ISearchBar {
     }
   }
 
+  private getIconPath(iconName: string): string {
+    const iconMap: { [key: string]: string } = {
+      location_on: '/icons/waypoint.png',
+      flag: '/icons/info.png',
+      circle: '/icons/waypoint.png',
+      '📍': '/icons/waypoint.png',
+      '🚩': '/icons/info.png',
+      '🔘': '/icons/waypoint.png'
+    };
+
+    return iconMap[iconName] || '/icons/waypoint.png';
+  }
+
   private getTypeName(type: MarkerType): string {
     switch (type) {
       case MarkerType.MARKER: return 'Метка';
@@ -331,24 +333,10 @@ export class SearchBar implements ISearchBar {
   }
 
   public refreshMarkers(): void {
-    this.logger.debug('=== refreshMarkers called ===');
-    this.logger.debug('markerManager:', this.markerManager);
-
-    if (!this.markerManager) {
-      this.logger.warn("MarkerManager not set");
-      return;
-    }
+    if (!this.markerManager) return;
 
     try {
       const markers = this.markerManager.getAllMarkers();
-      this.logger.debug('getAllMarkers returned:', markers);
-      this.logger.debug('markers count:', markers?.length);
-
-      if (markers && markers.length > 0) {
-        markers.forEach((m: any) => {
-          this.logger.debug(`Marker: ${m.name} (${m.id}), type: ${m.type}, floor: ${m.floor}`);
-        });
-      }
 
       this.allMarkers = markers
         .filter((m: any) => m.type !== MarkerType.WAYPOINT)
@@ -360,33 +348,27 @@ export class SearchBar implements ISearchBar {
 
           return {
             id: m.id,
-            name: name,
+            name,
             type: m.type,
             iconName: m.iconName || this.getDefaultIconForType(m.type),
-            floor: floor,
+            floor,
             marker: m,
             backgroundColor: bgColor,
             textColor: textColor
           };
         });
 
-      this.logger.debug('allMarkers after mapping:', this.allMarkers);
-      this.logger.info(`Loaded ${this.allMarkers.length} markers for search`);
-
       if (this._isVisible && this.input.value.length >= this.config.MIN_QUERY_LENGTH) {
         this.performSearch();
       }
     } catch (error) {
-      console.error('Error in refreshMarkers:', error);
-      this.logger.error("Failed to load markers", error);
+      console.error('Error refreshing markers:', error);
       this.allMarkers = [];
     }
   }
 
   public setMarkerManager(manager: any): void {
-    this.logger.debug('SearchBar: setMarkerManager called', manager);
     this.markerManager = manager;
-    this.logger.debug('Calling refreshMarkers...');
     this.refreshMarkers();
   }
 

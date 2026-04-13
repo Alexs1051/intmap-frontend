@@ -6,6 +6,7 @@ import { EventBus } from "../events/EventBus";
 import { ConfigService } from "../config/ConfigService";
 import { AssetLoader } from "../assets/AssetLoader";
 import { ResourceCache } from "../assets/ResourceCache";
+import { PerformanceTracker } from "../utils/PerformanceTracker";
 import { SceneManager } from "../scene/SceneManager";
 
 // Импортируем менеджеры
@@ -26,8 +27,6 @@ import { WallManager } from "../../features/building/WallManager";
 import { BuildingManager } from "../../features/building/BuildingManager";
 
 // Импортируем Marker компоненты
-import { MarkerWidget } from "../../features/markers/components/MarkerWidget";
-import { MarkerAnimator } from "../../features/markers/MarkerAnimator";
 import { MarkerManager } from "../../features/markers/MarkerManager";
 import { MarkerGraph } from "../../features/markers/graph/MarkerGraph";
 import { MarkerGraphRenderer } from "../../features/markers/graph/MarkerGraphRenderer";
@@ -44,12 +43,7 @@ import { ConnectionScreen } from "../../features/ui/ConnectionScreen";
 import { FPSCounter } from "../../features/ui/FPSCounter";
 import { BuildingTitle } from "../../features/ui/BuildingTitle";
 import { AuthPopup } from "../../features/ui/AuthPopup";
-import {
-  ICameraAnimator,
-  ICameraInputHandler,
-  ICameraManager,
-  ICameraModeManager
-} from "@shared/interfaces";
+import { RouteManager } from "../route/RouteManager";
 
 
 
@@ -64,13 +58,30 @@ export function configureContainer(): void {
   container.bind<ConfigService>(TYPES.ConfigService).to(ConfigService).inSingletonScope();
   container.bind<AssetLoader>(TYPES.AssetLoader).to(AssetLoader).inSingletonScope();
   container.bind<ResourceCache>(TYPES.ResourceCache).to(ResourceCache).inSingletonScope();
+  container.bind<PerformanceTracker>(TYPES.PerformanceTracker).to(PerformanceTracker).inSingletonScope();
   container.bind<SceneManager>(TYPES.SceneManager).to(SceneManager).inSingletonScope();
 
-  // Camera components (привязываем к интерфейсам)
-  container.bind<ICameraAnimator>(TYPES.CameraAnimator).to(CameraAnimator).inSingletonScope();
-  container.bind<ICameraModeManager>(TYPES.CameraModeManager).to(CameraModeManager).inSingletonScope();
-  container.bind<ICameraInputHandler>(TYPES.CameraInputHandler).to(CameraInputHandler).inSingletonScope();
-  container.bind<ICameraManager>(TYPES.CameraManager).to(CameraManager).inSingletonScope();
+  // Camera components
+  container.bind(TYPES.CameraAnimator).toDynamicValue(() => {
+    return new CameraAnimator();
+  }).inSingletonScope();
+
+  container.bind(TYPES.CameraModeManager).toDynamicValue(() => {
+    return new CameraModeManager();
+  }).inSingletonScope();
+
+  container.bind(TYPES.CameraInputHandler).toDynamicValue(() => {
+    return new CameraInputHandler();
+  }).inSingletonScope();
+
+  container.bind(TYPES.CameraManager).toDynamicValue(() => {
+    const logger = container.get<Logger>(TYPES.Logger);
+    const eventBus = container.get<EventBus>(TYPES.EventBus);
+    const animator = container.get<CameraAnimator>(TYPES.CameraAnimator);
+    const modeManager = container.get<CameraModeManager>(TYPES.CameraModeManager);
+    const inputHandler = container.get<CameraInputHandler>(TYPES.CameraInputHandler);
+    return new CameraManager(logger, eventBus, animator, modeManager, inputHandler);
+  }).inSingletonScope();
 
   // Feature Managers
   container.bind(TYPES.BackgroundManager).to(BackgroundManager).inSingletonScope();
@@ -85,13 +96,25 @@ export function configureContainer(): void {
   container.bind(TYPES.BuildingParser).to(BuildingParser).inSingletonScope();
   container.bind(TYPES.BuildingAnimator).to(BuildingAnimator).inSingletonScope();
 
-  // Marker components
-  container.bind(TYPES.MarkerWidget).to(MarkerWidget).inSingletonScope();
-  container.bind(TYPES.MarkerAnimator).to(MarkerAnimator).inSingletonScope();
-  container.bind(TYPES.MarkerGraph).to(MarkerGraph).inSingletonScope();
+  // Marker components (обычные классы, не @injectable)
+  container.bind(TYPES.MarkerGraph).toDynamicValue(() => {
+    const eventBus = container.get<EventBus>(TYPES.EventBus);
+    return new MarkerGraph(eventBus);
+  }).inSingletonScope();
+
   container.bind(TYPES.MarkerGraphRenderer).to(MarkerGraphRenderer).inSingletonScope();
-  container.bind(TYPES.Pathfinder).to(Pathfinder).inSingletonScope();
+
+  container.bind(TYPES.Pathfinder).toDynamicValue(() => {
+    const logger = container.get<Logger>(TYPES.Logger);
+    const eventBus = container.get<EventBus>(TYPES.EventBus);
+    const graph = container.get<MarkerGraph>(TYPES.MarkerGraph);
+    return new Pathfinder(logger, eventBus, graph);
+  }).inSingletonScope();
+
   container.bind(TYPES.MarkerManager).to(MarkerManager).inSingletonScope();
+
+  // Route
+  container.bind(TYPES.RouteManager).to(RouteManager).inSingletonScope();
 
   // UI
   container.bind(TYPES.UIFactory).to(UIFactory).inSingletonScope();

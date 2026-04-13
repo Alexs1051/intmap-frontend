@@ -7,7 +7,7 @@ export const TYPES = {
   SceneManager: Symbol.for("SceneManager"),
   Logger: Symbol.for("Logger"),
   EventBus: Symbol.for("EventBus"),
-  
+
   // Features
   UIManager: Symbol.for("UIManager"),
   GridManager: Symbol.for("GridManager"),
@@ -16,14 +16,14 @@ export const TYPES = {
   CameraManager: Symbol.for("CameraManager"),
   BuildingManager: Symbol.for("BuildingManager"),
   MarkerManager: Symbol.for("MarkerManager"),
-  
+
   // Building components
   BuildingLoader: Symbol.for("BuildingLoader"),
   BuildingParser: Symbol.for("BuildingParser"),
   BuildingAnimator: Symbol.for("BuildingAnimator"),
   FloorManager: Symbol.for("FloorManager"),
   WallManager: Symbol.for("WallManager"),
-  
+
   // UI Components
   ConnectionScreen: Symbol.for("ConnectionScreen"),
   FPSCounter: Symbol.for("FPSCounter"),
@@ -33,28 +33,30 @@ export const TYPES = {
   BuildingTitle: Symbol.for("BuildingTitle"),
   AuthPopup: Symbol.for("AuthPopup"),
   ControlPanel: Symbol.for("ControlPanel"),
-  
+
   // Utils
   ConfigService: Symbol.for("ConfigService"),
   AssetLoader: Symbol.for("AssetLoader"),
   ResourceCache: Symbol.for("ResourceCache"),
-  
+  PerformanceTracker: Symbol.for("PerformanceTracker"),
+
   // UI Factory
   UIFactory: Symbol.for("UIFactory"),
-  
+
   // Graph
   MarkerGraph: Symbol.for("MarkerGraph"),
   MarkerGraphRenderer: Symbol.for("MarkerGraphRenderer"),
   Pathfinder: Symbol.for("Pathfinder"),
 
+  // Route
+  RouteManager: Symbol.for("RouteManager"),
+
   // Camera components
   CameraAnimator: Symbol.for("CameraAnimator"),
   CameraModeManager: Symbol.for("CameraModeManager"),
   CameraInputHandler: Symbol.for("CameraInputHandler"),
-  
+
   // Widgets
-  MarkerWidget: Symbol.for("MarkerWidget"),
-  MarkerAnimator: Symbol.for("MarkerAnimator"),
   Marker: Symbol.for("Marker"),
 } as const;
 

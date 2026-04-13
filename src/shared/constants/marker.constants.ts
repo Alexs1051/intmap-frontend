@@ -2,15 +2,41 @@
  * Конфигурация виджета маркера
  */
 export const MARKER_WIDGET = {
-    ICON_SIZE: 28,
-    FONT_SIZE: 16,
-    PADDING: 8,
-    BACKGROUND_ALPHA: 0.9,
+    // Размеры иконок
+    ICON_SIZE_MARKER: 32,
+    ICON_SIZE_FLAG: 48,
 
+    // Шрифт
+    FONT_SIZE: 18,
+    FONT_FAMILY: "Arial, sans-serif",
+
+    // Отступы
+    PADDING: 8,
+    PADDING_HORIZONTAL: 30,  // icon + горизонтальные отступы
+    PADDING_VERTICAL: 18,     // вертикальные отступы для маркера с текстом
+    PANEL_PADDING: 4,         // отступы панели
+    OUTLINE_PADDING: 3,       // отступы контейнера для outline
+    TEXT_PADDING: 8,          // внутренний отступ текстового контейнера
+    SHADOW_OFFSET: 2,         // смещение тени
+
+    // Альфа и тени
+    BACKGROUND_ALPHA: 0.9,
+    SHADOW_ALPHA: 0.6,
+
+    // Пути к иконкам
+    ICON_PATH_WAYPOINT: "/icons/waypoint.png",
+    ICON_PATH_INFO: "/icons/info.png",
+
+    // Plane
+    PLANE_BASE_SIZE: 1.5,
+
+    // Минимальная высота контейнера
+    MIN_HEIGHT: 50,
+
+    // LOD
     OPTIMAL_DISTANCE: 5,
     MIN_SCALE: 0.25,
     MAX_SCALE: 0.625,
-
     HIDE_TEXT_DISTANCE: 35,
     FADE_START_DISTANCE: 25
 };

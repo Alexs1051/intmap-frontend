@@ -1,130 +1,63 @@
 import { Vector3 } from "@babylonjs/core";
-import { injectable, inject } from "inversify";
-import { TYPES } from "../../../core/di/Container";
-import { Logger } from "../../../core/logger/Logger";
-import { EventBus } from "../../../core/events/EventBus";
-import { EventType } from "../../../core/events/EventTypes";
 import { Marker } from "../Marker";
 import { ConnectionDirection } from "@shared/types";
 import { GraphEdge, GraphNode, GraphPathResult } from "@shared/types/dto";
+import { EventBus } from "../../../core/events/EventBus";
+import { EventType } from "../../../core/events/EventTypes";
 
 /**
  * Граф маркеров для навигации
+ * Хранит узлы (маркеры) и рёбра (связи), реализует BFS поиск пути
  */
-@injectable()
 export class MarkerGraph {
-    private logger: Logger;
     private eventBus: EventBus;
-
     private _nodes: Map<string, GraphNode> = new Map();
     private _edges: Map<string, GraphEdge> = new Map();
     private _markers: Map<string, Marker> = new Map();
 
-    constructor(
-        @inject(TYPES.Logger) logger: Logger,
-        @inject(TYPES.EventBus) eventBus: EventBus
-    ) {
-        this.logger = logger.getLogger('MarkerGraph');
+    constructor(eventBus: EventBus) {
         this.eventBus = eventBus;
     }
 
     public addNode(marker: Marker): void {
-        if (this._nodes.has(marker.id)) {
-            this.logger.warn(`Marker ${marker.id} already exists in graph`);
-            return;
-        }
+        if (this._nodes.has(marker.id)) return;
 
         this._markers.set(marker.id, marker);
-        this._nodes.set(marker.id, {
-            markerId: marker.id,
-            connections: new Map()
-        });
-
-        this.logger.debug(`Node added: ${marker.id} (${marker.name})`);
+        this._nodes.set(marker.id, { markerId: marker.id, connections: new Map() });
         this.eventBus.emit(EventType.GRAPH_NODE_ADDED, { markerId: marker.id });
     }
 
-    public addConnection(
-        fromId: string,
-        toId: string,
-        direction: ConnectionDirection,
-        weight?: number
-    ): boolean {
+    public addConnection(fromId: string, toId: string, direction: ConnectionDirection, weight?: number): boolean {
         const fromNode = this._nodes.get(fromId);
         const toNode = this._nodes.get(toId);
         const fromMarker = this._markers.get(fromId);
         const toMarker = this._markers.get(toId);
 
-        if (!fromNode || !toNode || !fromMarker || !toMarker) {
-            this.logger.warn(`Cannot add connection: nodes not found (${fromId} -> ${toId})`);
-            return false;
-        }
+        if (!fromNode || !toNode || !fromMarker || !toMarker) return false;
 
-        const fromPos = fromMarker.position;
-        const toPos = toMarker.position;
-        const distance = Vector3.Distance(fromPos, toPos);
+        const distance = Vector3.Distance(fromMarker.position, toMarker.position);
 
         const edgeId = `${fromId}->${toId}`;
-        const edge: GraphEdge = {
-            from: fromId,
-            to: toId,
-            direction,
-            weight: weight || distance,
-            distance
-        };
-
+        const edge: GraphEdge = { from: fromId, to: toId, direction, weight: weight || distance, distance };
         this._edges.set(edgeId, edge);
         fromNode.connections.set(toId, edge);
 
         if (direction === 'two-way') {
             const reverseEdgeId = `${toId}->${fromId}`;
-            const reverseEdge: GraphEdge = {
-                from: toId,
-                to: fromId,
-                direction,
-                weight: weight || distance,
-                distance
-            };
+            const reverseEdge: GraphEdge = { from: toId, to: fromId, direction, weight: weight || distance, distance };
             this._edges.set(reverseEdgeId, reverseEdge);
             toNode.connections.set(fromId, reverseEdge);
         }
 
-        this.logger.debug(`Connection added: ${fromId} -> ${toId} (${direction})`);
         this.eventBus.emit(EventType.GRAPH_EDGE_ADDED, { fromId, toId, direction });
         return true;
     }
 
-    public addConnectionsFromMarker(marker: Marker): void {
-        const connections = marker.data.connections;
-
-        if (!connections || !Array.isArray(connections)) {
-            return;
-        }
-
-        // Если connections - массив строк (просто ID)
-        if (connections.length > 0 && typeof connections[0] === 'string') {
-            for (const targetId of connections) {
-                if (typeof targetId === 'string' && targetId !== marker.id) {
-                    this.addConnection(marker.id, targetId, 'two-way');
-                }
-            }
-        }
-        // Если connections - массив MarkerConnection
-        else if (connections.length > 0 && typeof connections[0] === 'object') {
-            for (const conn of connections) {
-                if (conn.fromId && conn.toId && conn.direction) {
-                    this.addConnection(conn.fromId, conn.toId, conn.direction, conn.weight);
-                }
-            }
-        }
-    }
-
+    /**
+     * BFS поиск кратчайшего пути
+     */
     public findPath(startId: string, endId: string): GraphPathResult | null {
-        this.logger.debug(`Finding path from ${startId} to ${endId}`);
-
-        if (!this._nodes.has(startId) || !this._nodes.has(endId)) {
-            return null;
-        }
+        if (!this._nodes.has(startId) || !this._nodes.has(endId)) return null;
 
         const queue: string[] = [startId];
         const visited = new Set<string>([startId]);
@@ -134,29 +67,7 @@ export class MarkerGraph {
             const current = queue.shift()!;
 
             if (current === endId) {
-                const path: string[] = [];
-                let node: string | undefined = endId;
-                while (node) {
-                    path.unshift(node);
-                    node = previous.get(node);
-                }
-
-                let totalDistance = 0;
-                for (let i = 0; i < path.length - 1; i++) {
-                    const fromId = path[i];
-                    const toId = path[i + 1];
-
-                    // ✅ Проверяем, что fromId и toId существуют
-                    if (fromId && toId) {
-                        const fromNode = this._nodes.get(fromId);
-                        const edge = fromNode?.connections.get(toId);
-                        if (edge) {
-                            totalDistance += edge.distance;
-                        }
-                    }
-                }
-
-                return { path, totalDistance };
+                return this.reconstructPath(previous, endId);
             }
 
             const currentNode = this._nodes.get(current);
@@ -171,25 +82,46 @@ export class MarkerGraph {
             }
         }
 
-        this.logger.warn(`Path not found: ${startId} -> ${endId}`);
         return null;
     }
 
+    /**
+     * Восстановить путь из карты previous
+     */
+    private reconstructPath(previous: Map<string, string>, endId: string): GraphPathResult {
+        const path: string[] = [];
+        let node: string | undefined = endId;
+        while (node) {
+            path.unshift(node);
+            node = previous.get(node);
+        }
+
+        let totalDistance = 0;
+        for (let i = 0; i < path.length - 1; i++) {
+            const fromId = path[i];
+            const toId = path[i + 1];
+            if (fromId && toId) {
+                const fromNode = this._nodes.get(fromId);
+                const edge = fromNode?.connections.get(toId);
+                if (edge) totalDistance += edge.distance;
+            }
+        }
+
+        return { path, totalDistance };
+    }
+
+    /**
+     * Получить соседей маркера
+     */
     public getNeighbors(markerId: string): Marker[] {
         const node = this._nodes.get(markerId);
-        if (!node) {
-            this.logger.warn(`Node ${markerId} not found in graph`);
-            return [];
-        }
+        if (!node) return [];
 
         const neighbors: Marker[] = [];
         node.connections.forEach((_, neighborId) => {
-            const neighborMarker = this._markers.get(neighborId);
-            if (neighborMarker) {
-                neighbors.push(neighborMarker);
-            }
+            const neighbor = this._markers.get(neighborId);
+            if (neighbor) neighbors.push(neighbor);
         });
-
         return neighbors;
     }
 
@@ -214,20 +146,16 @@ export class MarkerGraph {
 
         this._nodes.delete(markerId);
         this._markers.delete(markerId);
-
-        this.logger.debug(`Node removed: ${markerId}`);
         this.eventBus.emit(EventType.GRAPH_NODE_REMOVED, { markerId });
         return true;
     }
 
     public hasConnection(fromId: string, toId: string): boolean {
-        const fromNode = this._nodes.get(fromId);
-        return fromNode?.connections.has(toId) || false;
+        return this._nodes.get(fromId)?.connections.has(toId) || false;
     }
 
     public isReachable(startId: string, endId: string): boolean {
-        const result = this.findPath(startId, endId);
-        return result !== null;
+        return this.findPath(startId, endId) !== null;
     }
 
     public getAllEdges(): GraphEdge[] {
@@ -238,36 +166,7 @@ export class MarkerGraph {
         this._nodes.clear();
         this._edges.clear();
         this._markers.clear();
-        this.logger.debug("Graph cleared");
         this.eventBus.emit(EventType.GRAPH_CLEARED);
-    }
-
-    private getNeighborIds(nodeId: string): string[] {
-        const node = this._nodes.get(nodeId);
-        if (!node) return [];
-        return Array.from(node.connections.keys());
-    }
-
-    public getReachableNodes(startId: string): string[] {
-        if (!this._nodes.has(startId)) return [];
-
-        const visited = new Set<string>();
-        const queue: string[] = [startId];
-        visited.add(startId);
-
-        while (queue.length > 0) {
-            const current = queue.shift()!;
-            const neighbors = this.getNeighborIds(current);
-
-            for (const neighbor of neighbors) {
-                if (!visited.has(neighbor)) {
-                    visited.add(neighbor);
-                    queue.push(neighbor);
-                }
-            }
-        }
-
-        return Array.from(visited);
     }
 
     public get nodeCount(): number {
@@ -276,9 +175,5 @@ export class MarkerGraph {
 
     public get edgeCount(): number {
         return this._edges.size;
-    }
-
-    public get markers(): Map<string, Marker> {
-        return this._markers;
     }
 }

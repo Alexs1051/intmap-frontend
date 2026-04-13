@@ -134,44 +134,6 @@ export class Logger {
         return mainLogger.getLogger(module);
     }
 
-    public measureTime<T>(name: string, fn: () => T, module?: string): T {
-        const start = performance.now();
-        try {
-            const result = fn();
-            const duration = performance.now() - start;
-            this.debug(`⏱️ ${name} completed in ${duration.toFixed(2)}ms`, { duration }, module);
-            return result;
-        } catch (error) {
-            const duration = performance.now() - start;
-            this.error(`❌ ${name} failed after ${duration.toFixed(2)}ms`, { error, duration }, module);
-            throw error;
-        }
-    }
-
-    public async measureTimeAsync<T>(name: string, fn: () => Promise<T>, module?: string): Promise<T> {
-        const start = performance.now();
-        try {
-            const result = await fn();
-            const duration = performance.now() - start;
-            this.debug(`⏱️ ${name} completed in ${duration.toFixed(2)}ms`, { duration }, module);
-            return result;
-        } catch (error) {
-            const duration = performance.now() - start;
-            this.error(`❌ ${name} failed after ${duration.toFixed(2)}ms`, { error, duration }, module);
-            throw error;
-        }
-    }
-
-    public group(name: string, fn: () => void, module?: string): void {
-        const moduleName = module || this.defaultModule;
-        console.group(`📁 ${moduleName} | ${name}`);
-        try {
-            fn();
-        } finally {
-            console.groupEnd();
-        }
-    }
-
     public dispose(): void {
         this.transports.forEach(transport => {
             if (transport.dispose) {

@@ -6,12 +6,10 @@ import { Logger } from "../logger/Logger";
 @injectable()
 export class ConfigService {
   private config: IAppConfig;
-  private isDebugMode: boolean = false;
 
   constructor() {
     const windowConfig = (window as any).__CONFIG__;
     this.config = this.mergeConfig(CONFIG_DEFAULTS, windowConfig || {});
-    this.isDebugMode = this.config.debug;
 
     this.logConfig();
   }
@@ -78,7 +76,6 @@ export class ConfigService {
    */
   public update(updates: Partial<IAppConfig>): void {
     this.config = this.mergeConfig(this.config, updates);
-    this.isDebugMode = this.config.debug;
     this.logConfig();
   }
 
@@ -100,98 +97,14 @@ export class ConfigService {
    * Проверить, включен ли режим отладки
    */
   public isDebug(): boolean {
-    return this.isDebugMode;
-  }
-
-  /**
-   * Получить уровень логирования
-   */
-  public getLogLevel(): string {
-    return this.config.logging.level;
-  }
-
-  /**
-   * Получить URL API
-   */
-  public getApiUrl(): string {
-    return this.config.apiUrl;
-  }
-
-  /**
-   * Получить URL модели
-   */
-  public getModelUrl(): string {
-    return this.config.modelUrl;
-  }
-
-  /**
-   * Получить настройки камеры
-   */
-  public getCameraConfig() {
-    return this.config.camera;
-  }
-
-  /**
-   * Получить настройки маркеров
-   */
-  public getMarkerConfig() {
-    return this.config.markers;
-  }
-
-  /**
-   * Получить настройки аниматора маркеров
-   */
-  public getMarkerAnimatorConfig() {
-    return this.config.markerAnimator;
-  }
-
-  /**
-   * Получить настройки виджета маркера
-   */
-  public getMarkerWidgetConfig() {
-    return this.config.markerWidget;
-  }
-
-  /**
-   * Получить настройки аниматора здания
-   */
-  public getBuildingAnimatorConfig() {
-    return this.config.buildingAnimator;
-  }
-
-  /**
-   * Получить настройки рендерера графа
-   */
-  public getGraphRendererConfig() {
-    return this.config.graphRenderer;
-  }
-
-  /**
-   * Получить настройки панели управления
-   */
-  public getControlPanelConfig() {
-    return this.config.controlPanel;
-  }
-
-  /**
-   * Получить настройки поиска
-   */
-  public getSearchBarConfig() {
-    return this.config.searchBar;
-  }
-
-  /**
-   * Получить настройки попапов
-   */
-  public getPopupManagerConfig() {
-    return this.config.popupManager;
+    return this.config.debug;
   }
 
   /**
    * Логирование текущей конфигурации
    */
   private logConfig(): void {
-    if (this.isDebugMode) {
+    if (this.config.debug) {
       Logger.getInstance().getLogger('ConfigService').debug('Configuration loaded:', {
         version: this.config.version,
         environment: this.config.environment,
