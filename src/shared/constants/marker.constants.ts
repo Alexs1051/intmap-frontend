@@ -24,9 +24,9 @@ export const MARKER_WIDGET = {
     SHADOW_ALPHA: 0.6,
 
     // Пути к иконкам
-    ICON_PATH_MARKER: "/icons/marker/target.png",
-    ICON_PATH_FLAG: "/icons/marker/circle-flag.png",
-    ICON_PATH_WAYPOINT: "/icons/marker/unknown.png",
+    ICON_PATH_MARKER: "./icons/marker/target.png",
+    ICON_PATH_FLAG: "./icons/marker/circle-flag.png",
+    ICON_PATH_WAYPOINT: "./icons/marker/unknown.png",
 
     // Plane
     PLANE_BASE_SIZE: 1.5,
