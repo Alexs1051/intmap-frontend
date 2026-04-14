@@ -29,3 +29,22 @@
   color: var(--color-error);
   background: rgba(255, 68, 68, 0.2);
 }
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+  .fps-counter {
+    top: 8px;
+    right: 10px;
+    font-size: 12px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .fps-counter {
+    top: 5px;
+    right: 5px;
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+}

@@ -354,3 +354,93 @@
     padding: var(--spacing-lg);
   }
 }
+
+@media (max-width: 480px) {
+  .marker-details-panel {
+    width: 100vw;
+    left: -100vw;
+  }
+
+  .marker-details-panel.visible {
+    left: 0;
+  }
+
+  .marker-details-header {
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+
+  .marker-details-title {
+    font-size: 16px;
+  }
+
+  .marker-details-close {
+    font-size: 18px;
+  }
+
+  .route-buttons {
+    gap: 8px;
+  }
+
+  .route-button {
+    padding: 10px 0;
+    font-size: 13px;
+    gap: 6px;
+  }
+
+  .focus-button {
+    padding: 12px 14px;
+    font-size: 14px;
+    gap: 6px;
+  }
+
+  .title-section {
+    gap: 10px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  .title-icon-circle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .title-icon-img {
+    width: 20px;
+    height: 20px;
+  }
+
+  .title-value {
+    font-size: 13px;
+  }
+
+  .description-markdown {
+    font-size: 13px;
+    min-height: 120px;
+    padding: var(--spacing-md);
+  }
+
+  .info-value {
+    font-size: 13px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  .qr-image {
+    width: 150px;
+    height: 150px;
+  }
+}
+
+/* Ландшафтная ориентация на мобильных */
+@media (max-width: 768px) and (orientation: landscape) {
+  .marker-details-panel {
+    width: 60vw;
+    max-width: 400px;
+  }
+
+  .marker-details-content {
+    max-height: 80vh;
+  }
+
+  .description-markdown {
+    min-height: 100px;
+  }
+}

@@ -55,3 +55,40 @@
   transform: scale(1.05);
   box-shadow: 0 6px 20px rgba(0, 210, 255, 0.4);
 }
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+  .connection-icon {
+    width: 60px;
+    height: 60px;
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .connection-text {
+    font-size: 16px;
+    padding: 0 var(--spacing-xl);
+    max-width: 85vw;
+  }
+
+  .connection-retry {
+    padding: 10px 24px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .connection-icon {
+    width: 50px;
+    height: 50px;
+  }
+
+  .connection-text {
+    font-size: 14px;
+    max-width: 90vw;
+  }
+
+  .connection-retry {
+    padding: 8px 20px;
+    font-size: 13px;
+  }
+}

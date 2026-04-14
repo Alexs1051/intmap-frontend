@@ -141,3 +141,60 @@
   background: white;
   animation: shrink linear forwards;
 }
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+  .popup-container {
+    top: 50px;
+    max-width: 95vw;
+    gap: 8px;
+  }
+
+  .popup {
+    padding: 12px 18px;
+    font-size: 14px;
+    min-width: 240px;
+    max-width: 350px;
+    gap: 10px;
+  }
+
+  .popup-icon {
+    font-size: 18px;
+  }
+
+  .popup-close {
+    font-size: 16px;
+    width: 20px;
+    height: 20px;
+    margin-left: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .popup-container {
+    top: 40px;
+    max-width: 98vw;
+  }
+
+  .popup {
+    padding: 10px 14px;
+    font-size: 13px;
+    min-width: 200px;
+    max-width: 280px;
+    gap: 8px;
+  }
+
+  .popup-icon {
+    font-size: 16px;
+  }
+
+  .popup-close {
+    font-size: 14px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .popup-progress {
+    height: 2px;
+  }
+}
