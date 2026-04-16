@@ -10,6 +10,7 @@ export enum UIEventType {
 
     // Камера
     CAMERA_MODE_TOGGLE = 'camera:mode:toggle',
+    CAMERA_CONTROL_MODE_TOGGLE = 'camera:control:mode:toggle',
     RESET_CAMERA = 'camera:reset',
 
     // Граф связей

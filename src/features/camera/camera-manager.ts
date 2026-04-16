@@ -1,204 +1,326 @@
-import { Scene, ArcRotateCamera, Vector3 } from "@babylonjs/core";
+import { Scene, ArcRotateCamera, UniversalCamera, Vector3 } from "@babylonjs/core";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
-import { CameraMode, CameraTransform, BuildingDimensions } from "@shared/types";
-import { CAMERA } from "@shared/constants";
+import { CameraMode, BuildingDimensions, CameraTransform } from "@shared/types";
+import { CAMERA, FLOOR_CONFIG, FLOOR_EXPAND_CONFIG } from "@shared/constants";
 import { EventType } from "@core/events/event-types";
 import type { ICameraAnimator, ICameraInputHandler, ICameraManager, ICameraModeManager } from "@shared/interfaces";
 
 /**
  * Главный менеджер камеры
- * Координирует ввод, анимации и переключение режимов
+ * Free Flight по умолчанию
  */
 export class CameraManager implements ICameraManager {
     private scene!: Scene;
-    private _camera!: ArcRotateCamera;
-    private eventBus: EventBus;
+    private _orbitCamera!: ArcRotateCamera;
+    private _flightCamera!: UniversalCamera;
+    private _activeCamera!: ArcRotateCamera | UniversalCamera;
 
+    private eventBus: EventBus;
+    private logger: Logger;
     private readonly animator: ICameraAnimator;
     private readonly modeManager: ICameraModeManager;
     private readonly inputHandler: ICameraInputHandler;
 
     private dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
     private isTransitioning = false;
-    private savedBeta = Math.PI / 3.5;
+    private unsubscribeFns: Array<() => void> = [];
+    private contextPivotY: number | null = null;
 
-    // Начальная позиция камеры (для сброса)
-    private initialTransform: CameraTransform | null = null;
-    private initialCameraPosition = Vector3.Zero();
-    private initialCameraTarget = Vector3.Zero();
+    private initialFlightPosition: Vector3 = CAMERA.FREE_FLIGHT.DEFAULT_POSITION.clone();
+    private initialFlightTarget: Vector3 = CAMERA.FREE_FLIGHT.DEFAULT_TARGET.clone();
 
     constructor(
-        _logger: Logger,
+        logger: Logger,
         eventBus: EventBus,
         animator: ICameraAnimator,
         modeManager: ICameraModeManager,
         inputHandler: ICameraInputHandler
     ) {
+        this.logger = logger;
         this.eventBus = eventBus;
         this.animator = animator;
         this.modeManager = modeManager;
         this.inputHandler = inputHandler;
-
-        this.setupInputCallbacks();
     }
 
     public setScene(scene: Scene): void {
         this.scene = scene;
-        this._camera = this.initCamera();
+
+        this._orbitCamera = this.initOrbitCamera();
+        this._flightCamera = this.initFlightCamera();
+        this._activeCamera = this._flightCamera; // Free Flight по умолчанию
+        this.scene.activeCamera = this._flightCamera;
+
         this.animator.setScene(scene);
-        this.setupTargetSync();
+        this.inputHandler.setCameraManager(this);
+        this.inputHandler.setOrbitCamera(this._orbitCamera);
+        this.inputHandler.setFlightCamera(this._flightCamera);
 
         const canvas = scene.getEngine().getRenderingCanvas();
         if (canvas) {
             this.inputHandler.attachToCanvas(canvas);
         }
+
+        this.setActiveMode(CameraMode.FREE_FLIGHT);
+        this.setupEventSubscriptions();
     }
 
-    private initCamera(): ArcRotateCamera {
+    private initOrbitCamera(): ArcRotateCamera {
         const camera = new ArcRotateCamera(
             "orbitCamera",
-            -Math.PI / 2,
-            Math.PI / 3.5,
-            40,
+            CAMERA.ORBIT.DEFAULT_ALPHA,
+            CAMERA.ORBIT.DEFAULT_BETA,
+            CAMERA.ORBIT.DEFAULT_RADIUS,
             Vector3.Zero(),
             this.scene
         );
 
         camera.maxZ = 2000;
-        camera.upperRadiusLimit = CAMERA.MAX_RADIUS;
-        camera.lowerRadiusLimit = CAMERA.MIN_RADIUS;
-        camera.lowerBetaLimit = CAMERA.MIN_BETA;
-        camera.upperBetaLimit = CAMERA.MAX_BETA;
-        camera.panningSensibility = 50;
+        camera.upperRadiusLimit = CAMERA.ORBIT.MAX_RADIUS;
+        camera.lowerRadiusLimit = CAMERA.ORBIT.MIN_RADIUS;
+        camera.lowerBetaLimit = CAMERA.ORBIT.MIN_BETA;
+        camera.upperBetaLimit = CAMERA.ORBIT.MAX_BETA;
+        camera.panningSensibility = 0; // Отключаем панорамирование
         camera.wheelPrecision = CAMERA.WHEEL_PRECISION;
         camera.pinchPrecision = CAMERA.PINCH_PRECISION;
 
         camera.inputs.clear();
-        camera.attachControl = () => { }; // Отключаем стандартное управление
+        camera.attachControl = () => { };
 
-        this.savedBeta = camera.beta;
-        this.scene.activeCamera = camera;
         return camera;
     }
 
-    private setupInputCallbacks(): void {
-        this.inputHandler.setOrbitCallbacks(
-            (dx, dy) => this.handleRotate(dx, dy),
-            (dx, dy) => this.handlePan(dx, dy),
-            (delta) => this.handleZoom(delta)
+    private initFlightCamera(): UniversalCamera {
+        const camera = new UniversalCamera(
+            "flightCamera",
+            this.initialFlightPosition.clone(),
+            this.scene
+        );
+
+        camera.maxZ = 2000;
+        camera.speed = 0;
+        camera.angularSensibility = 0;
+        camera.inputs.clear();
+        camera.attachControl = () => { };
+        camera.setTarget(this.initialFlightTarget.clone());
+
+        return camera;
+    }
+
+    private setupEventSubscriptions(): void {
+        this.unsubscribeFns.forEach(unsubscribe => unsubscribe());
+        this.unsubscribeFns = [];
+
+        this.unsubscribeFns.push(
+            this.eventBus.on(EventType.FLOOR_CHANGED, (event) => {
+                const floor = event.data?.floor;
+                const mode = event.data?.mode;
+                if (floor === undefined) return;
+
+                this.modeManager.setCurrentFloor(floor);
+                if (mode === 'single' || mode === 'all') {
+                    this.modeManager.setViewMode(mode);
+                }
+                if (typeof event.data?.pivotY === 'number') {
+                    this.contextPivotY = event.data.pivotY;
+                }
+                this.modeManager.setPivotPoint(this.getPivotForCurrentContext());
+
+                if (this.modeManager.isOrbitMode && !this.isAnimating) {
+                    void this.animateOrbitToCurrentContext();
+                } else if (this.modeManager.is2DMode && !this.isAnimating) {
+                    void this.animateTopDownToCurrentContext();
+                }
+            }),
+            this.eventBus.on(EventType.VIEW_MODE_CHANGED, (event) => {
+                const mode = event.data?.mode;
+                if (mode !== 'single' && mode !== 'all') return;
+
+                this.modeManager.setViewMode(mode);
+                if (mode === 'all') {
+                    this.modeManager.setCurrentFloor('all');
+                }
+                if (typeof event.data?.pivotY === 'number') {
+                    this.contextPivotY = event.data.pivotY;
+                }
+                this.modeManager.setPivotPoint(this.getPivotForCurrentContext());
+            }),
+            this.eventBus.on(EventType.FLOOR_EXPAND_CHANGED, (event) => {
+                this.modeManager.setFloorExpanded(Boolean(event.data?.expanded));
+                if (typeof event.data?.pivotY === 'number') {
+                    this.contextPivotY = event.data.pivotY;
+                }
+                this.modeManager.setPivotPoint(this.getPivotForCurrentContext());
+
+                if (this.modeManager.isOrbitMode && !this.isAnimating) {
+                    void this.animateOrbitToCurrentContext();
+                } else if (this.modeManager.is2DMode && !this.isAnimating) {
+                    void this.animateTopDownToCurrentContext();
+                }
+            })
         );
     }
 
-    private setupTargetSync(): void {
-        this.scene.onBeforeRenderObservable.add(() => {
-            if (!this.isTransitioning && !this.animator.isAnimating) {
-                this.modeManager.setPivotPoint(this._camera.target.clone());
-            }
-        });
+    private setActiveMode(mode: CameraMode): void {
+        this.modeManager.setMode(mode);
+        this.inputHandler.setMode(mode);
     }
 
-    private handleRotate(deltaX: number, deltaY: number): void {
-        if (this.isTransitioning || this.animator.isAnimating) return;
-
-        this._camera.alpha += deltaX * CAMERA.ROTATION_SPEED;
-        this._camera.beta += deltaY * CAMERA.ROTATION_SPEED;
-        this._camera.beta = Math.max(0.01, Math.min(Math.PI / 2, this._camera.beta));
-
-        if (!this.isTransitioning && !this.animator.isAnimating) {
-            this.savedBeta = this._camera.beta;
-        }
-    }
-
-    private handlePan(deltaX: number, deltaY: number): void {
-        if (this.isTransitioning || this.animator.isAnimating) return;
-
-        const moveSpeed = CAMERA.PAN_SPEED * this._camera.radius / CAMERA.PAN_SPEED_MULTIPLIER;
-        const camera = this._camera;
-        const right = camera.getDirection(new Vector3(1, 0, 0));
-        const up = camera.getDirection(new Vector3(0, 1, 0));
-        const target = camera.target;
-
-        target.x -= right.x * deltaX * moveSpeed;
-        target.y -= right.y * deltaX * moveSpeed;
-        target.z -= right.z * deltaX * moveSpeed;
-        target.x += up.x * deltaY * moveSpeed;
-        target.y += up.y * deltaY * moveSpeed;
-        target.z += up.z * deltaY * moveSpeed;
-
-        camera.target = target;
-        this.modeManager.setPivotPoint(target);
-    }
-
-    private handleZoom(delta: number): void {
-        if (this.isTransitioning || this.animator.isAnimating) return;
-
-        this._camera.radius += delta * CAMERA.ZOOM_SPEED;
-        this._camera.radius = Math.max(CAMERA.MIN_RADIUS, Math.min(CAMERA.MAX_RADIUS, this._camera.radius));
-    }
-
-    /**
-     * Начальная анимация камеры (интро)
-     */
-    public async initialize(customStart?: CameraTransform, customEnd?: CameraTransform): Promise<void> {
+    private getOverviewDistance(multiplier: number): number {
         const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
-        const center = this.modeManager.getPivotPoint();
+        return Math.max(30, maxDimension * multiplier);
+    }
 
-        this.modeManager.setDimensions(this.dimensions);
-        this.modeManager.setPivotPoint(center);
+    private buildOrbitStateFromPosition(position: Vector3, pivot: Vector3): { alpha: number; beta: number; radius: number } {
+        let direction = position.subtract(pivot);
+        let radius = direction.length();
 
-        const start: CameraTransform = customStart ?? {
-            alpha: CAMERA.INTRO_ALPHA,
-            beta: CAMERA.INTRO_BETA,
-            radius: Math.max(30, maxDimension * CAMERA.INTRO_RADIUS_MULTIPLIER),
-            target: center.clone()
+        if (radius < 0.001) {
+            radius = CAMERA.ORBIT.DEFAULT_RADIUS;
+            direction = new Vector3(0, radius * 0.5, radius);
+        }
+
+        const safeRadius = Math.max(CAMERA.ORBIT.MIN_RADIUS, Math.min(CAMERA.ORBIT.MAX_RADIUS, radius));
+        const beta = Math.acos(Math.max(-1, Math.min(1, direction.y / safeRadius)));
+        const alpha = Math.atan2(direction.z, direction.x);
+
+        return {
+            alpha,
+            beta: Math.max(CAMERA.ORBIT.MIN_BETA, Math.min(CAMERA.ORBIT.MAX_BETA, beta)),
+            radius: safeRadius
         };
+    }
 
-        const end: CameraTransform = customEnd ?? {
-            alpha: CAMERA.FINAL_ALPHA,
-            beta: CAMERA.FINAL_BETA,
-            radius: Math.max(CAMERA.FINAL_RADIUS_MIN, maxDimension * CAMERA.FINAL_RADIUS_MULTIPLIER),
-            target: center.clone()
-        };
+    private applyOrbitState(position: Vector3, pivot: Vector3): void {
+        const orbitState = this.buildOrbitStateFromPosition(position, pivot);
+        this._orbitCamera.alpha = orbitState.alpha;
+        this._orbitCamera.beta = orbitState.beta;
+        this._orbitCamera.radius = orbitState.radius;
+        this._orbitCamera.target = pivot.clone();
+    }
 
-        this._camera.alpha = start.alpha;
-        this._camera.beta = start.beta;
-        this._camera.radius = start.radius;
-        this._camera.target = start.target;
+    private getFloorCenterY(floorLevel: number, center: Vector3): number {
+        const baseY = center.y - (this.dimensions.height / 2);
+        return baseY + ((floorLevel - 0.5) * this.modeManager.floorHeight);
+    }
 
-        await this.animator.animateTo(this._camera, end, 2.0);
-        this.savedBeta = this._camera.beta;
+    private getExpandedFloorOffset(floorLevel: number): number {
+        return this.modeManager.isFloorExpanded
+            ? Math.max(0, floorLevel - 1) * FLOOR_EXPAND_CONFIG.FLOOR_OFFSET
+            : 0;
+    }
 
-        this.initialCameraPosition = this._camera.position.clone();
-        this.initialCameraTarget = this._camera.target.clone();
-        this.initialTransform = {
-            alpha: this._camera.alpha,
-            beta: this._camera.beta,
-            radius: this._camera.radius,
-            target: this._camera.target.clone()
-        };
+    private getExpandedBuildingOffset(): number {
+        if (!this.modeManager.isFloorExpanded) return 0;
+
+        const estimatedFloorCount = Math.max(
+            1,
+            Math.round(this.dimensions.height / Math.max(this.modeManager.floorHeight, FLOOR_CONFIG.FLOOR_HEIGHT))
+        );
+
+        return ((estimatedFloorCount - 1) * FLOOR_EXPAND_CONFIG.FLOOR_OFFSET) / 2;
+    }
+
+    private getTopDownUpVector(): Vector3 {
+        const currentForward = this._activeCamera.getDirection(Vector3.Forward());
+        const horizontalForward = new Vector3(currentForward.x, 0, currentForward.z);
+
+        if (horizontalForward.lengthSquared() > 0.0001) {
+            return horizontalForward.normalize();
+        }
+
+        const currentUp = new Vector3(this._flightCamera.upVector.x, 0, this._flightCamera.upVector.z);
+        if (currentUp.lengthSquared() > 0.0001) {
+            return currentUp.normalize();
+        }
+
+        return new Vector3(0, 0, -1);
+    }
+
+    public get camera(): ArcRotateCamera {
+        return this._orbitCamera;
+    }
+
+    public get flightCamera(): UniversalCamera {
+        return this._flightCamera;
+    }
+
+    public get activeCamera(): ArcRotateCamera | UniversalCamera {
+        return this._activeCamera;
+    }
+
+    public getActiveCamera(): ArcRotateCamera | UniversalCamera {
+        return this._activeCamera;
+    }
+
+    public async initialize(customStart?: CameraTransform, _customEnd?: CameraTransform): Promise<void> {
+        const center = this.getBuildingCenter();
+        const initialPivot = this.getPivotForCurrentContext();
+        const targetDistance = this.getOverviewDistance(1.35);
+        const verticalOffset = Math.max(8, this.dimensions.height * 0.22);
+        const endPosition = new Vector3(
+            center.x + targetDistance * 0.85,
+            center.y + verticalOffset,
+            center.z + targetDistance * 0.55
+        );
+        const introPosition = new Vector3(
+            center.x + this.getOverviewDistance(2.2),
+            center.y + Math.max(20, this.dimensions.height * 0.95),
+            center.z + this.getOverviewDistance(2.05)
+        );
+
+        if (customStart?.position) {
+            this._flightCamera.position = customStart.position.clone();
+            this._flightCamera.setTarget(customStart.target.clone());
+        } else {
+            this._flightCamera.position = introPosition.clone();
+            this._flightCamera.setTarget(initialPivot.clone());
+        }
+
+        this._flightCamera.rotation = Vector3.Zero();
+        this._flightCamera.upVector = Vector3.Up();
+        this.applyOrbitState(this._flightCamera.position, initialPivot);
+
+        this.initialFlightPosition = this._flightCamera.position.clone();
+        this.initialFlightTarget = initialPivot.clone();
+        this.modeManager.setPivotPoint(initialPivot);
+        this.modeManager.setBuildingCenter(center);
+
+        if (!customStart?.position) {
+            await this.animator.animatePosition(
+                this._flightCamera,
+                endPosition,
+                initialPivot.clone(),
+                1.1
+            );
+        }
+
+        this.initialFlightPosition = this._flightCamera.position.clone();
+        this.initialFlightTarget = this._flightCamera.getTarget().clone();
 
         this.eventBus.emit(EventType.SCENE_READY);
+        this.logger.info('Camera initialized in Free Flight mode');
     }
 
     public async load(onProgress?: (progress: number) => void): Promise<void> {
         onProgress?.(1);
     }
 
-    public update(_deltaTime: number): void { }
+    public update(_deltaTime: number): void {
+        // Обновление состояния при необходимости
+    }
 
-    /**
-     * Переключить режим камеры (3D ↔ 2D)
-     */
     public async toggleCameraMode(): Promise<void> {
+        if (this.isTransitioning || this.animator.isAnimating) return;
         this.stopAllMovements();
         this.isTransitioning = true;
 
         try {
-            if (this.modeManager.is3DMode) {
-                await this.switchTo2DMode();
-            } else {
+            if (this.modeManager.is2DMode) {
                 await this.switchTo3DMode();
+            } else {
+                await this.switchTo2DMode();
             }
         } finally {
             this.isTransitioning = false;
@@ -206,121 +328,210 @@ export class CameraManager implements ICameraManager {
     }
 
     public async switchToMode(mode: CameraMode): Promise<void> {
-        if (this.modeManager.mode === mode) return;
+        if (this.modeManager.mode === mode || this.isTransitioning || this.animator.isAnimating) return;
         this.stopAllMovements();
         this.isTransitioning = true;
 
         try {
             if (mode === CameraMode.TOP_DOWN) {
                 await this.switchTo2DMode();
-            } else {
-                await this.switchTo3DMode();
+            } else if (mode === CameraMode.ORBIT) {
+                await this.switchToOrbitMode();
+            } else if (mode === CameraMode.FREE_FLIGHT) {
+                await this.switchToFreeFlightMode();
             }
         } finally {
             this.isTransitioning = false;
         }
     }
 
+    public async toggleControlMode(): Promise<void> {
+        if (this.isTransitioning || this.animator.isAnimating) return;
+
+        if (this.modeManager.is2DMode) {
+            await this.switchToOrbitMode();
+        } else if (this.modeManager.isFreeFlightMode) {
+            await this.switchToOrbitMode();
+        } else if (this.modeManager.isOrbitMode) {
+            await this.switchToFreeFlightMode();
+        }
+    }
+
+    private async switchToOrbitMode(): Promise<void> {
+        if (this.modeManager.is2DMode) {
+            await this.switchTo3DMode();
+        }
+
+        const pivot = this.getPivotForCurrentContext();
+        const currentPos = this._flightCamera.position.clone();
+        const currentTarget = this._flightCamera.getTarget().clone();
+
+        await this.animateFlightTransition(currentPos, currentTarget, currentPos, pivot, 0.45);
+
+        this.applyOrbitState(this._flightCamera.position, pivot);
+        this.scene.activeCamera = this._orbitCamera;
+        this._activeCamera = this._orbitCamera;
+        this.modeManager.setPivotPoint(pivot);
+        this.setActiveMode(CameraMode.ORBIT);
+
+        this.logger.info('Switched to Orbit mode');
+        this.eventBus.emit(EventType.CAMERA_MODE_CHANGED, { mode: CameraMode.ORBIT });
+    }
+
+    private async switchToFreeFlightMode(): Promise<void> {
+        const { currentTarget } = this.syncFlightCameraFromActiveCamera();
+
+        this.scene.activeCamera = this._flightCamera;
+        this._activeCamera = this._flightCamera;
+        this._flightCamera.upVector = Vector3.Up();
+        this.modeManager.setPivotPoint(currentTarget);
+        this.setActiveMode(CameraMode.FREE_FLIGHT);
+
+        this.logger.info('Switched to Free Flight mode');
+        this.eventBus.emit(EventType.CAMERA_MODE_CHANGED, { mode: CameraMode.FREE_FLIGHT });
+    }
+
     private async switchTo2DMode(): Promise<void> {
-        const pivot = this.modeManager.getPivotPoint();
-        const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
+        if (this.modeManager.isOrbitMode) {
+            await this.switchToFreeFlightMode();
+        }
 
-        this.savedBeta = this._camera.beta;
+        const pivot = this.getPivotForCurrentContext();
+        const targetRadius = this.getOverviewDistance(2.3);
+        const startPos = this._flightCamera.position.clone();
+        const startTarget = this._flightCamera.getTarget().clone();
+        const endPos = new Vector3(pivot.x, pivot.y + targetRadius, pivot.z);
+        const endTarget = pivot.clone();
+        const startUp = this._flightCamera.upVector.clone();
+        const endUp = this.getTopDownUpVector();
 
-        await this.executeTransition({
-            alpha: this._camera.alpha,
-            beta: 0.01,
-            radius: maxDimension * 2.5,
-            target: pivot
-        }, CameraMode.TOP_DOWN);
+        await this.animateFlightTransition(startPos, startTarget, endPos, endTarget, 0.8, startUp, endUp);
+
+        this.modeManager.setPivotPoint(pivot);
+        this.setActiveMode(CameraMode.TOP_DOWN);
+        this.eventBus.emit(EventType.CAMERA_MODE_CHANGED, { mode: CameraMode.TOP_DOWN });
     }
 
     private async switchTo3DMode(): Promise<void> {
-        const pivot = this.modeManager.getPivotPoint();
-        const maxDimension = Math.max(this.dimensions.height, this.dimensions.width, this.dimensions.depth);
-        const targetBeta = this.savedBeta < 0.1 ? Math.PI / 3.5 : this.savedBeta;
+        const pivot = this.getPivotForCurrentContext();
+        const targetRadius = this.getOverviewDistance(1.45);
 
-        await this.executeTransition({
-            alpha: this._camera.alpha,
-            beta: targetBeta,
-            radius: maxDimension * 2,
+        const startPos = this._flightCamera.position.clone();
+        const startTarget = this._flightCamera.getTarget().clone();
+        const endPos = new Vector3(
+            pivot.x,
+            pivot.y + Math.max(6, this.dimensions.height * 0.15),
+            pivot.z + targetRadius
+        );
+        const endTarget = pivot.clone();
+        const startUp = this._flightCamera.upVector.clone();
+        const endUp = Vector3.Up();
+
+        await this.animateFlightTransition(startPos, startTarget, endPos, endTarget, 0.8, startUp, endUp);
+
+        this.modeManager.setPivotPoint(pivot);
+        this.setActiveMode(CameraMode.FREE_FLIGHT);
+        this.eventBus.emit(EventType.CAMERA_MODE_CHANGED, { mode: CameraMode.FREE_FLIGHT });
+    }
+
+    private syncFlightCameraFromActiveCamera(): { currentPos: Vector3; currentTarget: Vector3 } {
+        const currentPos = this._activeCamera.position.clone();
+        const currentTarget = this._activeCamera.getTarget().clone();
+
+        this._flightCamera.position = currentPos.clone();
+        this._flightCamera.upVector = ('upVector' in this._activeCamera && this._activeCamera.upVector)
+            ? this._activeCamera.upVector.clone()
+            : Vector3.Up();
+        this._flightCamera.setTarget(currentTarget.clone());
+
+        return { currentPos, currentTarget };
+    }
+
+    private async animateOrbitToCurrentContext(duration: number = 0.6): Promise<void> {
+        if (!this.modeManager.isOrbitMode || this.isTransitioning || this.animator.isAnimating) return;
+
+        const pivot = this.getPivotForCurrentContext();
+        this.modeManager.setPivotPoint(pivot);
+
+        await this.animator.animateCamera(this._orbitCamera, {
             target: pivot
-        }, CameraMode.ORBIT);
+        }, duration);
     }
 
-    private async executeTransition(target: CameraTransform, mode: CameraMode): Promise<void> {
-        // Снимаем ограничения на время анимации
-        this._camera.lowerBetaLimit = 0;
-        this._camera.upperBetaLimit = Math.PI / 2;
-        this._camera.lowerRadiusLimit = 5;
-        this._camera.upperRadiusLimit = 500;
+    private async animateTopDownToCurrentContext(duration: number = 0.6): Promise<void> {
+        if (!this.modeManager.is2DMode || this.isTransitioning || this.animator.isAnimating) return;
 
-        this._camera.target = target.target;
-        await this.animator.animateTo(this._camera, target, 0.8);
+        const pivot = this.getPivotForCurrentContext();
+        const targetRadius = this.getOverviewDistance(2.3);
+        const currentPos = this._flightCamera.position.clone();
+        const currentTarget = this._flightCamera.getTarget().clone();
+        const endPos = new Vector3(pivot.x, pivot.y + targetRadius, pivot.z);
+        const currentUp = this._flightCamera.upVector.clone();
 
-        // Устанавливаем ограничения для нового режима
-        if (mode === CameraMode.TOP_DOWN) {
-            this._camera.lowerBetaLimit = 0.005;
-            this._camera.upperBetaLimit = 0.05;
-            this._camera.lowerRadiusLimit = 15;
-            this._camera.upperRadiusLimit = 200;
-            this._camera.beta = 0.01;
-        } else {
-            this._camera.lowerBetaLimit = CAMERA.MIN_BETA;
-            this._camera.upperBetaLimit = CAMERA.MAX_BETA;
-            this._camera.lowerRadiusLimit = CAMERA.MIN_RADIUS;
-            this._camera.upperRadiusLimit = CAMERA.MAX_RADIUS;
-        }
-
-        this.modeManager.setMode(mode);
-        this.eventBus.emit(EventType.CAMERA_MODE_CHANGED, { mode });
+        await this.animateFlightTransition(currentPos, currentTarget, endPos, pivot.clone(), duration, currentUp, currentUp);
     }
 
-    /**
-     * Сфокусировать камеру на точке (с отдалением-приближением)
-     */
+    private async animateFlightTransition(
+        startPos: Vector3,
+        startTarget: Vector3,
+        endPos: Vector3,
+        endTarget: Vector3,
+        duration: number = 0.8,
+        startUp?: Vector3,
+        endUp?: Vector3
+    ): Promise<void> {
+        return new Promise((resolve) => {
+            const startTime = performance.now();
+            const durationMs = duration * 1000;
+            const fromUp = (startUp || this._flightCamera.upVector).clone();
+            const toUp = (endUp || fromUp).clone();
+
+            const animate = (currentTime: number) => {
+                const elapsed = currentTime - startTime;
+                const t = Math.min(1, elapsed / durationMs);
+                const easeT = 1 - Math.pow(1 - t, 3); // easeOutCubic
+
+                this._flightCamera.position = Vector3.Lerp(startPos, endPos, easeT);
+                const interpolatedUp = Vector3.Lerp(fromUp, toUp, easeT);
+                if (interpolatedUp.lengthSquared() > 0.0001) {
+                    this._flightCamera.upVector = interpolatedUp.normalize();
+                }
+                this._flightCamera.setTarget(Vector3.Lerp(startTarget, endTarget, easeT));
+
+                if (t < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    this._flightCamera.upVector = toUp.normalize();
+                    resolve();
+                }
+            };
+
+            requestAnimationFrame(animate);
+        });
+    }
+
     public async focusOnPoint(point: Vector3, distance?: number, duration?: number): Promise<void> {
         if (this.isTransitioning || this.animator.isAnimating) return;
 
-        this.isTransitioning = true;
-        try {
-            const targetDuration = duration || 1.0;
-            const targetDistance = distance || 8;
+        const animDuration = duration || 0.8;
+        const targetDistance = distance || 15;
 
-            const currentAlpha = this._camera.alpha;
-            const currentBeta = this._camera.beta;
-            const currentRadius = this._camera.radius;
-            const currentTarget = this._camera.target.clone();
+        if (this.modeManager.isFreeFlightMode) {
+            const direction = point.subtract(this._flightCamera.position).normalize();
+            const newPos = point.subtract(direction.scale(targetDistance));
 
-            // Этап 1: Отдаляемся
-            const farRadius = currentRadius * 1.5;
-            await this.animator.animateTo(this._camera, {
-                alpha: currentAlpha, beta: currentBeta,
-                radius: farRadius, target: currentTarget
-            }, targetDuration * 0.3);
-
-            // Этап 2: Перемещаем target
-            await this.animator.animateTo(this._camera, {
-                alpha: currentAlpha, beta: currentBeta,
-                radius: farRadius, target: point.clone()
-            }, targetDuration * 0.4);
-
-            // Этап 3: Приближаемся
-            await this.animator.animateTo(this._camera, {
-                alpha: currentAlpha, beta: currentBeta,
-                radius: targetDistance, target: point.clone()
-            }, targetDuration * 0.3);
-
-            this.modeManager.setPivotPoint(point);
-            this.eventBus.emit(EventType.CAMERA_FOCUSED, { point });
-        } finally {
-            this.isTransitioning = false;
+            await this.animator.animatePosition(this._flightCamera, newPos, point, animDuration);
+        } else if (this.modeManager.isOrbitMode) {
+            await this.animator.animateCamera(this._orbitCamera, {
+                radius: targetDistance,
+                target: point
+            }, animDuration);
         }
+
+        this.modeManager.setPivotPoint(point);
+        this.eventBus.emit(EventType.CAMERA_FOCUSED, { point });
     }
 
-    /**
-     * Сфокусировать камеру на маршруте
-     */
     public async focusOnRoute(positions: Vector3[], duration?: number): Promise<void> {
         if (positions.length === 0 || this.isTransitioning || this.animator.isAnimating) return;
 
@@ -328,60 +539,77 @@ export class CameraManager implements ICameraManager {
         let maxDistance = 0;
         positions.forEach(pos => { maxDistance = Math.max(maxDistance, Vector3.Distance(center, pos)); });
 
-        await this.focusOnPoint(center, Math.max(20, maxDistance * 2), duration);
+        await this.focusOnPoint(center, Math.max(20, maxDistance * 1.5), duration);
     }
 
-    /**
-     * Сбросить камеру к начальной позиции
-     */
+    public async focusOnFloor(floorLevel: number, buildingCenter: Vector3, floorHeight: number): Promise<void> {
+        if (this.isTransitioning || this.animator.isAnimating) return;
+
+        this.modeManager.setCurrentContext(floorLevel, buildingCenter, floorHeight);
+        const focusPoint = this.getPivotForCurrentContext();
+
+        await this.focusOnPoint(focusPoint, 12, 0.6);
+    }
+
+    public getPivotForCurrentContext(): Vector3 {
+        const center = this.getBuildingCenter();
+        const resolvedY = this.contextPivotY;
+
+        if (typeof resolvedY === 'number') {
+            return new Vector3(center.x, resolvedY, center.z);
+        }
+
+        if (this.modeManager.currentFloor >= 0) {
+            const floorY = this.getFloorCenterY(this.modeManager.currentFloor, center)
+                + this.getExpandedFloorOffset(this.modeManager.currentFloor);
+            return new Vector3(center.x, floorY, center.z);
+        }
+
+        if (this.modeManager.viewMode === 'all' && this.modeManager.isFloorExpanded) {
+            return new Vector3(center.x, center.y + this.getExpandedBuildingOffset(), center.z);
+        }
+
+        return center;
+    }
+
+    private getBuildingCenter(): Vector3 {
+        const center = this.modeManager.buildingCenter;
+        if (center.lengthSquared() > 0) {
+            return center.clone();
+        }
+
+        return new Vector3(0, this.dimensions.height / 2, 0);
+    }
+
     public async resetCamera(): Promise<void> {
-        if (this.isTransitioning || this.animator.isAnimating || !this.initialTransform) return;
+        if (this.isTransitioning || this.animator.isAnimating) return;
 
         this.isTransitioning = true;
         try {
-            if (this.modeManager.is2DMode) {
-                await this.switchTo3DMode();
-                await new Promise(resolve => setTimeout(resolve, 100));
+            // Всегда переключаемся в Free Flight 3D
+            if (!this.modeManager.isFreeFlightMode) {
+                this.syncFlightCameraFromActiveCamera();
+                this.scene.activeCamera = this._flightCamera;
+                this._activeCamera = this._flightCamera;
+                this.setActiveMode(CameraMode.FREE_FLIGHT);
             }
 
-            const startPosition = this._camera.position.clone();
-            const startTarget = this._camera.target.clone();
-            const endPosition = this.initialCameraPosition;
-            const endTarget = this.initialCameraTarget;
-            const duration = CAMERA.RESET_DURATION;
-            const startTime = performance.now();
+            // Анимируем возврат на начальную позицию
+            await this.animateFlightTransition(
+                this._flightCamera.position.clone(),
+                this._flightCamera.getTarget().clone(),
+                this.initialFlightPosition,
+                this.initialFlightTarget,
+                CAMERA.RESET_DURATION,
+                this._flightCamera.upVector.clone(),
+                Vector3.Up()
+            );
 
-            const animate = (currentTime: number) => {
-                const elapsed = (currentTime - startTime) / 1000;
-                const t = Math.min(1, elapsed / duration);
-
-                this._camera.position = new Vector3(
-                    startPosition.x + (endPosition.x - startPosition.x) * t,
-                    startPosition.y + (endPosition.y - startPosition.y) * t,
-                    startPosition.z + (endPosition.z - startPosition.z) * t
-                );
-                this._camera.target = new Vector3(
-                    startTarget.x + (endTarget.x - startTarget.x) * t,
-                    startTarget.y + (endTarget.y - startTarget.y) * t,
-                    startTarget.z + (endTarget.z - startTarget.z) * t
-                );
-
-                this.modeManager.setPivotPoint(this._camera.target);
-
-                if (t < 1) {
-                    requestAnimationFrame(animate);
-                } else {
-                    this._camera.alpha = this.initialTransform!.alpha;
-                    this._camera.beta = this.initialTransform!.beta;
-                    this._camera.radius = this.initialTransform!.radius;
-                    this.savedBeta = this._camera.beta;
-                    this.isTransitioning = false;
-                    this.eventBus.emit(EventType.CAMERA_RESET, { mode: this.cameraMode });
-                }
-            };
-
-            requestAnimationFrame(animate);
-        } catch {
+            this._flightCamera.upVector = Vector3.Up();
+            this._flightCamera.setTarget(this.initialFlightTarget.clone());
+            this.modeManager.setPivotPoint(this.initialFlightTarget);
+            this.eventBus.emit(EventType.CAMERA_RESET, { mode: this.cameraMode });
+        } finally {
             this.isTransitioning = false;
         }
     }
@@ -396,23 +624,33 @@ export class CameraManager implements ICameraManager {
     }
 
     public setTargetPosition(position: Vector3): void {
+        this.modeManager.setBuildingCenter(position);
         this.modeManager.setPivotPoint(position);
-        if (this.modeManager.is3DMode && !this.isTransitioning) {
-            this._camera.target = position;
+        if (this.modeManager.isOrbitMode && !this.isTransitioning) {
+            this._orbitCamera.target = position.clone();
         }
     }
 
     public dispose(): void {
+        this.unsubscribeFns.forEach(unsubscribe => unsubscribe());
+        this.unsubscribeFns = [];
         this.stopAllMovements();
         this.animator.dispose();
         this.modeManager.dispose();
         this.inputHandler.dispose();
-        this._camera.dispose();
+        this._orbitCamera.dispose();
+        this._flightCamera.dispose();
     }
 
-    // Геттеры
-    public get camera(): ArcRotateCamera { return this._camera; }
-    public get isAnimating(): boolean { return this.isTransitioning || this.animator.isAnimating; }
-    public get cameraMode(): CameraMode { return this.modeManager.mode; }
-    public get targetPosition(): Vector3 { return this.modeManager.getPivotPoint(); }
+    public get isAnimating(): boolean {
+        return this.isTransitioning || this.animator.isAnimating;
+    }
+
+    public get cameraMode(): CameraMode {
+        return this.modeManager.mode;
+    }
+
+    public get targetPosition(): Vector3 {
+        return this.modeManager.getPivotPoint();
+    }
 }

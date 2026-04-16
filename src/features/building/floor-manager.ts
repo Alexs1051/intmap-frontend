@@ -128,7 +128,8 @@ export class FloorManager implements IFloorManager {
 
         this.eventBus.emit(EventType.FLOOR_CHANGED, {
             floor: floorNumber,
-            mode: this.viewMode
+            mode: this.viewMode,
+            pivotY: this.getContextPivotY(floorNumber)
         });
     }
 
@@ -148,7 +149,8 @@ export class FloorManager implements IFloorManager {
 
         this.eventBus.emit(EventType.FLOOR_CHANGED, {
             floor: 'all',
-            mode: this.viewMode
+            mode: this.viewMode,
+            pivotY: this.getContextPivotY('all')
         });
     }
 
@@ -271,7 +273,10 @@ export class FloorManager implements IFloorManager {
 
         await this.floorExpander.expand(this.floorNodes, floorElementsMap, allElements);
         this.isExpanded = true;
-        this.eventBus.emit(EventType.FLOOR_EXPAND_CHANGED, { expanded: true });
+        this.eventBus.emit(EventType.FLOOR_EXPAND_CHANGED, {
+            expanded: true,
+            pivotY: this.getContextPivotY(this.viewMode === 'single' ? this.currentFloorNum : 'all')
+        });
         this.logger.info('expandFloors complete');
     }
 
@@ -299,7 +304,10 @@ export class FloorManager implements IFloorManager {
 
         await this.floorExpander.collapse(this.floorNodes, floorElementsMap, allElements);
         this.isExpanded = false;
-        this.eventBus.emit(EventType.FLOOR_EXPAND_CHANGED, { expanded: false });
+        this.eventBus.emit(EventType.FLOOR_EXPAND_CHANGED, {
+            expanded: false,
+            pivotY: this.getContextPivotY(this.viewMode === 'single' ? this.currentFloorNum : 'all')
+        });
     }
 
     /**
@@ -314,5 +322,42 @@ export class FloorManager implements IFloorManager {
      */
     public isFloorAnimating(): boolean {
         return this.floorExpander.getIsAnimating();
+    }
+
+    private getContextPivotY(context: number | 'all'): number {
+        if (context === 'all') {
+            const floorCenters = this.floorNumbers
+                .map(floorNumber => this.getFloorPivotY(floorNumber))
+                .filter((value): value is number => value !== null);
+
+            if (floorCenters.length > 0) {
+                const sum = floorCenters.reduce((acc, value) => acc + value, 0);
+                return sum / floorCenters.length;
+            }
+
+            return 0;
+        }
+
+        return this.getFloorPivotY(context) ?? 0;
+    }
+
+    private getFloorPivotY(floorNumber: number): number | null {
+        const floor = this.floors.get(floorNumber);
+        if (!floor) return null;
+
+        const relevantElements = floor.elements.filter(element => element.type !== 'wall');
+        const elements = relevantElements.length > 0 ? relevantElements : floor.elements;
+
+        const centers = elements
+            .map(element => element.mesh.getBoundingInfo?.().boundingBox.centerWorld.y ?? element.mesh.position.y)
+            .filter((value) => Number.isFinite(value));
+
+        if (centers.length === 0) {
+            const floorNode = this.floorNodes.get(floorNumber);
+            return floorNode ? floorNode.position.y : null;
+        }
+
+        const sum = centers.reduce((acc, value) => acc + value, 0);
+        return sum / centers.length;
     }
 }

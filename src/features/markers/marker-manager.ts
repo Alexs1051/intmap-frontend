@@ -1,4 +1,4 @@
-import { Scene, Ray } from "@babylonjs/core";
+import { Scene, Ray, Quaternion } from "@babylonjs/core";
 import { injectable, inject } from "inversify";
 import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
@@ -107,7 +107,7 @@ export class MarkerManager implements IMarkerManager {
     const x = (event.clientX - rect.left) / canvas.width * canvas.width;
     const y = (event.clientY - rect.top) / canvas.height * canvas.height;
 
-    const ray = this.scene.createPickingRay(x, y, null, this.cameraManager?.camera || null);
+    const ray = this.scene.createPickingRay(x, y, null, this.cameraManager?.activeCamera || null);
     const pickResult = this.scene.pickWithRay(ray, (mesh) => mesh.metadata?.widget !== undefined);
 
     let hoveredMarker: Marker | null = null;
@@ -421,9 +421,15 @@ export class MarkerManager implements IMarkerManager {
   public update(_deltaTime: number): void {
     if (!this.cameraManager) return;
 
-    const cameraPosition = this.cameraManager.camera.position;
+    const activeCamera = this.cameraManager.activeCamera;
+    const cameraPosition = activeCamera.position;
+    const cameraUpVector = 'upVector' in activeCamera ? activeCamera.upVector.clone() : undefined;
+    const cameraRotationMatrix = activeCamera.computeWorldMatrix().getRotationMatrix();
+    const cameraRotationQuaternion = Quaternion.Identity();
+    Quaternion.FromRotationMatrixToRef(cameraRotationMatrix, cameraRotationQuaternion);
+
     this._markers.forEach(marker => {
-      marker.update(cameraPosition);
+      marker.update(cameraPosition, cameraUpVector, cameraRotationQuaternion);
     });
   }
 

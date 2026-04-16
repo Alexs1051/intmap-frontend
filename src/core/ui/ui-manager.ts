@@ -48,6 +48,7 @@ export class UIManager implements IUIManager {
   private _isLoading: boolean = false;
   private _showFPS: boolean = true;
   private _currentTheme: 'light' | 'dark' = 'dark';
+  private floorButtonLockTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -94,6 +95,8 @@ export class UIManager implements IUIManager {
     this.setupCallbacks();
     this.setupEventBusListeners();
     this.loadTheme();
+    this.syncControlModeButton(false);
+    this.refreshFloorButtons();
 
     this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
       const errorMessage = data.error?.message || data.error || data.message || "Неизвестная ошибка";
@@ -136,6 +139,7 @@ export class UIManager implements IUIManager {
         this.markerManager.setCurrentFloor(floor);
         this.logger.debug(`Floor changed to ${floor}`);
       }
+      this.refreshFloorButtons();
     });
 
     this.eventBus.on(EventType.FLOOR_EXPAND_CHANGED, (event) => {
@@ -153,12 +157,18 @@ export class UIManager implements IUIManager {
 
     this.eventBus.on(EventType.CAMERA_RESET, () => {
       this.controlPanel?.updateButtonState('mode', false);
+      this.syncControlModeButton(false);
+    });
+
+    this.eventBus.on(EventType.CAMERA_MODE_CHANGED, () => {
+      this.syncControlModeButton(false);
+      this.refreshFloorButtons();
     });
   }
 
   private setupCallbacks(): void {
     this.controlPanel?.addEventListener((event: any) => {
-      this.handleControlPanelEvent(event);
+      void this.handleControlPanelEvent(event);
     });
 
     this.searchBar?.setResultClickCallback((result: SearchResult) => {
@@ -220,7 +230,7 @@ export class UIManager implements IUIManager {
     );
   }
 
-  private handleControlPanelEvent(event: { type: UIEventType; floor?: number }): void {
+  private async handleControlPanelEvent(event: { type: UIEventType; floor?: number }): Promise<void> {
     switch (event.type) {
       case UIEventType.SEARCH_TOGGLE:
         this.searchBar?.toggle();
@@ -229,7 +239,11 @@ export class UIManager implements IUIManager {
         this.authPopup?.show();
         break;
       case UIEventType.CAMERA_MODE_TOGGLE:
-        this.cameraManager?.toggleCameraMode();
+        await this.cameraManager?.toggleCameraMode();
+        break;
+      case UIEventType.CAMERA_CONTROL_MODE_TOGGLE:
+        await this.cameraManager?.toggleControlMode();
+        this.syncControlModeButton();
         break;
       case UIEventType.RESET_CAMERA:
         this.controlPanel?.setButtonsEnabled(false);
@@ -291,8 +305,21 @@ export class UIManager implements IUIManager {
 
       // Разблокируем кнопки после анимации
       this.controlPanel?.setButtonsEnabled(true);
+      this.refreshFloorButtons();
     } else {
       this.logger.warn('BuildingManager not available');
+    }
+  }
+
+  private syncControlModeButton(showMessage: boolean = true): void {
+    if (!this.cameraManager) return;
+
+    const isFreeFlight = this.cameraManager.cameraMode === 'free_flight';
+    this.controlPanel?.updateButtonState('control-mode', isFreeFlight);
+
+    if (showMessage) {
+      const modeText = isFreeFlight ? 'Free Flight' : 'Orbit';
+      this.showInfo(`Режим управления: ${modeText}`);
     }
   }
 
@@ -314,6 +341,7 @@ export class UIManager implements IUIManager {
         ? floorManager.currentFloor
         : 'all';
       this.markerManager?.setCurrentFloor(floor);
+      this.refreshFloorButtons();
     } else {
       this.logger.warn('BuildingManager not available');
     }
@@ -332,11 +360,15 @@ export class UIManager implements IUIManager {
       const maxFloor = floorManager.maxFloor;
 
       if (currentMode === 'all') {
+        this.temporarilyLockFloorButtons();
         floorManager.setViewMode('single');
         floorManager.showFloor(floorManager.minFloor);
       } else if (currentFloor < maxFloor) {
+        this.temporarilyLockFloorButtons();
         floorManager.showFloor(currentFloor + 1);
       }
+
+      this.refreshFloorButtons();
     }
   }
 
@@ -353,12 +385,38 @@ export class UIManager implements IUIManager {
       const minFloor = floorManager.minFloor;
 
       if (currentMode === 'all') {
+        this.temporarilyLockFloorButtons();
         floorManager.setViewMode('single');
         floorManager.showFloor(floorManager.maxFloor);
       } else if (currentFloor > minFloor) {
+        this.temporarilyLockFloorButtons();
         floorManager.showFloor(currentFloor - 1);
       }
+
+      this.refreshFloorButtons();
     }
+  }
+
+  private temporarilyLockFloorButtons(durationMs: number = 700): void {
+    this.controlPanel?.setButtonsEnabled(false);
+
+    if (this.floorButtonLockTimeout) {
+      clearTimeout(this.floorButtonLockTimeout);
+    }
+
+    this.floorButtonLockTimeout = setTimeout(() => {
+      this.controlPanel?.setButtonsEnabled(true);
+      this.refreshFloorButtons();
+      this.floorButtonLockTimeout = null;
+    }, durationMs);
+  }
+
+  private refreshFloorButtons(): void {
+    if (!this.buildingManager || !this.controlPanel) return;
+
+    const floorManager = this.buildingManager.floorManager;
+    const currentFloor = floorManager.getViewMode() === 'single' ? floorManager.currentFloor : 0;
+    this.controlPanel.updateFloorButtons(currentFloor, floorManager.maxFloor);
   }
 
   private clearRoute(): void {
@@ -459,6 +517,10 @@ export class UIManager implements IUIManager {
   }
 
   public dispose(): void {
+    if (this.floorButtonLockTimeout) {
+      clearTimeout(this.floorButtonLockTimeout);
+      this.floorButtonLockTimeout = null;
+    }
     this.controlPanel?.dispose();
     this.searchBar?.dispose();
     this.popupManager?.dispose();

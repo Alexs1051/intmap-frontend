@@ -89,6 +89,7 @@ export class ControlPanel implements IControlPanel {
                 { id: 'expand', defaultIcon: 'icons/ui/layers-off.png', activeIcon: 'icons/ui/layers.png', tooltip: 'Раскрыть этажи', type: UIEventType.TOGGLE_FLOOR_EXPAND },
                 { id: 'walls', defaultIcon: 'icons/ui/eye-off.png', activeIcon: 'icons/ui/eye.png', tooltip: 'Прозрачность стен', type: UIEventType.TOGGLE_WALL_TRANSPARENCY },
                 { id: 'mode', defaultIcon: 'icons/ui/mode-3d.png', activeIcon: 'icons/ui/mode-2d.png', tooltip: 'Переключить 2D/3D', type: UIEventType.CAMERA_MODE_TOGGLE },
+                { id: 'control-mode', defaultIcon: 'icons/ui/arrows-in.png', activeIcon: 'icons/ui/arrows-out.png', tooltip: 'Orbit/Free Flight', type: UIEventType.CAMERA_CONTROL_MODE_TOGGLE },
                 { id: 'theme', defaultIcon: 'icons/ui/night.png', activeIcon: 'icons/ui/day.png', tooltip: 'Сменить тему', type: UIEventType.TOGGLE_THEME },
                 { id: 'graph', defaultIcon: 'icons/ui/graph-off.png', activeIcon: 'icons/ui/graph.png', tooltip: 'Показать граф связей', type: UIEventType.TOGGLE_GRAPH },
                 { id: 'reset', defaultIcon: 'icons/ui/reset.png', tooltip: 'Сброс камеры', type: UIEventType.RESET_CAMERA },

@@ -299,8 +299,14 @@ export class SceneManager implements ISceneManager {
             }
         }
 
+        const deferredInitComponents = new Set<any>([
+            this.cameraManager,
+            this.markerManager
+        ]);
+
         const initPromises = Array.from(this.components.values())
             .filter(component => component && typeof component.initialize === 'function')
+            .filter(component => !deferredInitComponents.has(component))
             .map(component => {
                 try {
                     return component.initialize();

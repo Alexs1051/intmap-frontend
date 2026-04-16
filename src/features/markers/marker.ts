@@ -1,4 +1,4 @@
-import { Scene, Vector3, Mesh, ActionManager, Color3, ExecuteCodeAction, SetValueAction } from "@babylonjs/core";
+import { Scene, Vector3, Mesh, ActionManager, Color3, ExecuteCodeAction, SetValueAction, Nullable, Quaternion } from "@babylonjs/core";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
@@ -163,8 +163,8 @@ export class Marker implements IMarker {
     }
   }
 
-  public update(cameraPosition: Vector3): void {
-    this.widget.updateBillboard(cameraPosition);
+  public update(cameraPosition: Vector3, cameraUpVector?: Vector3, cameraRotationQuaternion?: Nullable<Quaternion>): void {
+    this.widget.updateBillboard(cameraPosition, cameraUpVector, cameraRotationQuaternion);
     this.widget.updateScale(cameraPosition);
   }
 

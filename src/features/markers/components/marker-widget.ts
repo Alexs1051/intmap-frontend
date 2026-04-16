@@ -4,7 +4,9 @@ import {
   MeshBuilder,
   StandardMaterial,
   Vector3,
-  Color3
+  Color3,
+  Quaternion,
+  Nullable
 } from "@babylonjs/core";
 
 import {
@@ -48,6 +50,7 @@ export class MarkerWidget {
   private _baseBgColor: Color3 = Color3.White(); // Базовый цвет фона
 
   private static iconCache: Map<string, string> = new Map();
+  private lastBillboardUp: Vector3 | null = null;
 
   public get isVisible() {
     return this._isVisible;
@@ -99,7 +102,7 @@ export class MarkerWidget {
 
     this.plane.parent = this.root;
     this.mesh = this.plane;
-    this.plane.scaling.x = -1; // Зеркалим, чтобы текст не был отражённым
+    this.plane.scaling.x = 1;
 
     const material = new StandardMaterial("markerMat", scene);
     material.disableLighting = true;
@@ -301,8 +304,51 @@ export class MarkerWidget {
   // -------------------------
   // BILLBOARD
   // -------------------------
-  updateBillboard(cameraPosition: Vector3) {
+  updateBillboard(cameraPosition: Vector3, cameraUpVector?: Vector3, cameraRotationQuaternion?: Nullable<Quaternion>) {
     if (!this.root) return;
+
+    if (cameraUpVector) {
+      const horizontalUp = new Vector3(cameraUpVector.x, 0, cameraUpVector.z);
+
+      if (horizontalUp.lengthSquared() > 0.0001) {
+        const lookDirection = cameraPosition.subtract(this.root.position);
+        if (lookDirection.lengthSquared() <= 0.0001) {
+          return;
+        }
+
+        horizontalUp.normalize();
+
+        if (this.lastBillboardUp && Vector3.Dot(horizontalUp, this.lastBillboardUp) < 0) {
+          horizontalUp.scaleInPlace(-1);
+        } else if (!this.lastBillboardUp) {
+          const readableUp = new Vector3(0, 0, -1);
+          if (Vector3.Dot(horizontalUp, readableUp) < 0) {
+            horizontalUp.scaleInPlace(-1);
+          }
+        }
+
+        this.lastBillboardUp = horizontalUp.clone();
+
+        if (!this.root.rotationQuaternion) {
+          this.root.rotationQuaternion = Quaternion.Identity();
+        }
+
+        Quaternion.FromLookDirectionLHToRef(lookDirection.normalize(), horizontalUp, this.root.rotationQuaternion);
+        return;
+      }
+    }
+
+    if (cameraRotationQuaternion) {
+      this.root.rotationQuaternion = cameraRotationQuaternion.clone();
+      return;
+    }
+
+    if (cameraUpVector) {
+      const horizontalUp = new Vector3(cameraUpVector.x, 0, cameraUpVector.z);
+      horizontalUp.normalize();
+      this.lastBillboardUp = horizontalUp.clone();
+    }
+
     this.root.lookAt(cameraPosition);
   }
 

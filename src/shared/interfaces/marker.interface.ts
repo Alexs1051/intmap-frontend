@@ -1,4 +1,4 @@
-import { Mesh, Ray, Scene, TransformNode, Vector3 } from "@babylonjs/core";
+import { Mesh, Nullable, Quaternion, Ray, Scene, TransformNode, Vector3 } from "@babylonjs/core";
 import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA } from "@shared/types";
 import { MarkerGraph } from "@features/markers/graph/marker-graph";
 import { ICameraManager } from "./camera.interface";
@@ -23,7 +23,7 @@ export interface IMarker {
     readonly mesh: Mesh;
     readonly isVisible: boolean;
 
-    update(cameraPosition: Vector3): void;
+    update(cameraPosition: Vector3, cameraUpVector?: Vector3, cameraRotationQuaternion?: Nullable<Quaternion>): void;
     handleClick(): void;
     handleDoubleClick(): void;
     setSelected(selected: boolean): void;
