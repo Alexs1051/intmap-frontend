@@ -1,5 +1,6 @@
 import { Vector3 } from "@babylonjs/core";
 import { MarkerType } from "@shared/types/enum/marker.enum";
+import { UserInfo } from "./ui.dto";
 
 export interface RGBA {
     r: number;
@@ -14,11 +15,17 @@ export interface MarkerData {
     type: MarkerType;
     position: Vector3;
     floor?: number;
+    roomId?: string;
     description?: string;
     iconName?: string;
     backgroundColor?: RGBA;
     textColor?: RGBA;
     connections?: MarkerConnection[];
+    accessRights?: string[];
+    requiredRole?: UserInfo['role'];
+    hasAccess?: boolean;
+    isBlocked?: boolean;
+    blockedMessage?: string;
 }
 
 export type AnyMarkerData = MarkerData;
@@ -30,6 +37,13 @@ export interface WaypointData extends MarkerData {
 export interface FlagData extends MarkerData {
     type: MarkerType.FLAG;
     qr?: string;
+}
+
+export interface GatewayData extends MarkerData {
+    type: MarkerType.GATEWAY;
+    accessRights: string[];
+    hasAccess: boolean;
+    isBlocked: boolean;
 }
 
 export interface MarkerConnection {
@@ -65,6 +79,11 @@ export interface PathResult {
     path: PathNode[];
     totalDistance: number;
     found: boolean;
+    isPartial?: boolean;
+    usedAlternateRoute?: boolean;
+    blockedGatewayId?: string;
+    blockedGatewayName?: string;
+    message?: string;
 }
 
 export interface SearchResult {

@@ -8,10 +8,11 @@ import { Marker } from "./marker";
 import { MarkerGraph } from "./graph/marker-graph";
 import { MarkerGraphRenderer } from "./graph/marker-graph-renderer";
 import { Pathfinder } from "./pathfinder";
-import { MarkerType, AnyMarkerData, FocusOptions, PathResult } from "@shared/types";
+import { MarkerType, AnyMarkerData, FocusOptions, PathResult, UserInfo } from "@shared/types";
 import { ICameraManager, IMarkerManager, IBuildingManager, IWallManager } from "@shared/interfaces";
 import { container } from "@core/di/container";
 import { convertParsedToMarkerData } from "./marker-helpers";
+import { MarkerUtils } from "@features/building/connection-parser";
 
 /**
  * Менеджер маркеров
@@ -46,6 +47,7 @@ export class MarkerManager implements IMarkerManager {
   private _fromMarkerId: string | null = null;
   private _toMarkerId: string | null = null;
   private _buildingManager: any = null;
+  private _userInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -227,6 +229,13 @@ export class MarkerManager implements IMarkerManager {
     });
 
     this._markers.forEach(marker => {
+      const hasFloorAccess = this._buildingManager?.hasAccessToFloor?.(marker.floor) ?? true;
+      const hasRoomAccess = this._buildingManager?.hasAccessToRoom?.(marker.data.roomId) ?? true;
+      if (!hasFloorAccess || !hasRoomAccess) {
+        marker.setVisible(false);
+        return;
+      }
+
       // Маркеры, выбранные для пути (Сюда/Отсюда) - всегда видны
       if (this._selectedForPathMarkers.has(marker.id)) {
         marker.setVisible(true);
@@ -275,6 +284,32 @@ export class MarkerManager implements IMarkerManager {
     this._currentFloor = floor;
     this.updateMarkersVisibility();
     this.logger.debug(`Current floor set to: ${floor === 'all' ? 'all (building mode)' : floor}`);
+  }
+
+  public setUserInfo(userInfo: UserInfo): void {
+    this._userInfo = {
+      isAuthenticated: userInfo.isAuthenticated,
+      username: userInfo.username,
+      role: userInfo.role ?? (userInfo.isAuthenticated ? 'user' : 'guest')
+    };
+
+    this._markers.forEach(marker => {
+      if (marker.type === MarkerType.GATEWAY) {
+        void this.applyGatewayVisualState(marker);
+      }
+    });
+
+    this.updateMarkersVisibility();
+  }
+
+  public hasAccessToMarker(markerId: string): boolean {
+    const marker = this._markers.get(markerId);
+    if (!marker || marker.type !== MarkerType.GATEWAY) {
+      return true;
+    }
+
+    const parsedMarker = this._buildingManager?.getMarkerById?.(markerId);
+    return MarkerUtils.hasRequiredRole(this._userInfo.role, parsedMarker?.metadata?.requiredRole);
   }
 
   /**
@@ -438,12 +473,30 @@ export class MarkerManager implements IMarkerManager {
       throw new Error("Scene not set");
     }
 
+    if (data.type === MarkerType.GATEWAY) {
+      const parsedMarker = this._buildingManager?.getMarkerById?.(data.id);
+      const hasAccess = MarkerUtils.hasRequiredRole(this._userInfo.role, parsedMarker?.metadata?.requiredRole);
+
+      data.hasAccess = hasAccess;
+      data.isBlocked = !hasAccess;
+      data.iconName = hasAccess ? 'gateway-allowed' : 'gateway-blocked';
+      data.requiredRole = parsedMarker?.metadata?.requiredRole;
+      data.backgroundColor = { r: 0, g: 0, b: 0, a: 0 };
+      data.textColor = hasAccess
+        ? { r: 0.95, g: 0.8, b: 0.2, a: 1 }
+        : { r: 0.95, g: 0.25, b: 0.2, a: 1 };
+    }
+
     const marker = Marker.create(
       this.logger,
       this.eventBus,
       this.scene,
       data
     );
+
+    if (data.type === MarkerType.GATEWAY) {
+      void this.applyGatewayVisualState(marker);
+    }
 
     marker.onClick = (m) => this.handleMarkerClick(m);
     marker.onDoubleClick = (m) => this.handleMarkerDoubleClick(m);
@@ -545,20 +598,62 @@ export class MarkerManager implements IMarkerManager {
   public findPath(fromId: string, toId: string): PathResult | null {
     this.logger.debug(`Finding path from ${fromId} to ${toId}`);
 
-    const result = this._pathfinder.findShortestPath(fromId, toId);
+    const destinationMarker = this.getMarker(toId);
+    const destinationIsGateway = destinationMarker?.type === MarkerType.GATEWAY;
+    const blockedGatewayIds = new Set(
+      this.getAllMarkers()
+        .filter(marker => marker.type === MarkerType.GATEWAY && this.isGatewayBlocked(marker.id) && marker.id !== toId)
+        .map(marker => marker.id)
+    );
+
+    const preferredResult = blockedGatewayIds.size > 0
+      ? this._pathfinder.findShortestPathAvoiding(fromId, toId, blockedGatewayIds)
+      : null;
+
+    const result = preferredResult ?? this._pathfinder.findShortestPath(fromId, toId);
 
     if (!result || !result.path || result.path.length === 0) {
       this.logger.warn(`Path not found from ${fromId} to ${toId}`);
       return null;
     }
 
-    this.logger.debug(`Path found: ${result.path.map(p => p.markerId).join(' -> ')}`);
+    if (destinationIsGateway) {
+      this.logger.debug(`Destination is gateway, returning direct path: ${result.path.map(p => p.markerId).join(' -> ')}`);
+      return result;
+    }
 
-    return {
-      found: true,
-      path: result.path,
-      totalDistance: result.totalDistance
-    };
+    const firstBlockedGateway = result.path.find((node, index) =>
+      index > 0 && node.markerId !== toId && this.isGatewayBlocked(node.markerId)
+    );
+
+    if (firstBlockedGateway) {
+      const alternateResult = this._pathfinder.findShortestPathAvoiding(fromId, toId, blockedGatewayIds);
+      if (alternateResult?.path?.length) {
+        this.logger.debug(`Alternate path found: ${alternateResult.path.map(p => p.markerId).join(' -> ')}`);
+        return {
+          ...alternateResult,
+          usedAlternateRoute: true,
+          message: 'Основной проход закрыт. Построен обходной маршрут.'
+        };
+      }
+
+      const blockedIndex = result.path.findIndex(node => node.markerId === firstBlockedGateway.markerId);
+      const partialPath = result.path.slice(0, blockedIndex + 1);
+      const partialDistance = partialPath[partialPath.length - 1]?.distanceFromStart ?? result.totalDistance;
+
+      return {
+        found: true,
+        path: partialPath,
+        totalDistance: partialDistance,
+        isPartial: true,
+        blockedGatewayId: firstBlockedGateway.markerId,
+        blockedGatewayName: firstBlockedGateway.name,
+        message: `Без доступа к "${firstBlockedGateway.name}" добраться до выбранной метки нельзя.`
+      };
+    }
+
+    this.logger.debug(`Path found: ${result.path.map(p => p.markerId).join(' -> ')}`);
+    return result;
   }
 
   public highlightPath(pathIds: string[]): void {
@@ -769,5 +864,35 @@ export class MarkerManager implements IMarkerManager {
 
   public getToMarker(): string | null {
     return this._toMarkerId;
+  }
+
+  private isGatewayBlocked(markerId: string): boolean {
+    const marker = this._markers.get(markerId);
+    return !!marker && marker.type === MarkerType.GATEWAY && !this.hasAccessToMarker(markerId);
+  }
+
+  private async applyGatewayVisualState(marker: Marker): Promise<void> {
+    const hasAccess = this.hasAccessToMarker(marker.id);
+    const backgroundColor = { r: 0, g: 0, b: 0, a: 0 };
+    const textColor = hasAccess
+      ? { r: 0.95, g: 0.8, b: 0.2, a: 1 }
+      : { r: 0.95, g: 0.25, b: 0.2, a: 1 };
+
+    marker.data.hasAccess = hasAccess;
+    marker.data.isBlocked = !hasAccess;
+    marker.data.iconName = hasAccess ? 'gateway-allowed' : 'gateway-blocked';
+    marker.data.requiredRole = this._buildingManager?.getMarkerById?.(marker.id)?.metadata?.requiredRole;
+    marker.data.blockedMessage = hasAccess ? undefined : 'Нет доступа';
+    marker.data.backgroundColor = backgroundColor;
+    marker.data.textColor = textColor;
+
+    await marker.updateAppearance({
+      iconName: marker.data.iconName,
+      backgroundColor,
+      textColor,
+      hasAccess,
+      isBlocked: !hasAccess,
+      blockedMessage: marker.data.blockedMessage
+    });
   }
 }

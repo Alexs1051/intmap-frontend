@@ -192,9 +192,9 @@ export class RouteManager {
 
     const distance = result.totalDistance?.toFixed(1) || '?';
     this.eventBus.emit(EventType.UI_NOTIFICATION, {
-      message: `Маршрут: ${distance}м, ${pathIds.length} точек`,
-      type: 'info',
-      duration: 5000
+      message: result.message || `Маршрут: ${distance}м, ${pathIds.length} точек`,
+      type: result.isPartial ? 'warning' : 'info',
+      duration: result.isPartial ? 7000 : 5000
     });
 
     // Фокусируем камеру на маршруте

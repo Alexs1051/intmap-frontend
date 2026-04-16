@@ -106,6 +106,7 @@ export class Marker implements IMarker {
     switch (type) {
       case MarkerType.MARKER: return '📍';
       case MarkerType.FLAG: return '🚩';
+      case MarkerType.GATEWAY: return 'gateway-blocked';
       case MarkerType.WAYPOINT: return '🔘';
       default: return '📍';
     }
@@ -312,5 +313,24 @@ export class Marker implements IMarker {
   public setTitle(title: string): void {
     this._data.name = title;
     this.widget.setTitle(title);
+  }
+
+  public async updateAppearance(data: Partial<AnyMarkerData>): Promise<void> {
+    this._data = { ...this._data, ...data };
+
+    if (!this.widget.root || !this.widget.mesh) {
+      return;
+    }
+
+    const defaultColors = getDefaultColorsForType(this._type);
+    const bgColorData = this._data.backgroundColor ?? defaultColors.backgroundColor;
+    const textColorData = this._data.textColor ?? defaultColors.textColor;
+    const iconName = this._data.iconName ?? Marker.getDefaultIconForType(this._type);
+
+    const bgColor = new Color3(bgColorData.r, bgColorData.g, bgColorData.b);
+    const fgColor = new Color3(textColorData.r, textColorData.g, textColorData.b);
+
+    this.widget.setBaseColors(bgColor, fgColor, bgColorData.a);
+    await this.widget.setIcon(iconName, fgColor);
   }
 }

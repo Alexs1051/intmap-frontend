@@ -1,5 +1,5 @@
 import { Mesh, Nullable, Quaternion, Ray, Scene, TransformNode, Vector3 } from "@babylonjs/core";
-import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA } from "@shared/types";
+import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA, UserInfo } from "@shared/types";
 import { MarkerGraph } from "@features/markers/graph/marker-graph";
 import { ICameraManager } from "./camera.interface";
 import { IWallManager } from "./building.interface";
@@ -79,6 +79,8 @@ export interface IMarkerManager extends ILoadableComponent {
     setAllMarkersVisible(visible: boolean): void;
 
     setCurrentFloor(floor: number | 'all'): void;
+    setUserInfo(userInfo: UserInfo): void;
+    hasAccessToMarker(markerId: string): boolean;
     setFromMarker(markerId: string): void;
     setToMarker(markerId: string): void;
     getFromMarker(): string | null;
@@ -94,7 +96,7 @@ export interface IMarkerGraph {
 
     addNode(marker: IMarker): void;
     addConnection(fromId: string, toId: string, direction: string, weight?: number): boolean;
-    findPath(startId: string, endId: string): { path: string[]; totalDistance: number } | null;
+    findPath(startId: string, endId: string, options?: { blockedMarkerIds?: Set<string> }): { path: string[]; totalDistance: number } | null;
     getNeighbors(markerId: string): IMarker[];
     getMarker(id: string): IMarker | undefined;
     getAllMarkers(): IMarker[];

@@ -6,6 +6,8 @@ export enum MarkerType {
     MARKER = 'marker',
     /** Флаг (особо важная точка) */
     FLAG = 'flag',
+    /** Контрольная точка доступа */
+    GATEWAY = 'gateway',
     /** Узел навигационной сети (waypoint) */
     WAYPOINT = 'waypoint'
 }
@@ -23,6 +25,8 @@ export enum MarkerIcon {
     MARKER = 'place',
     /** Иконка флага */
     FLAG = 'flag',
+    /** Иконка gateway */
+    GATEWAY = 'warning',
     /** Иконка узла навигации */
     WAYPOINT = 'radio_button_unchecked',
     /** Иконка входа */
@@ -47,6 +51,8 @@ export enum MarkerDefaultColor {
     MARKER = '#4a90d9',
     /** Цвет флага */
     FLAG = '#e74c3c',
+    /** Цвет gateway */
+    GATEWAY = '#f1c40f',
     /** Цвет узла навигации */
     WAYPOINT = '#2ecc71'
 }

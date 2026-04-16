@@ -16,4 +16,5 @@ export interface GraphEdge {
 export interface GraphPathResult {
     path: string[];
     totalDistance: number;
+    blockedNodeId?: string;
 }

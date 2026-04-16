@@ -1,5 +1,5 @@
 import { AbstractMesh, TransformNode, Vector3 } from "@babylonjs/core";
-import { ParsedMarker, MarkerType } from "@shared/types";
+import { ParsedMarker, MarkerType, UserInfo } from "@shared/types";
 
 /**
  * Информация о соединении между маркерами
@@ -145,6 +145,11 @@ export class ConnectionParser {
         const flMatch = cleanName.match(/^FL_(\d+)$/);
         if (flMatch) return `flag_${flMatch[1]}`;
 
+        const gwMatch = name.match(/^GW_"(.+?)"(?:_"(.*?)")?(?:_(.+))?$/);
+        if (gwMatch?.[1]) {
+            return `gateway_${gwMatch[1].replace(/\s+/g, '_')}`;
+        }
+
         const wpMatch = cleanName.match(/^WP_(\d+)$/);
         if (wpMatch) return `waypoint_${wpMatch[1]}`;
 
@@ -171,12 +176,19 @@ export class ConnectionParser {
  * Утилиты для работы с маркерами
  */
 export class MarkerUtils {
+    private static readonly ROLE_PRIORITY: Record<NonNullable<UserInfo['role']>, number> = {
+        guest: 0,
+        user: 1,
+        admin: 2
+    };
+
     /**
      * Определить тип маркера по имени
      */
     static getMarkerType(name: string): MarkerType | null {
         if (name.startsWith('MR_')) return MarkerType.MARKER;
         if (name.startsWith('FL_')) return MarkerType.FLAG;
+        if (name.startsWith('GW_')) return MarkerType.GATEWAY;
         if (name.startsWith('WP_') && !name.includes('-')) return MarkerType.WAYPOINT;
         return null;
     }
@@ -198,6 +210,9 @@ export class MarkerUtils {
         }
         if (type === MarkerType.FLAG) {
             return this.parseFLMarker(name, worldPosition, floorNumber, roomId);
+        }
+        if (type === MarkerType.GATEWAY) {
+            return this.parseGWMarker(name, worldPosition, floorNumber, roomId);
         }
         if (type === MarkerType.WAYPOINT) {
             return this.parseWPMarker(name, worldPosition, floorNumber, roomId);
@@ -258,6 +273,35 @@ export class MarkerUtils {
             floorNumber,
             roomId,
             metadata: { number, qr: `https://example.com/flag/${number}` }
+        };
+    }
+
+    private static parseGWMarker(
+        name: string,
+        position: Vector3,
+        floorNumber?: number,
+        roomId?: string
+    ): ParsedMarker | null {
+        const parts = this.parseGatewayNameParts(name);
+        if (!parts) return null;
+
+        const normalizedBase = parts.displayName.replace(/\s+/g, '_');
+        const id = `gateway_${normalizedBase}`;
+
+        return {
+            parsedMarker: id,
+            id,
+            type: 'gateway',
+            name: parts.displayName,
+            displayName: parts.displayName,
+            position,
+            connections: [],
+            floorNumber,
+            roomId,
+            metadata: {
+                accessRights: parts.accessRights,
+                requiredRole: parts.requiredRole
+            }
         };
     }
 
@@ -353,16 +397,26 @@ export class MarkerUtils {
      * Извлечь отображаемое имя комнаты
      */
     static extractRoomDisplayName(name: string): string {
-        const match = name.match(/Room_(\d+)/);
+        const match = name.match(/Room_(\d+)(?:_(guest|user|admin))?/i);
         if (match?.[1]) return `Комната ${parseInt(match[1], 10)}`;
         return name;
+    }
+
+    static extractRoomRequiredRole(name: string): UserInfo['role'] {
+        const match = name.match(/Room_(\d+)(?:_(guest|user|admin))?/i);
+        return this.normalizeRole(match?.[2]);
+    }
+
+    static extractFloorRequiredRole(name: string): UserInfo['role'] {
+        const match = name.match(/Floor_(\d+)(?:_(guest|user|admin))?/i);
+        return this.normalizeRole(match?.[2]);
     }
 
     /**
      * Проверить, является ли объект маркером
      */
     static isMarker(name: string): boolean {
-        return name.startsWith('MR_') || name.startsWith('FL_') || name.startsWith('WP_');
+        return name.startsWith('MR_') || name.startsWith('FL_') || name.startsWith('GW_') || name.startsWith('WP_');
     }
 
     /**
@@ -377,5 +431,41 @@ export class MarkerUtils {
      */
     static isConnectionNode(name: string): boolean {
         return name === 'Connections' || (name.includes('-') && !this.isMarker(name));
+    }
+
+    private static parseGatewayNameParts(name: string): {
+        displayName: string;
+        accessRights: string[];
+        requiredRole: NonNullable<UserInfo['role']>;
+    } | null {
+        const match = name.match(/^GW_"(.+?)"(?:_(guest|user|admin))?$/i);
+        if (!match?.[1]) return null;
+
+        const displayName = match[1].trim();
+        const requiredRole = this.normalizeRole(match[2]) ?? 'admin';
+        const accessRights = this.expandRoleRights(requiredRole);
+
+        return { displayName, accessRights, requiredRole };
+    }
+
+    static normalizeRole(role?: string): UserInfo['role'] {
+        const normalized = role?.trim().toLowerCase();
+        if (normalized === 'guest' || normalized === 'user' || normalized === 'admin') {
+            return normalized;
+        }
+        return undefined;
+    }
+
+    static expandRoleRights(role: NonNullable<UserInfo['role']>): string[] {
+        return (Object.keys(this.ROLE_PRIORITY) as NonNullable<UserInfo['role']>[])
+            .filter(candidate => this.ROLE_PRIORITY[candidate] >= this.ROLE_PRIORITY[role]);
+    }
+
+    static hasRequiredRole(userRole: UserInfo['role'] | undefined, requiredRole: UserInfo['role'] | undefined): boolean {
+        if (!requiredRole) return true;
+
+        const currentLevel = this.ROLE_PRIORITY[userRole ?? 'guest'] ?? this.ROLE_PRIORITY.guest;
+        const requiredLevel = this.ROLE_PRIORITY[requiredRole] ?? this.ROLE_PRIORITY.admin;
+        return currentLevel >= requiredLevel;
     }
 }

@@ -5,6 +5,10 @@ import { GraphEdge, GraphNode, GraphPathResult } from "@shared/types/dto";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
 
+interface FindPathOptions {
+    blockedMarkerIds?: Set<string>;
+}
+
 /**
  * Граф маркеров для навигации
  * Хранит узлы (маркеры) и рёбра (связи), реализует BFS поиск пути
@@ -54,17 +58,39 @@ export class MarkerGraph {
     }
 
     /**
-     * BFS поиск кратчайшего пути
+     * Поиск кратчайшего пути по весу рёбер (Dijkstra)
      */
-    public findPath(startId: string, endId: string): GraphPathResult | null {
+    public findPath(startId: string, endId: string, options?: FindPathOptions): GraphPathResult | null {
         if (!this._nodes.has(startId) || !this._nodes.has(endId)) return null;
 
-        const queue: string[] = [startId];
-        const visited = new Set<string>([startId]);
+        const blockedMarkerIds = options?.blockedMarkerIds;
+        if (blockedMarkerIds?.has(startId) || blockedMarkerIds?.has(endId)) return null;
+
+        const unvisited = new Set<string>(this._nodes.keys());
+        const distances = new Map<string, number>();
         const previous = new Map<string, string>();
 
-        while (queue.length > 0) {
-            const current = queue.shift()!;
+        this._nodes.forEach((_, id) => {
+            distances.set(id, id === startId ? 0 : Number.POSITIVE_INFINITY);
+        });
+
+        while (unvisited.size > 0) {
+            let current: string | null = null;
+            let currentDistance = Number.POSITIVE_INFINITY;
+
+            for (const nodeId of unvisited) {
+                const distance = distances.get(nodeId) ?? Number.POSITIVE_INFINITY;
+                if (distance < currentDistance) {
+                    current = nodeId;
+                    currentDistance = distance;
+                }
+            }
+
+            if (!current || currentDistance === Number.POSITIVE_INFINITY) {
+                break;
+            }
+
+            unvisited.delete(current);
 
             if (current === endId) {
                 return this.reconstructPath(previous, endId);
@@ -72,11 +98,19 @@ export class MarkerGraph {
 
             const currentNode = this._nodes.get(current);
             if (currentNode) {
-                for (const neighborId of currentNode.connections.keys()) {
-                    if (!visited.has(neighborId)) {
-                        visited.add(neighborId);
+                for (const [neighborId, edge] of currentNode.connections.entries()) {
+                    if (blockedMarkerIds?.has(neighborId)) {
+                        continue;
+                    }
+
+                    if (!unvisited.has(neighborId)) {
+                        continue;
+                    }
+
+                    const tentativeDistance = currentDistance + edge.distance;
+                    if (tentativeDistance < (distances.get(neighborId) ?? Number.POSITIVE_INFINITY)) {
+                        distances.set(neighborId, tentativeDistance);
                         previous.set(neighborId, current);
-                        queue.push(neighborId);
                     }
                 }
             }

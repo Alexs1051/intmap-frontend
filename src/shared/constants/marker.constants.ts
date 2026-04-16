@@ -26,6 +26,8 @@ export const MARKER_WIDGET = {
     // Пути к иконкам
     ICON_PATH_MARKER: "./icons/marker/target.png",
     ICON_PATH_FLAG: "./icons/marker/circle-flag.png",
+    ICON_PATH_GATEWAY_ALLOWED: "./icons/ui/warning.png",
+    ICON_PATH_GATEWAY_BLOCKED: "./icons/ui/no-way.png",
     ICON_PATH_WAYPOINT: "./icons/marker/unknown.png",
 
     // Plane
@@ -70,6 +72,8 @@ export const MARKER_COLORS = {
     MARKER: { background: { r: 0.2, g: 0.7, b: 0.3, a: 0.9 }, text: { r: 1, g: 1, b: 1, a: 1 } },
     /** Флаг */
     FLAG: { background: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, text: { r: 0.3, g: 0.5, b: 0.9, a: 1 } },
+    /** Gateway */
+    GATEWAY: { background: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, text: { r: 0.95, g: 0.8, b: 0.2, a: 1 } },
     /** Узел навигации */
     WAYPOINT: { background: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, text: { r: 0.9, g: 0.3, b: 0.3, a: 1 } }
 } as const;
@@ -82,6 +86,8 @@ export const MARKER_ICONS = {
     MARKER: 'place',
     /** Флаг */
     FLAG: 'flag',
+    /** Gateway */
+    GATEWAY: 'warning',
     /** Узел навигации */
     WAYPOINT: 'radio_button_unchecked',
     /** Вход */

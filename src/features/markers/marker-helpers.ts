@@ -13,9 +13,11 @@ export function convertParsedToMarkerData(parsedMarker: ParsedMarker): AnyMarker
     id: parsedMarker.id,
     name: parsedMarker.displayName,
     type: parsedMarker.type === 'marker' ? MarkerType.MARKER :
-      parsedMarker.type === 'flag' ? MarkerType.FLAG : MarkerType.WAYPOINT,
+      parsedMarker.type === 'flag' ? MarkerType.FLAG :
+        parsedMarker.type === 'gateway' ? MarkerType.GATEWAY : MarkerType.WAYPOINT,
     position: parsedMarker.position,
     floor: parsedMarker.floorNumber || 1,
+    roomId: parsedMarker.roomId,
     iconName,
     backgroundColor,
     textColor,
@@ -24,7 +26,12 @@ export function convertParsedToMarkerData(parsedMarker: ParsedMarker): AnyMarker
       toId: targetId,
       direction: 'two-way' as const
     })),
-    description: generateDescription(parsedMarker)
+    description: generateDescription(parsedMarker),
+    accessRights: parsedMarker.metadata.accessRights ?? [],
+    requiredRole: parsedMarker.metadata.requiredRole,
+    hasAccess: parsedMarker.type === 'gateway' ? false : true,
+    isBlocked: parsedMarker.type === 'gateway',
+    blockedMessage: parsedMarker.type === 'gateway' ? 'Нет доступа' : undefined
   };
 }
 
@@ -39,7 +46,13 @@ function getMarkerStyle(type: string): { backgroundColor: RGBA; textColor: RGBA;
   return {
     backgroundColor: colors.background,
     textColor: colors.text,
-    iconName: type === 'marker' ? 'location_on' : type === 'flag' ? 'flag' : 'circle'
+    iconName: type === 'marker'
+      ? 'location_on'
+      : type === 'flag'
+        ? 'flag'
+        : type === 'gateway'
+          ? 'gateway-blocked'
+          : 'circle'
   };
 }
 
@@ -53,6 +66,10 @@ function generateDescription(parsedMarker: ParsedMarker): string {
 
   if (parsedMarker.type === 'flag') {
     return generateFlagDescription(parsedMarker);
+  }
+
+  if (parsedMarker.type === 'gateway') {
+    return '';
   }
 
   return markerTemplate

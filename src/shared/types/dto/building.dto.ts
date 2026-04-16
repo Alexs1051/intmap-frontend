@@ -1,5 +1,6 @@
 import { AbstractMesh, TransformNode, StandardMaterial, PBRMaterial, Vector3 } from "@babylonjs/core";
 import { ElementType } from "@shared/types/enum/building.enum";
+import { UserInfo } from "./ui.dto";
 
 /**
  * Элемент здания (стена, пол, окно, дверь и т.д.)
@@ -88,7 +89,7 @@ export interface BuildingLoadProgress {
 /**
  * Тип маркера
  */
-export type MarkerTypeDto = 'marker' | 'flag' | 'waypoint';
+export type MarkerTypeDto = 'marker' | 'flag' | 'gateway' | 'waypoint';
 
 /**
  * Парсенный маркер из модели
@@ -116,6 +117,9 @@ export interface ParsedMarker {
         number?: string;      // Для FL/WP - номер
         suffix?: string;      // Для одинаковых названий - суффикс (01, 02, 03)
         qr?: string;          // Для FL - QR код
+        accessRights?: string[]; // Для GW - права доступа
+        description?: string; // Для GW/MR - описание
+        requiredRole?: UserInfo['role']; // Для GW - минимальная роль доступа
     };
 }
 
@@ -137,6 +141,10 @@ export interface ParsedRoom {
     position: Vector3;
     /** Номер этажа */
     floorNumber?: number;
+    /** Минимальная роль для доступа */
+    requiredRole?: UserInfo['role'];
+    /** Нода комнаты в сцене */
+    node?: AbstractMesh | TransformNode;
 }
 
 /**

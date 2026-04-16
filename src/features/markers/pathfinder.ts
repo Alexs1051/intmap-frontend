@@ -51,6 +51,16 @@ export class Pathfinder {
         return result;
     }
 
+    public findShortestPathAvoiding(startId: string, endId: string, blockedMarkerIds: Set<string>): PathResult | null {
+        const graphPath = this.graph.findPath(startId, endId, { blockedMarkerIds });
+        if (!graphPath) {
+            return null;
+        }
+
+        const path = this.buildPathNodes(graphPath.path);
+        return { path, totalDistance: graphPath.totalDistance, found: true, usedAlternateRoute: true };
+    }
+
     /**
      * Построить массив PathNode из ID маркеров
      */

@@ -203,6 +203,14 @@ export class AuthPopup implements IAuthPopup {
         role: this.config.TEST_ROLE
       });
       this.hide();
+    } else if (login === this.config.TEST_ADMIN_USER && password === this.config.TEST_ADMIN_PASS) {
+      this.logger.info(`Admin login success: ${login}`);
+      this.onAuthCallback?.({
+        success: true,
+        username: login,
+        role: this.config.TEST_ADMIN_ROLE
+      });
+      this.hide();
     } else {
       this.logger.warn(`Login failed: ${login}`);
       this.showError('Неверный логин или пароль');

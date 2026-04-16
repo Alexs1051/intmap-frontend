@@ -144,6 +144,15 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
             this._contentContainer.appendChild(this.createInfoSection('Этаж', `${data.floor}`));
         }
 
+        if (data.type === MarkerType.GATEWAY) {
+            if (!data.hasAccess) {
+                this._contentContainer.appendChild(this.createInfoSection('Доступ', 'Нет доступа'));
+                return;
+            }
+
+            this._contentContainer.appendChild(this.createInfoSection('Уровень доступа', data.requiredRole || 'admin'));
+        }
+
         // Описание с Markdown
         const description = (data as any).description;
         if (description && typeof description === 'string' && description.trim()) {
@@ -311,6 +320,9 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         const iconMap: { [key: string]: string } = {
             location_on: MARKER_WIDGET.ICON_PATH_WAYPOINT,
             flag: MARKER_WIDGET.ICON_PATH_FLAG,
+            warning: MARKER_WIDGET.ICON_PATH_GATEWAY_ALLOWED,
+            'gateway-allowed': MARKER_WIDGET.ICON_PATH_GATEWAY_ALLOWED,
+            'gateway-blocked': MARKER_WIDGET.ICON_PATH_GATEWAY_BLOCKED,
             circle: MARKER_WIDGET.ICON_PATH_MARKER,
             '📍': MARKER_WIDGET.ICON_PATH_MARKER,
             '🚩': MARKER_WIDGET.ICON_PATH_FLAG,

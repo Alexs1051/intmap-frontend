@@ -109,7 +109,9 @@ export class MarkerParser {
             walls: [],
             markers: [],
             position: obj.position.clone(),
-            floorNumber
+            floorNumber,
+            requiredRole: MarkerUtils.extractRoomRequiredRole(name),
+            node: obj
         };
         context.rooms.set(name, room);
 

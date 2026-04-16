@@ -299,6 +299,7 @@ export class SearchBar implements ISearchBar {
     switch (type) {
       case MarkerType.MARKER: return '📍';
       case MarkerType.FLAG: return '🚩';
+      case MarkerType.GATEWAY: return '🚧';
       default: return '📍';
     }
   }
@@ -307,6 +308,9 @@ export class SearchBar implements ISearchBar {
     const iconMap: { [key: string]: string } = {
       location_on: MARKER_WIDGET.ICON_PATH_WAYPOINT,
       flag: MARKER_WIDGET.ICON_PATH_FLAG,
+      warning: MARKER_WIDGET.ICON_PATH_GATEWAY_ALLOWED,
+      'gateway-allowed': MARKER_WIDGET.ICON_PATH_GATEWAY_ALLOWED,
+      'gateway-blocked': MARKER_WIDGET.ICON_PATH_GATEWAY_BLOCKED,
       circle: MARKER_WIDGET.ICON_PATH_MARKER,
       '📍': MARKER_WIDGET.ICON_PATH_MARKER,
       '🚩': MARKER_WIDGET.ICON_PATH_FLAG,
@@ -320,6 +324,7 @@ export class SearchBar implements ISearchBar {
     switch (type) {
       case MarkerType.MARKER: return 'Метка';
       case MarkerType.FLAG: return 'Флаг';
+      case MarkerType.GATEWAY: return 'Шлюз доступа';
       default: return 'Метка';
     }
   }
@@ -328,6 +333,7 @@ export class SearchBar implements ISearchBar {
     switch (type) {
       case MarkerType.MARKER: return '📍';
       case MarkerType.FLAG: return '🚩';
+      case MarkerType.GATEWAY: return 'gateway-blocked';
       default: return '📍';
     }
   }

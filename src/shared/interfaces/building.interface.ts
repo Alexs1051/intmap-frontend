@@ -1,5 +1,5 @@
 import { Scene, Vector3, AbstractMesh, TransformNode, Mesh } from "@babylonjs/core";
-import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions } from "@shared/types";
+import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, UserInfo } from "@shared/types";
 import { ISceneComponent, ILoadableComponent } from "./scene.interface";
 import { ParsedMarker, ParsedRoom } from "@shared/types/dto/building.dto";
 
@@ -26,7 +26,10 @@ export interface IBuildingAnimator {
 export interface IFloorManager extends ISceneComponent {
     setScene(scene: Scene): void;
     setWallManager(wallManager: IWallManager): void;
+    setUserInfo(userInfo: UserInfo): void;
     addFloor(element: BuildingElement, floorNode?: TransformNode): void;
+    addRoom(room: ParsedRoom): void;
+    addStair(element: BuildingElement): void;
     showFloor(floorNumber: number): void;
     showAllFloors(): void;
     hideAllFloors(): void;
@@ -44,6 +47,7 @@ export interface IFloorManager extends ISceneComponent {
     readonly floorCount: number;
     readonly minFloor: number;
     readonly maxFloor: number;
+    getAccessibleFloorNumbers(): number[];
 }
 
 export interface IWallManager extends ISceneComponent {
@@ -69,6 +73,7 @@ export interface IBuildingManager extends ILoadableComponent {
     toggleFloorExpand(): void;
     setWallTransparency(transparent: boolean): void;
     setMarkerManager(markerManager: any): void;
+    setUserInfo(userInfo: UserInfo): void;
     getElement(name: string): BuildingElement | undefined;
     getElementsByType(type: ElementType): BuildingElement[];
     dispose(): void;

@@ -158,6 +158,9 @@ export class MarkerWidget {
     const iconMap: { [key: string]: string } = {
       location_on: MARKER_WIDGET.ICON_PATH_WAYPOINT,
       flag: MARKER_WIDGET.ICON_PATH_FLAG,
+      warning: MARKER_WIDGET.ICON_PATH_GATEWAY_ALLOWED,
+      'gateway-allowed': MARKER_WIDGET.ICON_PATH_GATEWAY_ALLOWED,
+      'gateway-blocked': MARKER_WIDGET.ICON_PATH_GATEWAY_BLOCKED,
       circle: MARKER_WIDGET.ICON_PATH_MARKER,
       "📍": MARKER_WIDGET.ICON_PATH_MARKER,
       "🚩": MARKER_WIDGET.ICON_PATH_FLAG,
@@ -415,6 +418,34 @@ export class MarkerWidget {
   setTitle(title: string) {
     if (this.textBlock) {
       this.textBlock.text = title;
+    }
+  }
+
+  async setIcon(icon: string, fgColor: Color3): Promise<void> {
+    if (!this.iconImage) return;
+
+    const iconPath = this.getIconPath(icon);
+    const [tintedIconUrl, blackIconUrl] = await Promise.all([
+      this.tintImage(iconPath, fgColor),
+      this.tintImage(iconPath, new Color3(0, 0, 0))
+    ]);
+
+    const iconContainer = this.iconImage.parent as Rectangle | null;
+    const shadow = iconContainer?.children[0] as Image | undefined;
+    if (shadow) {
+      shadow.source = blackIconUrl;
+    }
+
+    this.iconImage.source = tintedIconUrl;
+  }
+
+  public setBaseColors(bgColor: Color3, fgColor: Color3, bgAlpha: number): void {
+    this._baseBgAlpha = bgAlpha;
+    this._baseBgColor = bgColor.clone();
+    this.container.background = this.toRGBAWithAlpha(bgColor, bgAlpha);
+
+    if (this.textBlock) {
+      this.textBlock.color = this.toRGBA(fgColor);
     }
   }
 

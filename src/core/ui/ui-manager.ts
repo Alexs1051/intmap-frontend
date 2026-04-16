@@ -5,7 +5,7 @@ import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { UIFactory } from "./ui-factory";
 import { RouteManager } from "@core/route/route-manager";
-import { UIEventType, NotificationType, SearchResult } from "@shared/types";
+import { UIEventType, NotificationType, SearchResult, AuthResult, UserInfo, MarkerType } from "@shared/types";
 import { Marker } from "@features/markers/marker";
 import { EventType } from "@core/events/event-types";
 import {
@@ -49,6 +49,7 @@ export class UIManager implements IUIManager {
   private _showFPS: boolean = true;
   private _currentTheme: 'light' | 'dark' = 'dark';
   private floorButtonLockTimeout: ReturnType<typeof setTimeout> | null = null;
+  private currentUserInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -95,6 +96,9 @@ export class UIManager implements IUIManager {
     this.setupCallbacks();
     this.setupEventBusListeners();
     this.loadTheme();
+    this.controlPanel?.setAuthState(this.currentUserInfo);
+    this.markerManager?.setUserInfo(this.currentUserInfo);
+    this.buildingManager?.setUserInfo(this.currentUserInfo);
     this.syncControlModeButton(false);
     this.refreshFloorButtons();
 
@@ -151,6 +155,16 @@ export class UIManager implements IUIManager {
       this.logger.debug(`Graph visibility changed to ${event.data?.visible}`);
     });
 
+    this.eventBus.on(EventType.UI_NOTIFICATION, (event) => {
+      const message = event.data?.message;
+      const type = event.data?.type as NotificationType | undefined;
+      const duration = event.data?.duration as number | undefined;
+
+      if (message) {
+        this.popupManager?.show({ message, type, duration });
+      }
+    });
+
     this.eventBus.on(EventType.ROUTE_CLEARED, () => {
       this.clearRoute();
     });
@@ -205,6 +219,10 @@ export class UIManager implements IUIManager {
         this.markerDetailsPanel?.hide();
       }
     });
+
+    this.authPopup?.setAuthCallback((result: AuthResult) => {
+      this.handleAuthResult(result);
+    });
   }
 
   // ✅ Обработка кнопки "Отсюда"
@@ -236,7 +254,11 @@ export class UIManager implements IUIManager {
         this.searchBar?.toggle();
         break;
       case UIEventType.AUTH_TOGGLE:
-        this.authPopup?.show();
+        if (this.currentUserInfo.isAuthenticated) {
+          this.authPopup?.showLogoutConfirmation();
+        } else {
+          this.authPopup?.show();
+        }
         break;
       case UIEventType.CAMERA_MODE_TOGGLE:
         await this.cameraManager?.toggleCameraMode();
@@ -356,16 +378,22 @@ export class UIManager implements IUIManager {
       }
 
       const currentMode = floorManager.getViewMode();
+      const accessibleFloors = floorManager.getAccessibleFloorNumbers();
       const currentFloor = floorManager.currentFloor;
-      const maxFloor = floorManager.maxFloor;
 
       if (currentMode === 'all') {
-        this.temporarilyLockFloorButtons();
-        floorManager.setViewMode('single');
-        floorManager.showFloor(floorManager.minFloor);
-      } else if (currentFloor < maxFloor) {
-        this.temporarilyLockFloorButtons();
-        floorManager.showFloor(currentFloor + 1);
+        const firstAccessibleFloor = accessibleFloors[0];
+        if (firstAccessibleFloor !== undefined) {
+          this.temporarilyLockFloorButtons();
+          floorManager.setViewMode('single');
+          floorManager.showFloor(firstAccessibleFloor);
+        }
+      } else {
+        const nextFloor = accessibleFloors.find(floor => floor > currentFloor);
+        if (nextFloor !== undefined) {
+          this.temporarilyLockFloorButtons();
+          floorManager.showFloor(nextFloor);
+        }
       }
 
       this.refreshFloorButtons();
@@ -381,16 +409,23 @@ export class UIManager implements IUIManager {
       }
 
       const currentMode = floorManager.getViewMode();
+      const accessibleFloors = floorManager.getAccessibleFloorNumbers();
       const currentFloor = floorManager.currentFloor;
-      const minFloor = floorManager.minFloor;
 
       if (currentMode === 'all') {
-        this.temporarilyLockFloorButtons();
-        floorManager.setViewMode('single');
-        floorManager.showFloor(floorManager.maxFloor);
-      } else if (currentFloor > minFloor) {
-        this.temporarilyLockFloorButtons();
-        floorManager.showFloor(currentFloor - 1);
+        const lastAccessibleFloor = accessibleFloors[accessibleFloors.length - 1];
+        if (lastAccessibleFloor !== undefined) {
+          this.temporarilyLockFloorButtons();
+          floorManager.setViewMode('single');
+          floorManager.showFloor(lastAccessibleFloor);
+        }
+      } else {
+        const previousFloors = accessibleFloors.filter(floor => floor < currentFloor);
+        const prevFloor = previousFloors[previousFloors.length - 1];
+        if (prevFloor !== undefined) {
+          this.temporarilyLockFloorButtons();
+          floorManager.showFloor(prevFloor);
+        }
       }
 
       this.refreshFloorButtons();
@@ -415,12 +450,45 @@ export class UIManager implements IUIManager {
     if (!this.buildingManager || !this.controlPanel) return;
 
     const floorManager = this.buildingManager.floorManager;
+    const accessibleFloors = floorManager.getAccessibleFloorNumbers();
     const currentFloor = floorManager.getViewMode() === 'single' ? floorManager.currentFloor : 0;
-    this.controlPanel.updateFloorButtons(currentFloor, floorManager.maxFloor);
+    const maxAccessibleFloor = accessibleFloors[accessibleFloors.length - 1] ?? 0;
+    this.controlPanel.updateFloorButtons(currentFloor, maxAccessibleFloor);
   }
 
   private clearRoute(): void {
     this.routeManager.clearRoute();
+  }
+
+  private handleAuthResult(result: AuthResult): void {
+    this.currentUserInfo = result.success
+      ? {
+        isAuthenticated: true,
+        username: result.username,
+        role: (result.role as UserInfo['role']) ?? 'user'
+      }
+      : {
+        isAuthenticated: false,
+        role: 'guest'
+      };
+
+    this.controlPanel?.setAuthState(this.currentUserInfo);
+    this.markerManager?.setUserInfo(this.currentUserInfo);
+    this.buildingManager?.setUserInfo(this.currentUserInfo);
+    this.searchBar?.refreshMarkers();
+
+    const currentMarker = this.markerDetailsPanel?.currentMarker;
+    if (currentMarker && currentMarker.type === MarkerType.GATEWAY) {
+      this.markerDetailsPanel?.show(currentMarker as Marker);
+    }
+
+    if (result.success) {
+      this.popupManager?.success(`Авторизация выполнена: ${result.username}`);
+      this.eventBus.emit(EventType.UI_AUTH_SUCCESS, this.currentUserInfo);
+    } else {
+      this.popupManager?.info('Вы вышли из системы');
+      this.eventBus.emit(EventType.UI_AUTH_LOGOUT, this.currentUserInfo);
+    }
   }
 
   private toggleTheme(): void {

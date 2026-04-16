@@ -4,8 +4,9 @@ import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
-import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, ParsedMarker, ParsedRoom } from "@shared/types";
+import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, ParsedMarker, ParsedRoom, UserInfo } from "@shared/types";
 import type { IBuildingAnimator, IBuildingLoader, IBuildingManager, IBuildingParser, IFloorManager, IWallManager } from "@shared/interfaces";
+import { MarkerUtils } from "./connection-parser";
 
 @injectable()
 export class BuildingManager implements IBuildingManager {
@@ -23,6 +24,7 @@ export class BuildingManager implements IBuildingManager {
     private _isLoaded: boolean = false;
     private _dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
     private _center: Vector3 = Vector3.Zero();
+    private _userInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
@@ -105,7 +107,16 @@ export class BuildingManager implements IBuildingManager {
             elements.forEach(element => this._floorManager.addFloor(element, floorNode));
         });
 
+        this._data.rooms.forEach(room => {
+            this._floorManager.addRoom(room);
+        });
+
+        this._data.stairs.forEach(stair => {
+            this._floorManager.addStair(stair);
+        });
+
         this._data.walls.forEach(element => this._wallManager.addWall(element));
+        this._floorManager.setUserInfo(this._userInfo);
         this._floorManager.showAllFloors();
 
         // Инициализируем FloorManager после добавления всех этажей
@@ -120,6 +131,15 @@ export class BuildingManager implements IBuildingManager {
     public setMarkerManager(markerManager: any): void {
         (this._floorManager as any).setMarkerManager?.(markerManager);
         this.logger.debug('MarkerManager set in BuildingManager -> FloorManager');
+    }
+
+    public setUserInfo(userInfo: UserInfo): void {
+        this._userInfo = {
+            isAuthenticated: userInfo.isAuthenticated,
+            username: userInfo.username,
+            role: userInfo.role ?? (userInfo.isAuthenticated ? 'user' : 'guest')
+        };
+        this._floorManager.setUserInfo(this._userInfo);
     }
 
     /**
@@ -288,6 +308,18 @@ export class BuildingManager implements IBuildingManager {
             }
         }
         return markers;
+    }
+
+    public hasAccessToFloor(floorNumber: number): boolean {
+        const floorNode = this._data?.floorNodes.get(floorNumber);
+        const requiredRole = floorNode ? MarkerUtils.extractFloorRequiredRole(floorNode.name) : undefined;
+        return MarkerUtils.hasRequiredRole(this._userInfo.role, requiredRole);
+    }
+
+    public hasAccessToRoom(roomId?: string): boolean {
+        if (!roomId) return true;
+        const room = this._data?.rooms.get(roomId);
+        return MarkerUtils.hasRequiredRole(this._userInfo.role, room?.requiredRole);
     }
 
     // Геттеры для интерфейса

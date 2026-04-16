@@ -79,10 +79,16 @@ export const UI = {
         /** Текст кнопки выхода */
         LOGOUT_BUTTON_TEXT: 'Выйти',
         /** Тестовый пользователь */
-        TEST_USER: 'test',
+        TEST_USER: 'user',
         /** Тестовый пароль */
-        TEST_PASS: 'test',
+        TEST_PASS: 'user',
         /** Роль тестового пользователя */
-        TEST_ROLE: 'user'
+        TEST_ROLE: 'user',
+        /** Тестовый администратор */
+        TEST_ADMIN_USER: 'admin',
+        /** Пароль администратора */
+        TEST_ADMIN_PASS: 'admin',
+        /** Роль администратора */
+        TEST_ADMIN_ROLE: 'admin'
     }
 } as const;

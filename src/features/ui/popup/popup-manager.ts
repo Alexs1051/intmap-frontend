@@ -1,7 +1,6 @@
 import { injectable } from "inversify";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
-import { EventType } from "@core/events/event-types";
 import { NotificationType, PopupOptions } from "@shared/types";
 import { UI } from "@shared/constants";
 import { IPopupManager } from "@shared/interfaces";
@@ -9,7 +8,6 @@ import { IPopupManager } from "@shared/interfaces";
 @injectable()
 export class PopupManager implements IPopupManager {
   private logger: Logger;
-  private eventBus: EventBus;
 
   private container!: HTMLDivElement;
   private activePopups: HTMLDivElement[] = [];
@@ -24,7 +22,7 @@ export class PopupManager implements IPopupManager {
     eventBus: EventBus
   ) {
     this.logger = logger.getLogger('PopupManager');
-    this.eventBus = eventBus;
+    void eventBus;
 
     this.createContainer();
     this.logger.debug("PopupManager created");
@@ -63,7 +61,6 @@ export class PopupManager implements IPopupManager {
       this.timeouts.set(popup, timeout);
     }
 
-    this.eventBus.emit(EventType.UI_NOTIFICATION, { message, type });
   }
 
   private createPopup(message: string, type: NotificationType, closable: boolean, duration: number): HTMLDivElement {

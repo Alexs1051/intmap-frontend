@@ -5,6 +5,7 @@ import { BuildingElement, ElementType, BuildingParseResult } from "@shared/types
 import { BUILDING_PARSER } from "@shared/constants";
 import { IBuildingParser } from "@shared/interfaces";
 import { MarkerParser } from './marker-parser';
+import { MarkerUtils } from './connection-parser';
 
 /**
  * Парсер загруженной GLB модели здания
@@ -97,6 +98,7 @@ export class BuildingParser implements IBuildingParser {
             if (MarkerUtils.isMarker(obj.name)) return;
 
             const floorNumber = this.findParentFloorNumber(obj);
+            const roomId = this.findParentRoomId(obj);
             const type = this.determineType(obj.name);
 
             const element: BuildingElement = {
@@ -109,7 +111,12 @@ export class BuildingParser implements IBuildingParser {
                 originalPosition: obj.position.clone(),
                 originalRotation: obj.rotation.clone(),
                 originalScaling: obj.scaling.clone(),
-                metadata: {}
+                metadata: {
+                    requiredRole: obj.name.startsWith(this.config.FLOOR_PREFIX)
+                        ? MarkerUtils.extractFloorRequiredRole(obj.name)
+                        : undefined,
+                    roomId
+                }
             };
 
             if (element.mesh) {
@@ -170,6 +177,17 @@ export class BuildingParser implements IBuildingParser {
         return null;
     }
 
+    private findParentRoomId(obj: AbstractMesh | TransformNode): string | undefined {
+        let parent = obj.parent;
+        while (parent) {
+            if (parent.name?.startsWith('Room_')) {
+                return parent.name;
+            }
+            parent = parent.parent;
+        }
+        return undefined;
+    }
+
     /**
      * Категоризировать элемент по типу
      */
@@ -195,9 +213,3 @@ export class BuildingParser implements IBuildingParser {
     }
 }
 
-// Временная утилита, пока MarkerUtils не экспортирован
-const MarkerUtils = {
-    isMarker(name: string): boolean {
-        return name.startsWith('MR_') || name.startsWith('FL_') || name.startsWith('WP_');
-    }
-};
