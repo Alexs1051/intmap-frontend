@@ -72,11 +72,15 @@ export interface IControlPanel {
     /** Установить состояние авторизации */
     setAuthState(userInfo: UserInfo): void;
     /** Обновить кнопки этажей */
-    updateFloorButtons(currentFloor: number, maxFloor: number): void;
+    updateFloorButtons(currentFloor: number, maxFloor: number, accessibleFloors?: number[]): void;
     /** Установить видимость графа */
     setGraphVisible(visible: boolean): void;
+    /** Установить видимость маркеров */
+    setMarkersVisible(visible: boolean): void;
     /** Установить тему (тёмная/светлая) */
     setDarkTheme(isDark: boolean): void;
+    /** Включить/выключить кнопку */
+    setButtonDisabled(buttonId: string, disabled: boolean): void;
     /** Добавить слушатель событий */
     addEventListener(listener: (event: UIEvent) => void): void;
     /** Удалить слушатель */

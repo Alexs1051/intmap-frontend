@@ -34,10 +34,10 @@ export class AuthPopup implements IAuthPopup {
 
   private createPopup(): void {
     this.container = document.createElement('div');
-    this.container.className = 'auth-popup-overlay';
+    this.container.className = 'auth-popup-overlay ui-modal-overlay';
 
     this.popup = document.createElement('div');
-    this.popup.className = 'auth-popup';
+    this.popup.className = 'auth-popup ui-modal-surface';
     this.container.appendChild(this.popup);
 
     document.body.appendChild(this.container);

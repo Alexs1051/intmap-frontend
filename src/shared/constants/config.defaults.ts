@@ -2,7 +2,7 @@ import { IAppConfig } from "@shared/types";
 
 export const CONFIG_DEFAULTS: IAppConfig = {
     apiUrl: '/api',
-    modelUrl: 'models/building.glb',
+    modelUrl: 'models/building_02.glb',
     basePath: '',
     debug: true,
     version: '1.0.0',

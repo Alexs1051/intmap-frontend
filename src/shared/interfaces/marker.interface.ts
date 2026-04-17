@@ -80,6 +80,7 @@ export interface IMarkerManager extends ILoadableComponent {
 
     setCurrentFloor(floor: number | 'all'): void;
     setUserInfo(userInfo: UserInfo): void;
+    setMarkersMuted(muted: boolean): void;
     hasAccessToMarker(markerId: string): boolean;
     setFromMarker(markerId: string): void;
     setToMarker(markerId: string): void;

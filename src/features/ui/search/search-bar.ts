@@ -49,11 +49,11 @@ export class SearchBar implements ISearchBar {
 
   private createSearchBar(): void {
     this.overlay = document.createElement('div');
-    this.overlay.className = 'search-overlay';
+    this.overlay.className = 'search-overlay ui-modal-overlay';
     this.overlay.addEventListener('click', () => this.hide());
 
     this.container = document.createElement('div');
-    this.container.className = 'search-container';
+    this.container.className = 'search-container ui-modal-surface';
     this.container.addEventListener('click', (e) => e.stopPropagation());
 
     const inputWrapper = document.createElement('div');
@@ -382,7 +382,7 @@ export class SearchBar implements ISearchBar {
   public show(): void {
     this.refreshMarkers();
     this._isVisible = true;
-    this.overlay.style.display = 'block';
+    this.overlay.classList.add('visible');
     this.clearResults();
     this.selectedIndex = -1;
 
@@ -398,7 +398,7 @@ export class SearchBar implements ISearchBar {
 
   public hide(): void {
     this._isVisible = false;
-    this.overlay.style.display = 'none';
+    this.overlay.classList.remove('visible');
     this.input.value = '';
     this.clearResults();
     this.selectedIndex = -1;

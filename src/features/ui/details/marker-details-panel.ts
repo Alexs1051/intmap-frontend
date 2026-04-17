@@ -85,7 +85,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
     private createPanel(): void {
         this._container = document.createElement('div');
         this._container.id = 'marker-details-panel';
-        this._container.className = 'marker-details-panel';
+        this._container.className = 'marker-details-panel ui-floating-surface';
 
         const header = document.createElement('div');
         header.className = 'marker-details-header';
@@ -298,7 +298,6 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
 
         const iconCircle = document.createElement('div');
         iconCircle.className = 'title-icon-circle';
-        iconCircle.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
 
         const iconImg = document.createElement('img');
         iconImg.className = 'title-icon-img';

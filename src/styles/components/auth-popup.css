@@ -1,44 +1,20 @@
 .auth-popup-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: var(--color-bg-overlay);
-  backdrop-filter: blur(5px);
   z-index: var(--z-auth-popup);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity var(--transition-normal);
 }
 
 .auth-popup-overlay.visible {
-  display: flex;
-  opacity: 1;
 }
 
 .auth-popup {
   width: 400px;
   max-width: 90vw;
-  background: var(--color-bg-primary);
   backdrop-filter: blur(10px);
-  border-radius: var(--radius-xl);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: var(--shadow-lg);
   overflow: hidden;
-  transform: translateY(-20px);
-  transition: transform var(--transition-normal);
-}
-
-.auth-popup-overlay.visible .auth-popup {
-  transform: translateY(0);
 }
 
 .auth-popup-header {
   padding: var(--spacing-xl);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--color-surface-floating-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -48,6 +24,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .auth-popup-title i {
@@ -68,7 +45,7 @@
 
 .auth-popup-close:hover {
   color: var(--color-text-primary);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-floating-soft-hover);
 }
 
 .auth-popup-form {
@@ -102,7 +79,7 @@
 
 .auth-popup-field input:focus {
   border-color: var(--color-accent-primary);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-floating-soft-hover);
 }
 
 .auth-popup-field input::placeholder {

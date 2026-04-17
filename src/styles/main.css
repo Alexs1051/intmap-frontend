@@ -1,8 +1,11 @@
 /* === Variables & Animations === */
 @import './variables.css';
 @import './animations.css';
+@import './themes/light.css';
 
 /* === Component styles === */
+@import './components/modal-base.css';
+@import './components/floating-panel.css';
 @import './components/control-panel.css';
 @import './components/search-bar.css';
 @import './components/marker-details-panel.css';
@@ -97,22 +100,88 @@ button:active {
   transform: scale(0.98);
 }
 
-/* === Debug panel === */
-#debug {
+/* === Status stack === */
+.ui-status-stack {
   position: fixed;
-  bottom: 10px;
-  left: 10px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #0f0;
+  top: 20px;
+  right: 20px;
+  z-index: 1600;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.ui-status-pill,
+#debug,
+.fps-counter,
+.control-panel-access {
+  color: var(--color-text-primary);
   font-family: monospace;
-  font-size: 12px;
-  padding: 8px;
-  z-index: 10000;
-  border-radius: 4px;
-  max-width: 90%;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  background: var(--color-surface-floating);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-surface-floating-border);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(5px);
+}
+
+.ui-status-stack #debug,
+.ui-status-stack .fps-counter,
+.ui-status-stack .control-panel-access {
+  position: static !important;
+  inset: auto !important;
+  margin: 0;
+  max-width: 240px;
+  text-align: right;
   word-break: break-word;
 }
 
+.control-panel-access.access-guest {
+  color: #d7dbe8;
+}
+
+.control-panel-access.access-user {
+  color: #ffe37a;
+}
+
+.control-panel-access.access-admin {
+  color: #ff8d8d;
+}
+
+.theme-light .control-panel-access.access-guest {
+  color: #4a5364;
+}
+
+.theme-light .control-panel-access.access-user {
+  color: #8a6a16;
+}
+
+.theme-light .control-panel-access.access-admin {
+  color: #ad4d4d;
+}
+
+.theme-light .control-panel-button img,
+.theme-light .building-title-icon,
+.theme-light .building-title-dropdown-icon {
+  filter: brightness(0.32) saturate(0.45) opacity(0.88);
+}
+
+.theme-light .control-panel-button.active img {
+  filter: brightness(0.22) saturate(0.5) opacity(0.96);
+}
+
+.theme-light .ui-status-pill,
+.theme-light .control-panel-access,
+.theme-light .building-title-text,
+.theme-light .building-title-dropdown-item,
+.theme-light .control-panel-floor-title,
+.theme-light .control-panel-floor-option {
+  color: #3d4657;
+}
 /* === Responsive === */
 @media (max-width: 768px) {
   ::-webkit-scrollbar {
@@ -164,7 +233,9 @@ button:active {
     top: 10px !important;
   }
 
-  .fps-counter {
+  .ui-status-stack {
     top: 5px !important;
+    right: 5px !important;
   }
 }
+

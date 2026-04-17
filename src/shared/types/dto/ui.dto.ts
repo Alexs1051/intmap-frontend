@@ -52,6 +52,8 @@ export interface BuildingOption {
     name: string;
     /** URL модели здания */
     modelUrl?: string;
+    /** Иконка для списка */
+    iconPath?: string;
 }
 
 /**

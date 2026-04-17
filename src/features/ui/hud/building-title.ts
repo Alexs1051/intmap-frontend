@@ -4,9 +4,6 @@ import { UI } from "@shared/constants";
 import { IBuildingTitle } from "@shared/interfaces";
 import { BuildingOption } from "@shared/types";
 
-/**
- * Компонент выбора здания
- */
 @injectable()
 export class BuildingTitle implements IBuildingTitle {
   private logger: Logger;
@@ -16,6 +13,7 @@ export class BuildingTitle implements IBuildingTitle {
   private button!: HTMLButtonElement;
   private dropdown!: HTMLDivElement;
   private titleText!: HTMLSpanElement;
+  private titleIcon!: HTMLImageElement;
 
   private options: BuildingOption[] = [];
   private selectedId: string | null = null;
@@ -39,14 +37,16 @@ export class BuildingTitle implements IBuildingTitle {
     this.container.className = 'building-title';
 
     this.button = document.createElement('button');
-    this.button.className = 'building-title-button';
+    this.button.className = 'building-title-button ui-floating-surface';
     this.button.addEventListener('click', (e) => {
       e.stopPropagation();
       this.toggleDropdown();
     });
 
-    const iconSpan = document.createElement('i');
-    iconSpan.className = 'building-title-icon fa-solid fa-building';
+    this.titleIcon = document.createElement('img');
+    this.titleIcon.className = 'building-title-icon';
+    this.titleIcon.src = 'icons/ui/object.png';
+    this.titleIcon.alt = 'Иконка здания';
 
     this.titleText = document.createElement('span');
     this.titleText.className = 'building-title-text';
@@ -55,13 +55,13 @@ export class BuildingTitle implements IBuildingTitle {
     const arrowSpan = document.createElement('i');
     arrowSpan.className = 'building-title-arrow fa-solid fa-chevron-down';
 
-    this.button.appendChild(iconSpan);
+    this.button.appendChild(this.titleIcon);
     this.button.appendChild(this.titleText);
     this.button.appendChild(arrowSpan);
     this.container.appendChild(this.button);
 
     this.dropdown = document.createElement('div');
-    this.dropdown.className = 'building-title-dropdown';
+    this.dropdown.className = 'building-title-dropdown ui-floating-surface ui-floating-surface-strong';
     this.container.appendChild(this.dropdown);
 
     document.body.appendChild(this.container);
@@ -95,13 +95,15 @@ export class BuildingTitle implements IBuildingTitle {
       item.classList.add('active');
     }
 
-    const iconSpan = document.createElement('i');
-    iconSpan.className = 'fa-solid fa-building';
+    const iconImg = document.createElement('img');
+    iconImg.className = 'building-title-dropdown-icon';
+    iconImg.src = option.iconPath || 'icons/ui/object.png';
+    iconImg.alt = option.name;
 
     const nameSpan = document.createElement('span');
     nameSpan.textContent = option.name;
 
-    item.appendChild(iconSpan);
+    item.appendChild(iconImg);
     item.appendChild(nameSpan);
 
     if (this.selectedId === option.id) {
@@ -129,6 +131,7 @@ export class BuildingTitle implements IBuildingTitle {
 
     if (selectedOption) {
       this.titleText.textContent = selectedOption.name;
+      this.titleIcon.src = selectedOption.iconPath || 'icons/ui/object.png';
       this.logger.info(`Building selected: ${selectedOption.name}`);
       this.rebuildDropdown();
       this.onBuildingChange?.(buildingId);
@@ -147,18 +150,20 @@ export class BuildingTitle implements IBuildingTitle {
   private addTestBuildings(): void {
     const testBuildings: BuildingOption[] = [
       {
-        id: 'building-1',
-        name: 'Главное здание',
-        modelUrl: '/models/building.glb'
+        id: 'building-01',
+        name: 'Test_Building_01',
+        modelUrl: '/models/building_01.glb',
+        iconPath: 'icons/ui/object.png'
       },
       {
-        id: 'building-2',
-        name: 'Технический центр',
-        modelUrl: '/models/tech-center.glb'
+        id: 'building-02',
+        name: 'Test_Building_02',
+        modelUrl: '/models/building_02.glb',
+        iconPath: 'icons/ui/pin.png'
       }
     ];
 
-    this.setBuildings(testBuildings, 'building-1');
+    this.setBuildings(testBuildings, 'building-02');
   }
 
   public setBuildings(options: BuildingOption[], selectedId?: string): void {
@@ -167,9 +172,8 @@ export class BuildingTitle implements IBuildingTitle {
 
     const selectedOption = this.options.find(o => o.id === this.selectedId);
     this.titleText.textContent = selectedOption?.name || this.config.DEFAULT_TITLE;
+    this.titleIcon.src = selectedOption?.iconPath || 'icons/ui/object.png';
     this.rebuildDropdown();
-
-    this.logger.info(`Buildings updated: ${this.options.length} options`);
   }
 
   public addBuilding(option: BuildingOption, select?: boolean): void {
@@ -180,8 +184,6 @@ export class BuildingTitle implements IBuildingTitle {
     } else {
       this.rebuildDropdown();
     }
-
-    this.logger.info(`Building added: ${option.name}`);
   }
 
   public setOnBuildingChange(callback: (buildingId: string) => void): void {

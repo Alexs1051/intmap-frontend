@@ -1,18 +1,5 @@
 .fps-counter {
-  position: absolute;
-  top: 10px;
-  right: 20px;
-  color: var(--color-text-primary);
-  font-family: monospace;
-  font-size: 14px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
-  z-index: var(--z-fps-counter);
   pointer-events: none;
-  backdrop-filter: blur(5px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: var(--shadow-sm);
 }
 
 .fps-counter.good {
@@ -28,23 +15,4 @@
 .fps-counter.bad {
   color: var(--color-error);
   background: rgba(255, 68, 68, 0.2);
-}
-
-/* Мобильная адаптация */
-@media (max-width: 768px) {
-  .fps-counter {
-    top: 8px;
-    right: 10px;
-    font-size: 12px;
-    padding: var(--spacing-xs) var(--spacing-sm);
-  }
-}
-
-@media (max-width: 480px) {
-  .fps-counter {
-    top: 5px;
-    right: 5px;
-    font-size: 11px;
-    padding: 2px 6px;
-  }
 }

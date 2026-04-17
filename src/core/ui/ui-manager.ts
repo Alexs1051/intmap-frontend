@@ -5,7 +5,7 @@ import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { UIFactory } from "./ui-factory";
 import { RouteManager } from "@core/route/route-manager";
-import { UIEventType, NotificationType, SearchResult, AuthResult, UserInfo, MarkerType } from "@shared/types";
+import { UIEventType, NotificationType, SearchResult, AuthResult, UserInfo, MarkerType, CameraMode } from "@shared/types";
 import { Marker } from "@features/markers/marker";
 import { EventType } from "@core/events/event-types";
 import {
@@ -50,6 +50,7 @@ export class UIManager implements IUIManager {
   private _currentTheme: 'light' | 'dark' = 'dark';
   private floorButtonLockTimeout: ReturnType<typeof setTimeout> | null = null;
   private currentUserInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
+  private markersVisible: boolean = true;
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -100,6 +101,7 @@ export class UIManager implements IUIManager {
     this.markerManager?.setUserInfo(this.currentUserInfo);
     this.buildingManager?.setUserInfo(this.currentUserInfo);
     this.syncControlModeButton(false);
+    this.controlPanel?.setMarkersVisible(this.markersVisible);
     this.refreshFloorButtons();
 
     this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
@@ -126,6 +128,7 @@ export class UIManager implements IUIManager {
     this.buildingTitle = this.factory.createBuildingTitle();
     this.authPopup = this.factory.createAuthPopup();
 
+    this.organizeStatusStack();
     this.logger.debug('All UI components created');
 
     setTimeout(() => {
@@ -136,6 +139,30 @@ export class UIManager implements IUIManager {
     }, 100);
   }
 
+  private organizeStatusStack(): void {
+    let statusStack = document.querySelector('.ui-status-stack') as HTMLDivElement | null;
+
+    if (!statusStack) {
+      statusStack = document.createElement('div');
+      statusStack.className = 'ui-status-stack';
+      document.body.appendChild(statusStack);
+    }
+
+    const statusElements = [
+      document.querySelector('.control-panel-access'),
+      document.getElementById('fps-counter')
+    ].filter((element): element is HTMLElement => element instanceof HTMLElement);
+
+    const debug = document.getElementById('debug');
+    if (debug) {
+      debug.style.display = 'none';
+    }
+
+    statusElements.forEach((element) => {
+      element.classList.add('ui-status-pill');
+      statusStack?.appendChild(element);
+    });
+  }
   private setupEventBusListeners(): void {
     this.eventBus.on(EventType.FLOOR_CHANGED, (event) => {
       const floor = event.data?.floor;
@@ -149,10 +176,16 @@ export class UIManager implements IUIManager {
     this.eventBus.on(EventType.FLOOR_EXPAND_CHANGED, (event) => {
       const expanded = event.data?.expanded;
       this.logger.debug(`Floor expand state changed to: ${expanded}`);
+      if (typeof expanded === 'boolean') {
+        this.controlPanel?.updateButtonState('expand', expanded);
+      }
     });
 
     this.eventBus.on(EventType.GRAPH_VISIBILITY_CHANGED, (event) => {
       this.logger.debug(`Graph visibility changed to ${event.data?.visible}`);
+      if (typeof event.data?.visible === 'boolean') {
+        this.controlPanel?.setGraphVisible(event.data.visible);
+      }
     });
 
     this.eventBus.on(EventType.UI_NOTIFICATION, (event) => {
@@ -223,6 +256,10 @@ export class UIManager implements IUIManager {
     this.authPopup?.setAuthCallback((result: AuthResult) => {
       this.handleAuthResult(result);
     });
+
+    this.buildingTitle?.setOnBuildingChange((buildingId: string) => {
+      void this.handleBuildingChange(buildingId);
+    });
   }
 
   // ✅ Обработка кнопки "Отсюда"
@@ -253,6 +290,9 @@ export class UIManager implements IUIManager {
       case UIEventType.SEARCH_TOGGLE:
         this.searchBar?.toggle();
         break;
+      case UIEventType.QR_SCAN:
+        await this.scanQrCode();
+        break;
       case UIEventType.AUTH_TOGGLE:
         if (this.currentUserInfo.isAuthenticated) {
           this.authPopup?.showLogoutConfirmation();
@@ -261,16 +301,20 @@ export class UIManager implements IUIManager {
         }
         break;
       case UIEventType.CAMERA_MODE_TOGGLE:
-        await this.cameraManager?.toggleCameraMode();
+        await this.handleCameraTransition(async () => {
+          await this.cameraManager?.toggleCameraMode();
+        });
         break;
       case UIEventType.CAMERA_CONTROL_MODE_TOGGLE:
-        await this.cameraManager?.toggleControlMode();
-        this.syncControlModeButton();
+        await this.handleCameraTransition(async () => {
+          await this.cameraManager?.toggleControlMode();
+          this.syncControlModeButton();
+        });
         break;
       case UIEventType.RESET_CAMERA:
-        this.controlPanel?.setButtonsEnabled(false);
-        this.cameraManager?.resetCamera();
-        setTimeout(() => this.controlPanel?.setButtonsEnabled(true), 1200);
+        await this.handleCameraTransition(async () => {
+          await this.cameraManager?.resetCamera();
+        });
         break;
       case UIEventType.TOGGLE_GRAPH:
         if (this.cameraManager?.isAnimating) {
@@ -281,6 +325,9 @@ export class UIManager implements IUIManager {
         break;
       case UIEventType.TOGGLE_THEME:
         this.toggleTheme();
+        break;
+      case UIEventType.TOGGLE_MARKERS:
+        this.toggleMarkersVisibility();
         break;
       case UIEventType.TOGGLE_WALL_TRANSPARENCY:
         this.toggleWallTransparency();
@@ -297,9 +344,53 @@ export class UIManager implements IUIManager {
       case UIEventType.PREV_FLOOR:
         this.prevFloor();
         break;
+      case UIEventType.FLOOR_SELECT:
+        if (typeof event.floor === 'number') {
+          this.selectFloor(event.floor);
+        }
+        break;
       default:
         this.logger.debug(`Unhandled UI event: ${event.type}`);
     }
+  }
+
+  private async handleCameraTransition(action: () => Promise<void>): Promise<void> {
+    if (!this.cameraManager) return;
+    if (this.cameraManager.isAnimating) return;
+
+    this.setCameraButtonsDisabled(true);
+
+    try {
+      await action();
+      await this.waitForCameraIdle();
+    } finally {
+      this.syncControlModeButton(false);
+      this.refreshFloorButtons();
+      this.setCameraButtonsDisabled(false);
+    }
+  }
+
+  private setCameraButtonsDisabled(disabled: boolean): void {
+    this.controlPanel?.setButtonDisabled('mode', disabled);
+    this.controlPanel?.setButtonDisabled('control-mode', disabled);
+    this.controlPanel?.setButtonDisabled('reset', disabled);
+  }
+
+  private waitForCameraIdle(timeoutMs: number = 4000): Promise<void> {
+    const startedAt = Date.now();
+
+    return new Promise((resolve) => {
+      const poll = () => {
+        if (!this.cameraManager?.isAnimating || Date.now() - startedAt >= timeoutMs) {
+          resolve();
+          return;
+        }
+
+        setTimeout(poll, 50);
+      };
+
+      poll();
+    });
   }
 
   private toggleWallTransparency(): void {
@@ -336,12 +427,53 @@ export class UIManager implements IUIManager {
   private syncControlModeButton(showMessage: boolean = true): void {
     if (!this.cameraManager) return;
 
-    const isFreeFlight = this.cameraManager.cameraMode === 'free_flight';
-    this.controlPanel?.updateButtonState('control-mode', isFreeFlight);
+    const isOrbit = this.cameraManager.cameraMode === CameraMode.ORBIT;
+    this.controlPanel?.updateButtonState('control-mode', isOrbit);
 
     if (showMessage) {
-      const modeText = isFreeFlight ? 'Free Flight' : 'Orbit';
+      const modeText = isOrbit ? 'Orbit' : 'Free Flight';
       this.showInfo(`Режим управления: ${modeText}`);
+    }
+  }
+
+  private async handleBuildingChange(_buildingId: string): Promise<void> {
+    if (!this.buildingTitle?.selectedBuilding?.modelUrl || !this.buildingManager || !this.markerManager || !this.cameraManager) {
+      return;
+    }
+
+    const selectedBuilding = this.buildingTitle.selectedBuilding;
+    if (!selectedBuilding?.modelUrl) {
+      return;
+    }
+
+    this.controlPanel?.setButtonsEnabled(false);
+    this.markerDetailsPanel?.hide();
+    this.routeManager.resetRoute();
+
+    try {
+      await this.buildingManager.reloadBuilding(selectedBuilding.modelUrl);
+      await this.markerManager.initialize();
+
+      this.cameraManager.setDimensions(this.buildingManager.dimensions);
+      this.cameraManager.setTargetPosition(this.buildingManager.center);
+      await this.cameraManager.switchToMode(CameraMode.FREE_FLIGHT);
+      await this.cameraManager.initialize();
+
+      const floorManager = this.buildingManager.floorManager;
+      this.markerManager.setCurrentFloor(
+        floorManager.getViewMode() === 'single' ? floorManager.currentFloor : 'all'
+      );
+
+      this.searchBar?.refreshMarkers();
+      this.refreshFloorButtons();
+      this.syncControlModeButton(false);
+      this.popupManager?.success(`Загружено: ${selectedBuilding.name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Failed to switch building', error);
+      this.popupManager?.error(`Не удалось загрузить ${selectedBuilding.name}: ${message}`);
+    } finally {
+      this.controlPanel?.setButtonsEnabled(true);
     }
   }
 
@@ -400,6 +532,26 @@ export class UIManager implements IUIManager {
     }
   }
 
+  private selectFloor(floor: number): void {
+    if (!this.buildingManager) return;
+
+    const floorManager = this.buildingManager.floorManager;
+    if (floorManager.isFloorAnimating?.()) {
+      return;
+    }
+
+    if (!floorManager.getAccessibleFloorNumbers().includes(floor)) {
+      return;
+    }
+
+    this.temporarilyLockFloorButtons();
+    if (floorManager.getViewMode() === 'all') {
+      floorManager.setViewMode('single');
+    }
+    floorManager.showFloor(floor);
+    this.refreshFloorButtons();
+  }
+
   private prevFloor(): void {
     if (this.buildingManager) {
       const floorManager = this.buildingManager.floorManager;
@@ -453,7 +605,98 @@ export class UIManager implements IUIManager {
     const accessibleFloors = floorManager.getAccessibleFloorNumbers();
     const currentFloor = floorManager.getViewMode() === 'single' ? floorManager.currentFloor : 0;
     const maxAccessibleFloor = accessibleFloors[accessibleFloors.length - 1] ?? 0;
-    this.controlPanel.updateFloorButtons(currentFloor, maxAccessibleFloor);
+    this.controlPanel.updateButtonState('view', floorManager.getViewMode() === 'single');
+    this.controlPanel.updateFloorButtons(currentFloor, maxAccessibleFloor, accessibleFloors);
+  }
+
+  private toggleMarkersVisibility(): void {
+    this.markersVisible = !this.markersVisible;
+    this.markerManager?.setMarkersMuted(!this.markersVisible);
+    this.controlPanel?.setMarkersVisible(this.markersVisible);
+  }
+
+  private async scanQrCode(): Promise<void> {
+    if (!this.markerManager) {
+      return;
+    }
+
+    const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      this.popupManager?.warning('Сканирование QR-кодов пока не поддерживается в этом браузере.');
+      return;
+    }
+
+    const scannedText = await this.captureQrFromCamera();
+    if (!scannedText) {
+      return;
+    }
+
+    const normalized = scannedText.trim();
+    const marker = this.markerManager.getAllMarkers().find((item) => {
+      if (!item.hasQR()) return false;
+      const markerQr = item.getQR();
+      return typeof markerQr === 'string' && markerQr.trim() === normalized;
+    });
+
+    if (!marker) {
+      this.popupManager?.warning('QR-код считан, но подходящая метка не найдена.');
+      return;
+    }
+
+    this.markerManager.setSelectedMarker(marker);
+    this.markerDetailsPanel?.show(marker as any);
+    await this.markerManager.focusOnMarker(marker.id, { distance: 8, duration: 1.2 });
+    this.popupManager?.success(`Найдена метка: ${marker.name}`);
+  }
+
+  private captureQrFromCamera(): Promise<string | null> {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.setAttribute('capture', 'environment');
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      input.style.pointerEvents = 'none';
+
+      const cleanup = () => {
+        input.remove();
+      };
+
+      input.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+
+        try {
+          const imageBitmap = await createImageBitmap(file);
+          const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+          const detector = new BarcodeDetectorCtor({ formats: ['qr_code'] });
+          const barcodes = await detector.detect(imageBitmap);
+          imageBitmap.close?.();
+
+          const rawValue = barcodes?.[0]?.rawValue;
+          if (typeof rawValue === 'string' && rawValue.trim()) {
+            resolve(rawValue);
+          } else {
+            this.popupManager?.warning('QR-код не распознан. Попробуйте ещё раз.');
+            resolve(null);
+          }
+        } catch (error) {
+          this.logger.error('QR scan failed', error);
+          this.popupManager?.error('Не удалось обработать изображение с камеры.');
+          resolve(null);
+        } finally {
+          cleanup();
+        }
+      }, { once: true });
+
+      document.body.appendChild(input);
+      input.click();
+    });
   }
 
   private clearRoute(): void {
@@ -604,3 +847,4 @@ export class UIManager implements IUIManager {
     return this._isLoading;
   }
 }
+

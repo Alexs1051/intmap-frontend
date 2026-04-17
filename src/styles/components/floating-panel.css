@@ -1,0 +1,13 @@
+.ui-floating-surface {
+  background: var(--color-surface-floating);
+  border: 1px solid var(--color-surface-floating-border);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(14px);
+  color: var(--color-text-primary);
+}
+
+.ui-floating-surface-strong {
+  background: var(--color-surface-floating-strong);
+  border-color: var(--color-surface-floating-border);
+  box-shadow: var(--shadow-lg);
+}

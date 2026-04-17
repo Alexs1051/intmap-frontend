@@ -4,10 +4,7 @@
   left: -400px;
   width: 380px;
   height: 100vh;
-  background: var(--color-bg-primary);
-  backdrop-filter: blur(10px);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: var(--shadow-lg);
+  border-right: 1px solid var(--color-surface-floating-border);
   z-index: var(--z-marker-details);
   transition: left var(--transition-normal);
   display: flex;
@@ -21,7 +18,7 @@
 
 .marker-details-header {
   padding: var(--spacing-xl);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--color-surface-floating-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -31,6 +28,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .marker-details-title i {
@@ -51,7 +49,7 @@
 
 .marker-details-close:hover {
   color: var(--color-text-primary);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-floating-soft-hover);
 }
 
 .marker-details-content {
@@ -75,9 +73,9 @@
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition-fast);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-surface-floating-soft);
   color: var(--color-text-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-surface-floating-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,7 +90,7 @@
 }
 
 .route-button:not(.active):hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--color-surface-floating-soft-hover);
   color: var(--color-text-primary);
 }
 
@@ -103,6 +101,9 @@
 
 .focus-button {
   width: 100%;
+  min-width: 100%;
+  align-self: stretch;
+  box-sizing: border-box;
   padding: 14px 16px;
   margin-bottom: var(--spacing-xl);
   background: var(--gradient-accent);
@@ -131,10 +132,10 @@
   align-items: center;
   gap: 12px;
   margin-bottom: var(--spacing-lg);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--color-surface-floating-muted);
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-surface-floating-border-soft);
   border-left-width: 6px;
   border-left-style: solid;
 }
@@ -165,7 +166,7 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius-circle);
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--color-surface-floating-soft);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -196,8 +197,8 @@
   font-size: 14px;
   line-height: 1.6;
   padding: var(--spacing-lg);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-surface-floating-muted);
+  border: 1px solid var(--color-surface-floating-border);
   border-radius: var(--radius-lg);
   color: var(--color-markdown-text);
   overflow-y: auto;
@@ -232,7 +233,7 @@
   border-radius: var(--radius-md);
   overflow-x: auto;
   margin: var(--spacing-sm) 0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-surface-floating-border);
 }
 
 .description-markdown pre code {
@@ -291,8 +292,8 @@
 .info-value {
   font-size: 14px;
   padding: var(--spacing-sm) var(--spacing-md);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--color-surface-floating-muted);
+  border: 1px solid var(--color-surface-floating-border-soft);
   border-radius: var(--radius-md);
   width: 100%;
 }
@@ -320,8 +321,8 @@
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-lg);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--color-surface-floating-muted);
+  border: 1px solid var(--color-surface-floating-border);
   border-radius: var(--radius-lg);
 }
 
@@ -388,6 +389,10 @@
   }
 
   .focus-button {
+    width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    min-height: 44px;
     padding: 12px 14px;
     font-size: 14px;
     gap: 6px;

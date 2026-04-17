@@ -49,7 +49,7 @@
   --z-fps-counter: 1000;
   --z-control-panel: 1000;
   --z-building-title: 1500;
-  --z-marker-details: 1500;
+  --z-marker-details: 1800;
   --z-popup: 2000;
   --z-search-overlay: 1999;
   --z-connection-screen: 2500;
@@ -69,55 +69,15 @@
   --color-markdown-blockquote: #aaa;
   --color-markdown-table-header: rgba(255, 255, 255, 0.05);
   --color-markdown-table-border: rgba(255, 255, 255, 0.1);
+  --color-surface-floating: rgba(11, 16, 28, 0.84);
+  --color-surface-floating-hover: rgba(22, 30, 48, 0.92);
+  --color-surface-floating-strong: rgba(8, 12, 20, 0.96);
+  --color-surface-floating-soft: rgba(255, 255, 255, 0.05);
+  --color-surface-floating-soft-hover: rgba(255, 255, 255, 0.1);
+  --color-surface-floating-muted: rgba(255, 255, 255, 0.03);
+  --color-surface-floating-border: rgba(255, 255, 255, 0.08);
+  --color-surface-floating-border-soft: rgba(255, 255, 255, 0.05);
+  --color-surface-group: rgba(44, 56, 86, 0.72);
+  --color-surface-subgroup: rgba(8, 12, 22, 0.56);
 }
 
-.theme-light {
-  --color-bg-primary: rgba(245, 245, 250, 0.98);
-  --color-bg-secondary: rgba(0, 0, 0, 0.05);
-  --color-bg-overlay: rgba(0, 0, 0, 0.3);
-  --color-bg-card: rgba(245, 245, 250, 0.95);
-  --color-bg-card-hover: rgba(235, 235, 245, 0.98);
-  
-  --color-text-primary: #1a1a2e;
-  --color-text-secondary: #4a4a5a;
-  --color-text-muted: #6a6a7a;
-  --color-text-disabled: #9a9aaa;
-  
-  --color-accent-primary: #0066cc;
-  --color-accent-secondary: #2a5a9a;
-  --color-accent-hover: #3388dd;
-  
-  --color-success: #22aa22;
-  --color-warning: #dd8800;
-  --color-error: #dd3333;
-  --color-info: #0066cc;
-  
-  --color-button-bg: rgba(0, 0, 0, 0.05);
-  --color-button-bg-hover: rgba(0, 0, 0, 0.1);
-  --color-input-bg: rgba(0, 0, 0, 0.03);
-  --color-input-border: rgba(0, 0, 0, 0.1);
-  --color-markdown-text: #2c2c3a;
-  --color-markdown-code-bg: rgba(0, 0, 0, 0.05);
-  --color-markdown-blockquote: #6a6a7a;
-  --color-markdown-table-header: rgba(0, 0, 0, 0.05);
-  --color-markdown-table-border: rgba(0, 0, 0, 0.1);
-  
-  --gradient-loading: linear-gradient(135deg, #e8e8f0 0%, #d8d8e8 100%);
-  
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.15);
-  --shadow-hover: 0 8px 20px rgba(0, 0, 0, 0.12);
-}
-
-.theme-light ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.theme-light ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.theme-light ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
-}

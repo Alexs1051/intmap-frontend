@@ -4,6 +4,7 @@
 export enum UIEventType {
     // Поиск
     SEARCH_TOGGLE = 'search:toggle',
+    QR_SCAN = 'qr:scan',
 
     // Авторизация
     AUTH_TOGGLE = 'auth:toggle',
@@ -15,6 +16,7 @@ export enum UIEventType {
 
     // Граф связей
     TOGGLE_GRAPH = 'graph:toggle',
+    TOGGLE_MARKERS = 'markers:toggle',
 
     // Тема оформления
     TOGGLE_THEME = 'theme:toggle',

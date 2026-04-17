@@ -25,6 +25,7 @@ export class BuildingManager implements IBuildingManager {
     private _dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
     private _center: Vector3 = Vector3.Zero();
     private _userInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
+    private _markerManagerRef: any = null;
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
@@ -129,6 +130,7 @@ export class BuildingManager implements IBuildingManager {
      * Установить MarkerManager (вызывается после инициализации MarkerManager)
      */
     public setMarkerManager(markerManager: any): void {
+        this._markerManagerRef = markerManager;
         (this._floorManager as any).setMarkerManager?.(markerManager);
         this.logger.debug('MarkerManager set in BuildingManager -> FloorManager');
     }
@@ -227,6 +229,18 @@ export class BuildingManager implements IBuildingManager {
 
         if (this._data) {
             this._animator.resetAllElements(Array.from(this._data.elements.values()));
+        }
+
+        this._floorManager.dispose();
+        this._wallManager.dispose();
+
+        if (this.scene) {
+            this._floorManager.setScene(this.scene);
+            this._wallManager.setScene(this.scene);
+        }
+        this._floorManager.setWallManager(this._wallManager);
+        if (this._markerManagerRef) {
+            (this._floorManager as any).setMarkerManager?.(this._markerManagerRef);
         }
 
         this._data = null;

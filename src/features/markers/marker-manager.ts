@@ -48,6 +48,7 @@ export class MarkerManager implements IMarkerManager {
   private _toMarkerId: string | null = null;
   private _buildingManager: any = null;
   private _userInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
+  private _markersMuted: boolean = false;
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -247,6 +248,11 @@ export class MarkerManager implements IMarkerManager {
         return;
       }
 
+      if (this._markersMuted) {
+        marker.setVisible(false);
+        return;
+      }
+
       const isAllFloorsMode = this._currentFloor === 'all';
 
       if (isAllFloorsMode) {
@@ -299,6 +305,11 @@ export class MarkerManager implements IMarkerManager {
       }
     });
 
+    this.updateMarkersVisibility();
+  }
+
+  public setMarkersMuted(muted: boolean): void {
+    this._markersMuted = muted;
     this.updateMarkersVisibility();
   }
 
