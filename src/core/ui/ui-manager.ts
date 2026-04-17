@@ -106,6 +106,7 @@ export class UIManager implements IUIManager {
     this.controlPanel?.setAuthState(this.currentUserInfo);
     this.markerManager?.setUserInfo(this.currentUserInfo);
     this.buildingManager?.setUserInfo(this.currentUserInfo);
+    this.syncCameraModeButton(false);
     this.syncControlModeButton(false);
     this.controlPanel?.setMarkersVisible(this.markersVisible);
     this.refreshFloorButtons();
@@ -209,11 +210,12 @@ export class UIManager implements IUIManager {
     });
 
     this.eventBus.on(EventType.CAMERA_RESET, () => {
-      this.controlPanel?.updateButtonState('mode', false);
+      this.syncCameraModeButton(false);
       this.syncControlModeButton(false);
     });
 
     this.eventBus.on(EventType.CAMERA_MODE_CHANGED, () => {
+      this.syncCameraModeButton(false);
       this.syncControlModeButton(false);
       this.refreshFloorButtons();
     });
@@ -370,6 +372,7 @@ export class UIManager implements IUIManager {
       await action();
       await this.waitForCameraIdle();
     } finally {
+      this.syncCameraModeButton(false);
       this.syncControlModeButton(false);
       this.refreshFloorButtons();
       this.setCameraButtonsDisabled(false);
@@ -427,6 +430,18 @@ export class UIManager implements IUIManager {
       this.refreshFloorButtons();
     } else {
       this.logger.warn('BuildingManager not available');
+    }
+  }
+
+  private syncCameraModeButton(showMessage: boolean = true): void {
+    if (!this.cameraManager) return;
+
+    const isTopDown = this.cameraManager.cameraMode === CameraMode.TOP_DOWN;
+    this.controlPanel?.updateButtonState('mode', isTopDown);
+
+    if (showMessage) {
+      const modeText = isTopDown ? '2D' : '3D';
+      this.showInfo(`Режим просмотра: ${modeText}`);
     }
   }
 

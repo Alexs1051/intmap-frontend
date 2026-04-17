@@ -5,6 +5,12 @@
 .search-overlay.visible {
 }
 
+.search-overlay {
+  align-items: start;
+  padding-top: 72px;
+  box-sizing: border-box;
+}
+
 .search-container {
   width: 500px;
   max-width: 90vw;
@@ -163,6 +169,21 @@
 
   .search-result-meta {
     font-size: 11px;
+  }
+}
+
+@media (max-width: 768px) and (orientation: landscape) {
+  .search-overlay {
+    padding-top: 16px;
+    align-items: start;
+  }
+
+  .search-container {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .search-results {
+    max-height: 52vh;
   }
 }
 

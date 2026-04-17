@@ -169,6 +169,10 @@
   display: none;
 }
 
+.control-panel.mobile-device [data-button-id="qr-scan"] {
+  display: flex;
+}
+
 .control-panel-floor-overlay {
   z-index: calc(var(--z-control-panel) + 20);
 }
@@ -242,10 +246,6 @@
 
   .control-panel-track {
     padding: 5px;
-  }
-
-  .control-panel.mobile-device [data-button-id="qr-scan"] {
-    display: flex;
   }
 
   .control-panel-floor-option {
