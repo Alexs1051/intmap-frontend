@@ -626,12 +626,6 @@ export class UIManager implements IUIManager {
       return;
     }
 
-    const BarcodeDetectorCtor = (window as any).BarcodeDetector;
-    if (!BarcodeDetectorCtor) {
-      this.popupManager?.warning('Сканирование QR-кодов пока не поддерживается в этом браузере.');
-      return;
-    }
-
     const scannedText = await this.openLiveQrScanner();
     if (!scannedText) {
       return;
@@ -719,10 +713,6 @@ export class UIManager implements IUIManager {
   }
 
   private async openLiveQrScanner(): Promise<string | null> {
-    if (!(navigator.mediaDevices?.getUserMedia)) {
-      return this.captureQrFromCameraFallback();
-    }
-
     if (this.qrScannerResolve) {
       return null;
     }
@@ -738,10 +728,22 @@ export class UIManager implements IUIManager {
         return;
       }
 
-      this.qrScannerStatus.textContent = 'Наведите камеру на QR-код';
+      const capabilities = this.getQrScannerCapabilities();
+      this.logger.info('QR scanner capabilities', capabilities);
+      this.qrScannerStatus.textContent = capabilities.barcodeDetector
+        ? 'Наведите камеру на QR-код'
+        : 'Пытаюсь открыть камеру. Распознавание зависит от поддержки браузера.';
       this.qrScannerOverlay.classList.add('visible');
 
       try {
+        if (!(navigator.mediaDevices?.getUserMedia)) {
+          this.logger.warn('QR scanner getUserMedia is unavailable', capabilities);
+          this.qrScannerStatus.textContent = this.getQrScannerUnsupportedMessage(capabilities);
+          const fallbackResult = await this.captureQrFromCameraFallback();
+          this.closeQrScanner(fallbackResult);
+          return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
@@ -757,7 +759,11 @@ export class UIManager implements IUIManager {
         this.startQrDetectionLoop();
       } catch (error) {
         this.logger.error('Unable to open QR scanner camera', error);
-        this.popupManager?.error('Не удалось открыть камеру для сканирования QR-кода.');
+        const capabilitiesMessage = this.getQrScannerUnsupportedMessage(this.getQrScannerCapabilities(), error);
+        if (this.qrScannerStatus) {
+          this.qrScannerStatus.textContent = capabilitiesMessage;
+        }
+        this.popupManager?.error(capabilitiesMessage);
         this.closeQrScanner(null);
       }
     });
@@ -770,8 +776,10 @@ export class UIManager implements IUIManager {
 
     const BarcodeDetectorCtor = (window as any).BarcodeDetector;
     if (!BarcodeDetectorCtor) {
-      this.popupManager?.warning('Сканирование QR-кодов пока не поддерживается в этом браузере.');
-      this.closeQrScanner(null);
+      this.logger.warn('QR scanner opened camera without BarcodeDetector support', this.getQrScannerCapabilities());
+      this.qrScannerStatus.textContent =
+        'Камера открыта, но автоматическое распознавание QR не поддерживается в этом браузере. ' +
+        'На iPhone это чаще всего требует HTTPS и отдельной JS-библиотеки для распознавания.';
       return;
     }
 
@@ -861,8 +869,16 @@ export class UIManager implements IUIManager {
         }
 
         try {
-          const imageBitmap = await createImageBitmap(file);
           const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+          if (!BarcodeDetectorCtor) {
+            this.popupManager?.warning(
+              'Браузер позволяет выбрать снимок с камеры, но автоматическое распознавание QR здесь не поддерживается.'
+            );
+            resolve(null);
+            return;
+          }
+
+          const imageBitmap = await createImageBitmap(file);
           const detector = new BarcodeDetectorCtor({ formats: ['qr_code'] });
           const barcodes = await detector.detect(imageBitmap);
           imageBitmap.close?.();
@@ -886,6 +902,59 @@ export class UIManager implements IUIManager {
       document.body.appendChild(input);
       input.click();
     });
+  }
+
+  private getQrScannerCapabilities(): {
+    secureContext: boolean;
+    mediaDevices: boolean;
+    getUserMedia: boolean;
+    barcodeDetector: boolean;
+    userAgent: string;
+  } {
+    const mediaDevicesSupported = typeof navigator !== 'undefined' && !!navigator.mediaDevices;
+    const getUserMediaSupported = mediaDevicesSupported && typeof navigator.mediaDevices.getUserMedia === 'function';
+
+    return {
+      secureContext: window.isSecureContext,
+      mediaDevices: mediaDevicesSupported,
+      getUserMedia: getUserMediaSupported,
+      barcodeDetector: typeof (window as any).BarcodeDetector === 'function',
+      userAgent: navigator.userAgent
+    };
+  }
+
+  private getQrScannerUnsupportedMessage(
+    capabilities: {
+      secureContext: boolean;
+      mediaDevices: boolean;
+      getUserMedia: boolean;
+      barcodeDetector: boolean;
+    },
+    error?: unknown
+  ): string {
+    if (!capabilities.secureContext) {
+      return 'Камера в этом браузере доступна только по HTTPS или localhost. Сейчас страница открыта в небезопасном контексте.';
+    }
+
+    if (!capabilities.mediaDevices || !capabilities.getUserMedia) {
+      return 'Текущий браузер не даёт сайту доступ к камере через getUserMedia.';
+    }
+
+    if (error instanceof DOMException) {
+      if (error.name === 'NotAllowedError') {
+        return 'Доступ к камере запрещён. Разрешите доступ к камере для этого сайта в настройках браузера.';
+      }
+
+      if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
+        return 'Не удалось найти подходящую камеру на устройстве.';
+      }
+    }
+
+    if (!capabilities.barcodeDetector) {
+      return 'Камера может открыться, но автоматическое распознавание QR в этом браузере не поддерживается.';
+    }
+
+    return 'Не удалось открыть камеру для сканирования QR-кода.';
   }
 
   private clearRoute(): void {

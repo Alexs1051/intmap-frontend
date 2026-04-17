@@ -507,7 +507,7 @@ export class CameraInputHandler implements ICameraInputHandler {
     if (!this.orbitCamera) return;
 
     this.orbitCamera.alpha -= deltaX * CAMERA.ORBIT.TOUCH_ROTATION_SENSITIVITY;
-    this.orbitCamera.beta += deltaY * CAMERA.ORBIT.TOUCH_ROTATION_SENSITIVITY;
+    this.orbitCamera.beta -= deltaY * CAMERA.ORBIT.TOUCH_ROTATION_SENSITIVITY;
     this.orbitCamera.beta = Math.max(CAMERA.ORBIT.MIN_BETA, Math.min(CAMERA.ORBIT.MAX_BETA, this.orbitCamera.beta));
   }
 
