@@ -10,7 +10,7 @@
 
 .popup-container {
   position: fixed;
-  top: 80px;
+  top: 96px;
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-popup);
@@ -25,7 +25,7 @@
 
 @media (max-width: 768px) {
   .popup-container {
-    top: 60px;
+    top: 74px;
   }
 }
 
@@ -145,7 +145,7 @@
 /* Мобильная адаптация */
 @media (max-width: 768px) {
   .popup-container {
-    top: 50px;
+    top: 68px;
     max-width: 95vw;
     gap: 8px;
   }
@@ -172,7 +172,7 @@
 
 @media (max-width: 480px) {
   .popup-container {
-    top: 40px;
+    top: 62px;
     max-width: 98vw;
   }
 

@@ -152,13 +152,13 @@ export class BuildingTitle implements IBuildingTitle {
       {
         id: 'building-01',
         name: 'Test_Building_01',
-        modelUrl: '/models/building_01.glb',
+        modelUrl: 'models/building_01.glb',
         iconPath: 'icons/ui/object.png'
       },
       {
         id: 'building-02',
         name: 'Test_Building_02',
-        modelUrl: '/models/building_02.glb',
+        modelUrl: 'models/building_02.glb',
         iconPath: 'icons/ui/pin.png'
       }
     ];

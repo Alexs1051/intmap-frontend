@@ -1,5 +1,6 @@
 import { injectable, inject } from "inversify";
 import { Scene } from "@babylonjs/core";
+import QrScanner from "qr-scanner";
 import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
@@ -54,8 +55,7 @@ export class UIManager implements IUIManager {
   private qrScannerOverlay: HTMLDivElement | null = null;
   private qrScannerVideo: HTMLVideoElement | null = null;
   private qrScannerStatus: HTMLDivElement | null = null;
-  private qrScannerStream: MediaStream | null = null;
-  private qrScannerFrameHandle: number | null = null;
+  private qrScannerInstance: QrScanner | null = null;
   private qrScannerResolve: ((value: string | null) => void) | null = null;
 
   constructor(
@@ -730,9 +730,7 @@ export class UIManager implements IUIManager {
 
       const capabilities = this.getQrScannerCapabilities();
       this.logger.info('QR scanner capabilities', capabilities);
-      this.qrScannerStatus.textContent = capabilities.barcodeDetector
-        ? 'Наведите камеру на QR-код'
-        : 'Пытаюсь открыть камеру. Распознавание зависит от поддержки браузера.';
+      this.qrScannerStatus.textContent = 'Наведите камеру на QR-код';
       this.qrScannerOverlay.classList.add('visible');
 
       try {
@@ -744,19 +742,33 @@ export class UIManager implements IUIManager {
           return;
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+        this.qrScannerInstance?.destroy();
+        this.qrScannerInstance = new QrScanner(
+          this.qrScannerVideo,
+          (result) => {
+            const decoded = typeof result === 'string' ? result : result.data;
+            if (this.qrScannerStatus) {
+              this.qrScannerStatus.textContent = 'QR-код распознан';
+            }
+            this.closeQrScanner(decoded.trim());
+          },
+          {
+            preferredCamera: 'environment',
+            maxScansPerSecond: 12,
+            returnDetailedScanResult: true,
+            onDecodeError: (error) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (message !== QrScanner.NO_QR_CODE_FOUND) {
+                this.logger.debug('QR scanner decode warning', message);
+              }
+            }
           }
-        });
+        );
 
-        this.qrScannerStream = stream;
-        this.qrScannerVideo.srcObject = stream;
-        await this.qrScannerVideo.play();
-        this.startQrDetectionLoop();
+        await this.qrScannerInstance.start();
+        this.qrScannerStatus.textContent = capabilities.barcodeDetector
+          ? 'Наведите камеру на QR-код'
+          : 'Камера запущена. Ищу QR-код через fallback-движок.';
       } catch (error) {
         this.logger.error('Unable to open QR scanner camera', error);
         const capabilitiesMessage = this.getQrScannerUnsupportedMessage(this.getQrScannerCapabilities(), error);
@@ -769,72 +781,14 @@ export class UIManager implements IUIManager {
     });
   }
 
-  private startQrDetectionLoop(): void {
-    if (!this.qrScannerVideo || !this.qrScannerStatus) {
-      return;
-    }
-
-    const BarcodeDetectorCtor = (window as any).BarcodeDetector;
-    if (!BarcodeDetectorCtor) {
-      this.logger.warn('QR scanner opened camera without BarcodeDetector support', this.getQrScannerCapabilities());
-      this.qrScannerStatus.textContent =
-        'Камера открыта, но автоматическое распознавание QR не поддерживается в этом браузере. ' +
-        'На iPhone это чаще всего требует HTTPS и отдельной JS-библиотеки для распознавания.';
-      return;
-    }
-
-    const detector = new BarcodeDetectorCtor({ formats: ['qr_code'] });
-    let isDetecting = false;
-
-    const detectFrame = async () => {
-      if (!this.qrScannerVideo || !this.qrScannerResolve) {
-        return;
-      }
-
-      if (!isDetecting && this.qrScannerVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        isDetecting = true;
-        try {
-          const barcodes = await detector.detect(this.qrScannerVideo);
-          const rawValue = barcodes?.[0]?.rawValue;
-          if (typeof rawValue === 'string' && rawValue.trim()) {
-            if (this.qrScannerStatus) {
-              this.qrScannerStatus.textContent = 'QR-код распознан';
-            }
-            this.closeQrScanner(rawValue.trim());
-            return;
-          }
-        } catch (error) {
-          this.logger.error('QR detector loop error', error);
-          this.popupManager?.error('Ошибка распознавания QR-кода.');
-          this.closeQrScanner(null);
-          return;
-        } finally {
-          isDetecting = false;
-        }
-      }
-
-      this.qrScannerFrameHandle = requestAnimationFrame(() => {
-        void detectFrame();
-      });
-    };
-
-    void detectFrame();
-  }
-
   private closeQrScanner(result: string | null): void {
-    if (this.qrScannerFrameHandle !== null) {
-      cancelAnimationFrame(this.qrScannerFrameHandle);
-      this.qrScannerFrameHandle = null;
-    }
+    this.qrScannerInstance?.stop();
+    this.qrScannerInstance?.destroy();
+    this.qrScannerInstance = null;
 
     if (this.qrScannerVideo) {
       this.qrScannerVideo.pause();
       this.qrScannerVideo.srcObject = null;
-    }
-
-    if (this.qrScannerStream) {
-      this.qrScannerStream.getTracks().forEach((track) => track.stop());
-      this.qrScannerStream = null;
     }
 
     if (this.qrScannerOverlay) {
@@ -869,23 +823,9 @@ export class UIManager implements IUIManager {
         }
 
         try {
-          const BarcodeDetectorCtor = (window as any).BarcodeDetector;
-          if (!BarcodeDetectorCtor) {
-            this.popupManager?.warning(
-              'Браузер позволяет выбрать снимок с камеры, но автоматическое распознавание QR здесь не поддерживается.'
-            );
-            resolve(null);
-            return;
-          }
-
-          const imageBitmap = await createImageBitmap(file);
-          const detector = new BarcodeDetectorCtor({ formats: ['qr_code'] });
-          const barcodes = await detector.detect(imageBitmap);
-          imageBitmap.close?.();
-
-          const rawValue = barcodes?.[0]?.rawValue;
-          if (typeof rawValue === 'string' && rawValue.trim()) {
-            resolve(rawValue);
+          const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+          if (typeof result?.data === 'string' && result.data.trim()) {
+            resolve(result.data.trim());
           } else {
             this.popupManager?.warning('QR-код не распознан. Попробуйте ещё раз.');
             resolve(null);
@@ -1091,6 +1031,7 @@ export class UIManager implements IUIManager {
     this.qrScannerOverlay = null;
     this.qrScannerVideo = null;
     this.qrScannerStatus = null;
+    this.qrScannerInstance = null;
     if (this.floorButtonLockTimeout) {
       clearTimeout(this.floorButtonLockTimeout);
       this.floorButtonLockTimeout = null;
