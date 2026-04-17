@@ -29,6 +29,7 @@ export class CameraInputHandler implements ICameraInputHandler {
   private lastTouchCenterY: number = 0;
   private isTouching = false;
   private touchPanActive = false;
+  private touchGestureMode: 'pinch' | 'pan' | null = null;
   private readonly boundPointerDown = (e: PointerEvent) => this.onPointerDown(e);
   private readonly boundPointerMove = (e: PointerEvent) => this.onPointerMove(e);
   private readonly boundPointerUp = (e: PointerEvent) => this.onPointerUp(e);
@@ -382,8 +383,8 @@ export class CameraInputHandler implements ICameraInputHandler {
         this.lastTouchCenterX = (points[0].clientX + points[1].clientX) / 2;
         this.lastTouchCenterY = (points[0].clientY + points[1].clientY) / 2;
 
-        // Для Free Flight - два пальца это pan
-        this.touchPanActive = this.currentMode === CameraMode.FREE_FLIGHT;
+        this.touchPanActive = this.currentMode === CameraMode.FREE_FLIGHT || this.currentMode === CameraMode.TOP_DOWN;
+        this.touchGestureMode = null;
       }
     }
   }
@@ -411,7 +412,7 @@ export class CameraInputHandler implements ICameraInputHandler {
         const deltaY = touch.clientY - this.lastY;
 
         if (deltaX !== 0 || deltaY !== 0) {
-          this.handleRotation(deltaX, deltaY);
+          this.handleTouchRotation(deltaX, deltaY);
           this.lastX = touch.clientX;
           this.lastY = touch.clientY;
         }
@@ -423,28 +424,41 @@ export class CameraInputHandler implements ICameraInputHandler {
       if (touch1 && touch2) {
         const currentDistance = this.getTouchDistance(touch1, touch2);
         const distanceDelta = currentDistance - this.lastTouchDistance;
+        const centerX = (touch1.clientX + touch2.clientX) / 2;
+        const centerY = (touch1.clientY + touch2.clientY) / 2;
+        const centerDeltaX = centerX - this.lastTouchCenterX;
+        const centerDeltaY = centerY - this.lastTouchCenterY;
+        const centerDeltaMagnitude = Math.sqrt(centerDeltaX * centerDeltaX + centerDeltaY * centerDeltaY);
+        const distanceDeltaMagnitude = Math.abs(distanceDelta);
 
-        // Pinch zoom
-        if (Math.abs(distanceDelta) > 2) {
-          const zoomDelta = distanceDelta * 0.02;
-          this.handleZoom(zoomDelta);
-          this.lastTouchDistance = currentDistance;
-        }
-
-        // Pan для Free Flight
-        if (this.touchPanActive) {
-          const centerX = (touch1.clientX + touch2.clientX) / 2;
-          const centerY = (touch1.clientY + touch2.clientY) / 2;
-          const deltaX = centerX - this.lastTouchCenterX;
-          const deltaY = centerY - this.lastTouchCenterY;
-
-          if (deltaX !== 0 || deltaY !== 0) {
-            this.handlePan(deltaX, deltaY);
+        if (!this.touchGestureMode) {
+          if (this.currentMode === CameraMode.ORBIT) {
+            if (distanceDeltaMagnitude > 2) {
+              this.touchGestureMode = 'pinch';
+            }
+          } else if (distanceDeltaMagnitude > 6 && distanceDeltaMagnitude > centerDeltaMagnitude * 1.15) {
+            this.touchGestureMode = 'pinch';
+          } else if (centerDeltaMagnitude > 4 && centerDeltaMagnitude > distanceDeltaMagnitude * 1.15) {
+            this.touchGestureMode = 'pan';
           }
         }
 
-        this.lastTouchCenterX = (touch1.clientX + touch2.clientX) / 2;
-        this.lastTouchCenterY = (touch1.clientY + touch2.clientY) / 2;
+        if (this.touchGestureMode === 'pinch' && Math.abs(distanceDelta) > 1) {
+          this.handleTouchZoom(distanceDelta);
+          this.lastTouchDistance = currentDistance;
+        }
+
+        if (this.touchGestureMode === 'pan' && this.touchPanActive) {
+          if (centerDeltaX !== 0 || centerDeltaY !== 0) {
+            this.handleTouchPan(centerDeltaX, centerDeltaY);
+          }
+        }
+
+        this.lastTouchCenterX = centerX;
+        this.lastTouchCenterY = centerY;
+        if (this.touchGestureMode !== 'pinch') {
+          this.lastTouchDistance = currentDistance;
+        }
       }
     }
   }
@@ -457,6 +471,7 @@ export class CameraInputHandler implements ICameraInputHandler {
     if (this.activeTouchPoints.size === 0) {
       this.isTouching = false;
       this.touchPanActive = false;
+      this.touchGestureMode = null;
       this.lastX = 0;
       this.lastY = 0;
       this.lastTouchDistance = 0;
@@ -465,11 +480,86 @@ export class CameraInputHandler implements ICameraInputHandler {
     } else if (this.activeTouchPoints.size === 1) {
       // Переключаемся обратно в режим вращения
       this.touchPanActive = false;
+      this.touchGestureMode = null;
       const touch = Array.from(this.activeTouchPoints.values())[0];
       if (touch) {
         this.lastX = touch.clientX;
         this.lastY = touch.clientY;
       }
+    }
+  }
+
+  private handleTouchRotation(deltaX: number, deltaY: number): void {
+    if (this.currentMode === CameraMode.ORBIT) {
+      this.handleOrbitTouchRotation(deltaX, deltaY);
+      return;
+    }
+
+    if (this.currentMode === CameraMode.TOP_DOWN) {
+      this.handleTopDownTouchRotation(deltaX, deltaY);
+      return;
+    }
+
+    this.handleRotation(deltaX, deltaY);
+  }
+
+  private handleOrbitTouchRotation(deltaX: number, deltaY: number): void {
+    if (!this.orbitCamera) return;
+
+    this.orbitCamera.alpha -= deltaX * CAMERA.ORBIT.TOUCH_ROTATION_SENSITIVITY;
+    this.orbitCamera.beta += deltaY * CAMERA.ORBIT.TOUCH_ROTATION_SENSITIVITY;
+    this.orbitCamera.beta = Math.max(CAMERA.ORBIT.MIN_BETA, Math.min(CAMERA.ORBIT.MAX_BETA, this.orbitCamera.beta));
+  }
+
+  private handleTopDownTouchRotation(deltaX: number, _deltaY: number): void {
+    if (!this.flightCamera) return;
+
+    const angle = deltaX * CAMERA.TOP_DOWN.TOUCH_ROTATION_SENSITIVITY;
+    const maxAnglePerFrame = 0.07;
+    const clampedAngle = Math.max(-maxAnglePerFrame, Math.min(maxAnglePerFrame, angle));
+    const currentUp = this.getTopDownScreenUp();
+    const cos = Math.cos(clampedAngle);
+    const sin = Math.sin(clampedAngle);
+    const rotatedUp = new Vector3(
+      currentUp.x * cos - currentUp.z * sin,
+      0,
+      currentUp.x * sin + currentUp.z * cos
+    ).normalize();
+
+    this.flightCamera.upVector = rotatedUp;
+    this.flightCamera.setTarget(this.flightCamera.getTarget().clone());
+  }
+
+  private handleTouchZoom(distanceDelta: number): void {
+    if (this.currentMode === CameraMode.ORBIT) {
+      this.handleOrbitZoom(-distanceDelta * CAMERA.ORBIT.TOUCH_ZOOM_SENSITIVITY);
+      return;
+    }
+
+    if (this.currentMode === CameraMode.TOP_DOWN) {
+      this.handleTopDownZoom(-distanceDelta * CAMERA.TOP_DOWN.TOUCH_ZOOM_SENSITIVITY);
+      return;
+    }
+
+    if (this.currentMode === CameraMode.FREE_FLIGHT) {
+      this.handleFlightZoom(distanceDelta * CAMERA.FREE_FLIGHT.TOUCH_ZOOM_SENSITIVITY);
+    }
+  }
+
+  private handleTouchPan(deltaX: number, deltaY: number): void {
+    if (this.currentMode === CameraMode.TOP_DOWN) {
+      this.handleTopDownPan(
+        deltaX * CAMERA.TOP_DOWN.TOUCH_PAN_SENSITIVITY,
+        deltaY * CAMERA.TOP_DOWN.TOUCH_PAN_SENSITIVITY
+      );
+      return;
+    }
+
+    if (this.currentMode === CameraMode.FREE_FLIGHT) {
+      this.handleFlightMove(
+        deltaX * CAMERA.FREE_FLIGHT.TOUCH_PAN_SENSITIVITY,
+        deltaY * CAMERA.FREE_FLIGHT.TOUCH_PAN_SENSITIVITY
+      );
     }
   }
 

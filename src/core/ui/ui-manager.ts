@@ -51,6 +51,12 @@ export class UIManager implements IUIManager {
   private floorButtonLockTimeout: ReturnType<typeof setTimeout> | null = null;
   private currentUserInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
   private markersVisible: boolean = true;
+  private qrScannerOverlay: HTMLDivElement | null = null;
+  private qrScannerVideo: HTMLVideoElement | null = null;
+  private qrScannerStatus: HTMLDivElement | null = null;
+  private qrScannerStream: MediaStream | null = null;
+  private qrScannerFrameHandle: number | null = null;
+  private qrScannerResolve: ((value: string | null) => void) | null = null;
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -626,7 +632,7 @@ export class UIManager implements IUIManager {
       return;
     }
 
-    const scannedText = await this.captureQrFromCamera();
+    const scannedText = await this.openLiveQrScanner();
     if (!scannedText) {
       return;
     }
@@ -649,7 +655,190 @@ export class UIManager implements IUIManager {
     this.popupManager?.success(`Найдена метка: ${marker.name}`);
   }
 
-  private captureQrFromCamera(): Promise<string | null> {
+  private ensureQrScannerOverlay(): void {
+    if (this.qrScannerOverlay && this.qrScannerVideo && this.qrScannerStatus) {
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'qr-scanner-overlay ui-modal-overlay';
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) {
+        this.closeQrScanner(null);
+      }
+    });
+
+    const surface = document.createElement('div');
+    surface.className = 'qr-scanner-surface ui-modal-surface';
+
+    const header = document.createElement('div');
+    header.className = 'qr-scanner-header';
+
+    const title = document.createElement('div');
+    title.className = 'qr-scanner-title';
+    title.textContent = 'Сканирование QR-кода';
+
+    const closeButton = document.createElement('button');
+    closeButton.className = 'qr-scanner-close';
+    closeButton.type = 'button';
+    closeButton.textContent = '✕';
+    closeButton.addEventListener('click', () => this.closeQrScanner(null));
+
+    header.appendChild(title);
+    header.appendChild(closeButton);
+
+    const viewport = document.createElement('div');
+    viewport.className = 'qr-scanner-viewport';
+
+    const video = document.createElement('video');
+    video.className = 'qr-scanner-video';
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+
+    const frame = document.createElement('div');
+    frame.className = 'qr-scanner-frame';
+
+    const status = document.createElement('div');
+    status.className = 'qr-scanner-status';
+    status.textContent = 'Наведите камеру на QR-код';
+
+    viewport.appendChild(video);
+    viewport.appendChild(frame);
+    surface.appendChild(header);
+    surface.appendChild(viewport);
+    surface.appendChild(status);
+    overlay.appendChild(surface);
+    document.body.appendChild(overlay);
+
+    this.qrScannerOverlay = overlay;
+    this.qrScannerVideo = video;
+    this.qrScannerStatus = status;
+  }
+
+  private async openLiveQrScanner(): Promise<string | null> {
+    if (!(navigator.mediaDevices?.getUserMedia)) {
+      return this.captureQrFromCameraFallback();
+    }
+
+    if (this.qrScannerResolve) {
+      return null;
+    }
+
+    this.ensureQrScannerOverlay();
+
+    return new Promise(async (resolve) => {
+      this.qrScannerResolve = resolve;
+
+      if (!this.qrScannerOverlay || !this.qrScannerVideo || !this.qrScannerStatus) {
+        this.qrScannerResolve = null;
+        resolve(null);
+        return;
+      }
+
+      this.qrScannerStatus.textContent = 'Наведите камеру на QR-код';
+      this.qrScannerOverlay.classList.add('visible');
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+
+        this.qrScannerStream = stream;
+        this.qrScannerVideo.srcObject = stream;
+        await this.qrScannerVideo.play();
+        this.startQrDetectionLoop();
+      } catch (error) {
+        this.logger.error('Unable to open QR scanner camera', error);
+        this.popupManager?.error('Не удалось открыть камеру для сканирования QR-кода.');
+        this.closeQrScanner(null);
+      }
+    });
+  }
+
+  private startQrDetectionLoop(): void {
+    if (!this.qrScannerVideo || !this.qrScannerStatus) {
+      return;
+    }
+
+    const BarcodeDetectorCtor = (window as any).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      this.popupManager?.warning('Сканирование QR-кодов пока не поддерживается в этом браузере.');
+      this.closeQrScanner(null);
+      return;
+    }
+
+    const detector = new BarcodeDetectorCtor({ formats: ['qr_code'] });
+    let isDetecting = false;
+
+    const detectFrame = async () => {
+      if (!this.qrScannerVideo || !this.qrScannerResolve) {
+        return;
+      }
+
+      if (!isDetecting && this.qrScannerVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        isDetecting = true;
+        try {
+          const barcodes = await detector.detect(this.qrScannerVideo);
+          const rawValue = barcodes?.[0]?.rawValue;
+          if (typeof rawValue === 'string' && rawValue.trim()) {
+            if (this.qrScannerStatus) {
+              this.qrScannerStatus.textContent = 'QR-код распознан';
+            }
+            this.closeQrScanner(rawValue.trim());
+            return;
+          }
+        } catch (error) {
+          this.logger.error('QR detector loop error', error);
+          this.popupManager?.error('Ошибка распознавания QR-кода.');
+          this.closeQrScanner(null);
+          return;
+        } finally {
+          isDetecting = false;
+        }
+      }
+
+      this.qrScannerFrameHandle = requestAnimationFrame(() => {
+        void detectFrame();
+      });
+    };
+
+    void detectFrame();
+  }
+
+  private closeQrScanner(result: string | null): void {
+    if (this.qrScannerFrameHandle !== null) {
+      cancelAnimationFrame(this.qrScannerFrameHandle);
+      this.qrScannerFrameHandle = null;
+    }
+
+    if (this.qrScannerVideo) {
+      this.qrScannerVideo.pause();
+      this.qrScannerVideo.srcObject = null;
+    }
+
+    if (this.qrScannerStream) {
+      this.qrScannerStream.getTracks().forEach((track) => track.stop());
+      this.qrScannerStream = null;
+    }
+
+    if (this.qrScannerOverlay) {
+      this.qrScannerOverlay.classList.remove('visible');
+    }
+
+    const resolve = this.qrScannerResolve;
+    this.qrScannerResolve = null;
+    resolve?.(result);
+  }
+
+  private captureQrFromCameraFallback(): Promise<string | null> {
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -828,6 +1017,11 @@ export class UIManager implements IUIManager {
   }
 
   public dispose(): void {
+    this.closeQrScanner(null);
+    this.qrScannerOverlay?.remove();
+    this.qrScannerOverlay = null;
+    this.qrScannerVideo = null;
+    this.qrScannerStatus = null;
     if (this.floorButtonLockTimeout) {
       clearTimeout(this.floorButtonLockTimeout);
       this.floorButtonLockTimeout = null;

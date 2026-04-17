@@ -23,6 +23,8 @@ export const CAMERA = {
         ROTATION_SENSITIVITY: 0.008,
         MOVE_SENSITIVITY: 0.3,
         ZOOM_SENSITIVITY: 0.8,
+        TOUCH_ZOOM_SENSITIVITY: 0.035,
+        TOUCH_PAN_SENSITIVITY: 0.75,
         DEFAULT_POSITION: new Vector3(0, 20, 40),
         DEFAULT_TARGET: Vector3.Zero(),
         MIN_DISTANCE: 2,
@@ -33,6 +35,8 @@ export const CAMERA = {
     ORBIT: {
         ROTATION_SENSITIVITY: 0.008,
         ZOOM_SENSITIVITY: 1.2,
+        TOUCH_ROTATION_SENSITIVITY: 0.008,
+        TOUCH_ZOOM_SENSITIVITY: 0.04,
         DEFAULT_ALPHA: -Math.PI / 2,
         DEFAULT_BETA: Math.PI / 3.5,
         DEFAULT_RADIUS: 40,
@@ -46,6 +50,9 @@ export const CAMERA = {
         ROTATION_SENSITIVITY: 0.006,
         PAN_SENSITIVITY: 0.3,
         ZOOM_SENSITIVITY: 0.8,
+        TOUCH_ROTATION_SENSITIVITY: 0.008,
+        TOUCH_ZOOM_SENSITIVITY: 0.04,
+        TOUCH_PAN_SENSITIVITY: 0.9,
         MIN_DISTANCE: 5,
         MAX_DISTANCE: 100
     },
