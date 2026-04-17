@@ -8,6 +8,7 @@ import flagTemplate from '../../data/templates/flag.md';
  */
 export function convertParsedToMarkerData(parsedMarker: ParsedMarker): AnyMarkerData {
   const { backgroundColor, textColor, iconName } = getMarkerStyle(parsedMarker.type);
+  const qrValue = parsedMarker.type === 'flag' ? getFlagQrValue(parsedMarker) : undefined;
 
   return {
     id: parsedMarker.id,
@@ -27,6 +28,7 @@ export function convertParsedToMarkerData(parsedMarker: ParsedMarker): AnyMarker
       direction: 'two-way' as const
     })),
     description: generateDescription(parsedMarker),
+    qr: qrValue,
     accessRights: parsedMarker.metadata.accessRights ?? [],
     requiredRole: parsedMarker.metadata.requiredRole,
     hasAccess: parsedMarker.type === 'gateway' ? false : true,
@@ -82,11 +84,27 @@ function generateDescription(parsedMarker: ParsedMarker): string {
  */
 function generateFlagDescription(parsedMarker: ParsedMarker): string {
   const flagName = parsedMarker.displayName || `Флаг ${parsedMarker.metadata?.number || 'unknown'}`;
-  const qrUrl = parsedMarker.metadata?.qr || `https://example.com/flag/${parsedMarker.metadata?.number || 'unknown'}`;
+  const qrUrl = getFlagQrValue(parsedMarker);
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
 
   return flagTemplate
     .replace('{{FLAG_NAME}}', flagName)
     .replace('{{QR_IMAGE}}', `![QR-код](${qrImageUrl})`)
     .replace(/{{\w+}}/g, '');
+}
+
+function getFlagQrValue(parsedMarker: ParsedMarker): string {
+  const metadataQr = parsedMarker.metadata?.qr;
+  if (typeof metadataQr === 'string' && metadataQr.trim()) {
+    return metadataQr.trim();
+  }
+
+  const flagId = parsedMarker.id || `flag_${parsedMarker.metadata?.number || 'unknown'}`;
+  const encodedFlagId = encodeURIComponent(flagId);
+
+  if (typeof window !== 'undefined' && typeof window.location?.origin === 'string' && window.location.origin) {
+    return `${window.location.origin}/?flag=${encodedFlagId}`;
+  }
+
+  return `intmap://flag/${flagId}`;
 }

@@ -26,6 +26,7 @@ export interface MarkerData {
     hasAccess?: boolean;
     isBlocked?: boolean;
     blockedMessage?: string;
+    qr?: string;
 }
 
 export type AnyMarkerData = MarkerData;

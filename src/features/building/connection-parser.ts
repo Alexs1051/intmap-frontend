@@ -261,6 +261,7 @@ export class MarkerUtils {
 
         const number = match[1];
         const id = `flag_${number}`;
+        const qr = this.buildFlagQrValue(id);
 
         return {
             parsedMarker: id,
@@ -272,7 +273,7 @@ export class MarkerUtils {
             connections: [],
             floorNumber,
             roomId,
-            metadata: { number, qr: `https://example.com/flag/${number}` }
+            metadata: { number, qr }
         };
     }
 
@@ -467,5 +468,15 @@ export class MarkerUtils {
         const currentLevel = this.ROLE_PRIORITY[userRole ?? 'guest'] ?? this.ROLE_PRIORITY.guest;
         const requiredLevel = this.ROLE_PRIORITY[requiredRole] ?? this.ROLE_PRIORITY.admin;
         return currentLevel >= requiredLevel;
+    }
+
+    private static buildFlagQrValue(flagId: string): string {
+        const encodedFlagId = encodeURIComponent(flagId);
+
+        if (typeof window !== 'undefined' && typeof window.location?.origin === 'string' && window.location.origin) {
+            return `${window.location.origin}/?flag=${encodedFlagId}`;
+        }
+
+        return `intmap://flag/${flagId}`;
     }
 }
