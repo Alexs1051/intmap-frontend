@@ -395,15 +395,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
             qrImage.src = qrDataUrl;
             qrImage.alt = 'QR-код';
 
-            const qrLink = document.createElement('a');
-            qrLink.href = qr;
-            qrLink.target = '_blank';
-            qrLink.rel = 'noopener noreferrer';
-            qrLink.textContent = 'Перейти по ссылке';
-            qrLink.className = 'qr-link';
-
             placeholder.appendChild(qrImage);
-            placeholder.appendChild(qrLink);
         }).catch((error: unknown) => {
             detailsLogger.error('Failed to generate QR image', error);
             if (!container.isConnected) {

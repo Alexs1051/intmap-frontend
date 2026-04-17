@@ -49,6 +49,7 @@ export class ControlPanel implements IControlPanel {
     private floorOverlayOpen: boolean = false;
     private accessibleFloors: number[] = [];
     private currentFloor: number = 0;
+    private readonly isMobileDevice: boolean;
 
     private isLandscape: boolean = window.innerWidth > window.innerHeight;
 
@@ -57,6 +58,7 @@ export class ControlPanel implements IControlPanel {
     ) {
         this.logger = logger.getLogger('ControlPanel');
         this.config = UI.CONTROL_PANEL;
+        this.isMobileDevice = this.detectMobileDevice();
 
         this.container = this.createContainer();
         this.track = document.createElement('div');
@@ -124,6 +126,14 @@ export class ControlPanel implements IControlPanel {
         this.isLandscape = window.innerWidth > window.innerHeight;
         container.classList.toggle('landscape', this.isLandscape);
         container.classList.toggle('portrait', !this.isLandscape);
+        container.classList.toggle('mobile-device', this.isMobileDevice);
+    }
+
+    private detectMobileDevice(): boolean {
+        const userAgent = navigator.userAgent || '';
+        const isMobileUserAgent = /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+        const isiPadOSDesktopUA = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+        return isMobileUserAgent || isiPadOSDesktopUA;
     }
 
     private setupResizeListener(): void {

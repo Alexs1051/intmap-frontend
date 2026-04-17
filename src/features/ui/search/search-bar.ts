@@ -66,6 +66,11 @@ export class SearchBar implements ISearchBar {
     this.input.type = 'text';
     this.input.placeholder = this.config.PLACEHOLDER;
     this.input.className = 'search-input';
+    this.input.spellcheck = false;
+    this.input.setAttribute('autocapitalize', 'off');
+    this.input.setAttribute('autocomplete', 'off');
+    this.input.setAttribute('autocorrect', 'off');
+    this.input.setAttribute('enterkeyhint', 'search');
     this.setupInputHandlers();
 
     const counterSpan = document.createElement('span');
@@ -392,6 +397,8 @@ export class SearchBar implements ISearchBar {
       (counter as HTMLElement).style.display = 'none';
     }
 
+    this.input.focus();
+    requestAnimationFrame(() => this.input.focus());
     setTimeout(() => this.input.focus(), 100);
     this.eventBus.emit(EventType.UI_SEARCH_OPEN);
   }
