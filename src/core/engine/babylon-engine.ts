@@ -10,6 +10,7 @@ export class BabylonEngine {
   private canvas: HTMLCanvasElement;
   private logger: Logger;
   private isDisposed: boolean = false;
+  private resizeTimeouts: number[] = [];
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -53,11 +54,9 @@ export class BabylonEngine {
   }
 
   private setupEventHandlers(): void {
-    window.addEventListener("resize", () => {
-      if (!this.isDisposed) {
-        this.engine.resize();
-      }
-    });
+    window.addEventListener("resize", () => this.scheduleResize());
+    window.addEventListener("orientationchange", () => this.scheduleResize([0, 100, 250, 500]));
+    window.visualViewport?.addEventListener("resize", () => this.scheduleResize([0, 100, 250]));
 
     this.canvas.addEventListener("webglcontextlost", (event) => {
       this.logger.warn("WebGL context lost");
@@ -66,6 +65,30 @@ export class BabylonEngine {
 
     this.canvas.addEventListener("webglcontextrestored", () => {
       this.logger.info("WebGL context restored");
+    });
+  }
+
+  private scheduleResize(delays: number[] = [0, 80, 180]): void {
+    if (this.isDisposed) {
+      return;
+    }
+
+    this.resizeTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    this.resizeTimeouts = [];
+
+    const resize = () => {
+      if (this.isDisposed) {
+        return;
+      }
+
+      this.canvas.style.width = `${window.innerWidth}px`;
+      this.canvas.style.height = `${window.innerHeight}px`;
+      this.engine.resize();
+    };
+
+    delays.forEach((delay) => {
+      const timeoutId = window.setTimeout(resize, delay);
+      this.resizeTimeouts.push(timeoutId);
     });
   }
 
@@ -94,6 +117,8 @@ export class BabylonEngine {
   public dispose(): void {
     if (this.isDisposed) return;
 
+    this.resizeTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    this.resizeTimeouts = [];
     this.stopRenderLoop();
     this.engine.dispose();
     this.isDisposed = true;

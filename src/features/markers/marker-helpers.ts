@@ -84,13 +84,11 @@ function generateDescription(parsedMarker: ParsedMarker): string {
  */
 function generateFlagDescription(parsedMarker: ParsedMarker): string {
   const flagName = parsedMarker.displayName || `Флаг ${parsedMarker.metadata?.number || 'unknown'}`;
-  const qrUrl = getFlagQrValue(parsedMarker);
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
 
   return flagTemplate
     .replace('{{FLAG_NAME}}', flagName)
-    .replace('{{QR_IMAGE}}', `![QR-код](${qrImageUrl})`)
-    .replace(/{{\w+}}/g, '');
+    .replace('{{QR_IMAGE}}', '{{QR_IMAGE}}')
+    .replace(/{{(?!QR_IMAGE}})\w+}}/g, '');
 }
 
 function getFlagQrValue(parsedMarker: ParsedMarker): string {

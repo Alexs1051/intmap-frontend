@@ -1,5 +1,6 @@
 import { Marker } from "@features/markers/marker";
 import { marked } from 'marked';
+import QRCode from 'qrcode';
 import { logger } from "@core/logger/logger";
 import { MarkerData, MarkerType, RGBA } from "@shared/types";
 import { MARKER_WIDGET } from "@shared/constants";
@@ -156,12 +157,8 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         // Описание с Markdown
         const description = (data as any).description;
         if (description && typeof description === 'string' && description.trim()) {
-            this._contentContainer.appendChild(this.createDescriptionSection(description));
-        }
-
-        // QR-код для FLAG
-        if (data.type === MarkerType.FLAG && 'qr' in data && (data as any).qr) {
-            this._contentContainer.appendChild(this.createQRCodeSection((data as any).qr));
+            const qrValue = data.type === MarkerType.FLAG && typeof data.qr === 'string' ? data.qr : undefined;
+            this._contentContainer.appendChild(this.createDescriptionSection(description, qrValue));
         }
     }
 
@@ -331,7 +328,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         return iconMap[iconName] || MARKER_WIDGET.ICON_PATH_MARKER;
     }
 
-    private createDescriptionSection(description: string): HTMLDivElement {
+    private createDescriptionSection(description: string, qr?: string): HTMLDivElement {
         const container = document.createElement('div');
         container.className = 'description-section';
 
@@ -344,7 +341,14 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         // ✅ Проверяем, что description - строка и не пустая
         if (description && typeof description === 'string' && description.trim()) {
             try {
-                const parsed = marked.parse(description);
+                const preparedDescription = qr
+                    ? description.replace(
+                        '{{QR_IMAGE}}',
+                        '<div class="qr-container"><div class="qr-image qr-image-loading">Генерация QR-кода...</div></div>'
+                    )
+                    : description.replace('{{QR_IMAGE}}', '');
+
+                const parsed = marked.parse(preparedDescription);
                 htmlContent = typeof parsed === 'string' ? parsed : String(parsed);
             } catch (error) {
                 console.error('Failed to parse markdown:', error);
@@ -356,41 +360,62 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         value.className = 'description-markdown';
         value.innerHTML = htmlContent || 'Нет описания';
 
+        if (qr) {
+            this.populateGeneratedQr(value, qr);
+        }
+
         container.appendChild(label);
         container.appendChild(value);
         return container;
     }
 
-    private createQRCodeSection(qr: string): HTMLDivElement {
-        const container = document.createElement('div');
-        container.className = 'qr-section';
+    private populateGeneratedQr(container: HTMLElement, qr: string): void {
+        const placeholder = container.querySelector('.qr-container');
+        if (!placeholder) {
+            return;
+        }
 
-        const label = document.createElement('div');
-        label.className = 'qr-label';
-        label.textContent = 'QR-код';
+        void QRCode.toDataURL(qr, {
+            errorCorrectionLevel: 'M',
+            margin: 1,
+            width: 200,
+            color: {
+                dark: '#111111',
+                light: '#0000'
+            }
+        }).then((qrDataUrl: string) => {
+            if (!container.isConnected) {
+                return;
+            }
 
-        const qrContainer = document.createElement('div');
-        qrContainer.className = 'qr-container';
+            placeholder.innerHTML = '';
 
-        // Генерируем QR-код как изображение через публичный API
-        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qr)}`;
-        const qrImage = document.createElement('img');
-        qrImage.className = 'qr-image';
-        qrImage.src = qrImageUrl;
-        qrImage.alt = 'QR-код';
+            const qrImage = document.createElement('img');
+            qrImage.className = 'qr-image';
+            qrImage.src = qrDataUrl;
+            qrImage.alt = 'QR-код';
 
-        const qrLink = document.createElement('a');
-        qrLink.href = qr;
-        qrLink.target = '_blank';
-        qrLink.textContent = 'Перейти по ссылке';
-        qrLink.className = 'qr-link';
+            const qrLink = document.createElement('a');
+            qrLink.href = qr;
+            qrLink.target = '_blank';
+            qrLink.rel = 'noopener noreferrer';
+            qrLink.textContent = 'Перейти по ссылке';
+            qrLink.className = 'qr-link';
 
-        qrContainer.appendChild(qrImage);
-        qrContainer.appendChild(qrLink);
-        container.appendChild(label);
-        container.appendChild(qrContainer);
+            placeholder.appendChild(qrImage);
+            placeholder.appendChild(qrLink);
+        }).catch((error: unknown) => {
+            detailsLogger.error('Failed to generate QR image', error);
+            if (!container.isConnected) {
+                return;
+            }
 
-        return container;
+            placeholder.innerHTML = '';
+            const fallback = document.createElement('div');
+            fallback.className = 'info-value';
+            fallback.textContent = 'Не удалось сгенерировать QR-код';
+            placeholder.appendChild(fallback);
+        });
     }
 
     private createInfoSection(labelText: string, valueText: string, monospace: boolean = false): HTMLDivElement {
