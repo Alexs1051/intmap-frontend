@@ -471,12 +471,16 @@ export class MarkerUtils {
     }
 
     private static buildFlagQrValue(flagId: string): string {
+        const buildingRef = (typeof window !== 'undefined' && typeof (window as any).__INTMAP_CURRENT_BUILDING__ === 'string' && (window as any).__INTMAP_CURRENT_BUILDING__)
+            ? String((window as any).__INTMAP_CURRENT_BUILDING__)
+            : 'test_building_02';
+        const encodedBuildingRef = encodeURIComponent(buildingRef);
         const encodedFlagId = encodeURIComponent(flagId);
 
         if (typeof window !== 'undefined' && typeof window.location?.origin === 'string' && window.location.origin) {
-            return `${window.location.origin}/?flag=${encodedFlagId}`;
+            return `${window.location.origin}/?b=${encodedBuildingRef}&f=${encodedFlagId}`;
         }
 
-        return `intmap://flag/${flagId}`;
+        return `intmap://flag/${buildingRef}/${flagId}`;
     }
 }

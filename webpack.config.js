@@ -2,9 +2,8 @@ const path = require('path');
 const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
-const repoName = 'intmap-frontend';
 const isProduction = process.env.NODE_ENV === 'production';
-const publicPath = isProduction ? `/${repoName}/` : '/';
+const publicPath = process.env.APP_PUBLIC_PATH || '/';
 
 module.exports = {
   mode: isProduction ? 'production' : 'development',

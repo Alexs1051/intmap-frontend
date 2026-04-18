@@ -157,7 +157,7 @@ export class SceneManager implements ISceneManager {
         return component && 'load' in component && typeof (component as any).load === 'function';
     }
 
-    public async loadAll(modelUrl: string): Promise<void> {
+    public async loadAll(modelUrl: string | string[]): Promise<void> {
         if (this.isLoadingFlag) {
             this.logger.warn("Loading already in progress");
             return;

@@ -26,7 +26,6 @@ export class BuildingTitle implements IBuildingTitle {
     this.config = UI.BUILDING_TITLE;
 
     this.createTitle();
-    this.addTestBuildings();
     this.logger.debug("BuildingTitle created");
   }
 
@@ -120,24 +119,26 @@ export class BuildingTitle implements IBuildingTitle {
     return item;
   }
 
-  private selectBuilding(buildingId: string): void {
-    if (this.selectedId === buildingId) {
-      this.closeDropdown();
-      return;
+  public selectBuilding(buildingId: string, notify: boolean = true): boolean {
+    const selectedOption = this.options.find(o => o.id === buildingId);
+    if (!selectedOption) {
+      this.logger.warn(`Building not found: ${buildingId}`);
+      return false;
     }
 
+    const changed = this.selectedId !== buildingId;
     this.selectedId = buildingId;
-    const selectedOption = this.options.find(o => o.id === buildingId);
+    this.titleText.textContent = selectedOption.name;
+    this.titleIcon.src = selectedOption.iconPath || 'icons/ui/object.png';
+    this.logger.info(`Building selected: ${selectedOption.name}`);
+    this.rebuildDropdown();
 
-    if (selectedOption) {
-      this.titleText.textContent = selectedOption.name;
-      this.titleIcon.src = selectedOption.iconPath || 'icons/ui/object.png';
-      this.logger.info(`Building selected: ${selectedOption.name}`);
-      this.rebuildDropdown();
+    if (changed && notify) {
       this.onBuildingChange?.(buildingId);
     }
 
     this.closeDropdown();
+    return true;
   }
 
   private rebuildDropdown(): void {
@@ -145,25 +146,6 @@ export class BuildingTitle implements IBuildingTitle {
     this.options.forEach(option => {
       this.dropdown.appendChild(this.createDropdownItem(option));
     });
-  }
-
-  private addTestBuildings(): void {
-    const testBuildings: BuildingOption[] = [
-      {
-        id: 'building-01',
-        name: 'Test_Building_01',
-        modelUrl: 'models/building_01.glb',
-        iconPath: 'icons/ui/object.png'
-      },
-      {
-        id: 'building-02',
-        name: 'Test_Building_02',
-        modelUrl: 'models/building_02.glb',
-        iconPath: 'icons/ui/pin.png'
-      }
-    ];
-
-    this.setBuildings(testBuildings, 'building-02');
   }
 
   public setBuildings(options: BuildingOption[], selectedId?: string): void {

@@ -1,9 +1,10 @@
 import { injectable, inject } from "inversify";
 import { TYPES } from "@core/di/container";
+import { RouteApi, RouteApiError } from "@core/api/route-api";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
-import { IRouteState } from "@shared/types";
+import { BuildingOption, IRouteState, PathResult } from "@shared/types";
 import { IMarkerManager, ICameraManager } from "@shared/interfaces";
 
 /**
@@ -22,6 +23,8 @@ export class RouteManager {
   private eventBus: EventBus;
   private markerManager?: IMarkerManager;
   private cameraManager?: ICameraManager;
+  private currentBuilding: BuildingOption | null = null;
+  private readonly routeApi: RouteApi = new RouteApi();
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -41,6 +44,10 @@ export class RouteManager {
     this.markerManager = markerManager;
     this.cameraManager = cameraManager;
     this.logger.debug('Dependencies set');
+  }
+
+  public setCurrentBuilding(building: BuildingOption | null): void {
+    this.currentBuilding = building;
   }
 
   /**
@@ -123,7 +130,7 @@ export class RouteManager {
       return;
     }
 
-    const result = this.markerManager.findPath(fromMarkerId, toMarkerId);
+    const result = await this.findRoute(fromMarkerId, toMarkerId);
     this.logger.debug('Path result:', result);
 
     if (result && result.path && result.path.length > 0) {
@@ -174,10 +181,64 @@ export class RouteManager {
 
     // Если есть оба маркера - строим путь
     if (fromMarkerId && toMarkerId) {
-      this.calculateAndShowRoute();
+      void this.calculateAndShowRoute();
     } else {
       this.clearRoute();
     }
+  }
+
+  private async findRoute(fromMarkerId: string, toMarkerId: string): Promise<PathResult | null> {
+    const backendId = this.currentBuilding?.backendId;
+
+    if (backendId && this.markerManager) {
+      try {
+        const backendRoute = await this.routeApi.findRoute(backendId, fromMarkerId, toMarkerId);
+        const path = backendRoute.markerIds
+          .map((markerId, index) => {
+            const marker = this.markerManager?.getMarker(markerId);
+            if (!marker) {
+              return null;
+            }
+
+            return {
+              markerId,
+              position: marker.position,
+              name: marker.name,
+              type: marker.type,
+              distance: index === 0 ? 0 : (backendRoute.steps[index - 1]?.distance ?? backendRoute.steps[index - 1]?.weight ?? 0),
+              distanceFromStart: index === 0
+                ? 0
+                : backendRoute.steps
+                  .slice(0, index)
+                  .reduce((sum, step) => sum + (step.distance ?? step.weight ?? 0), 0)
+            };
+          })
+          .filter((node): node is NonNullable<typeof node> => node !== null);
+
+        if (path.length > 0) {
+          return {
+            found: true,
+            path,
+            totalDistance: backendRoute.totalDistance,
+            isPartial: backendRoute.isPartial,
+            usedAlternateRoute: backendRoute.usedAlternateRoute,
+            blockedGatewayId: backendRoute.blockedGatewayId ?? undefined,
+            blockedGatewayName: backendRoute.blockedGatewayName ?? undefined,
+            message: backendRoute.message ?? undefined
+          };
+        }
+      } catch (error) {
+        if (error instanceof RouteApiError) {
+          this.logger.warn('Backend rejected route request for backend-driven building', error);
+          return null;
+        }
+
+        this.logger.warn('Failed to load route from backend for backend-driven building', error);
+        return null;
+      }
+    }
+
+    return this.markerManager?.findPath(fromMarkerId, toMarkerId) ?? null;
   }
 
   /**

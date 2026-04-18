@@ -5,7 +5,7 @@ import { ParsedMarker, ParsedRoom } from "@shared/types/dto/building.dto";
 
 export interface IBuildingLoader {
     setScene(scene: Scene): void;
-    loadModel(modelUrl: string, onProgress?: (progress: number) => void): Promise<{
+    loadModel(modelUrl: string | string[], onProgress?: (progress: number) => void): Promise<{
         meshes: AbstractMesh[];
         transformNodes: TransformNode[];
         rootMesh: AbstractMesh | null;
@@ -66,9 +66,9 @@ export interface IWallManager extends ISceneComponent {
 
 export interface IBuildingManager extends ILoadableComponent {
     setScene(scene: Scene): void;
-    loadBuilding(modelUrl: string, onProgress?: (progress: number) => void): Promise<void>;
+    loadBuilding(modelUrl: string | string[], onProgress?: (progress: number) => void): Promise<void>;
     animateConstruction(): Promise<void>;
-    reloadBuilding(modelUrl: string): Promise<void>;
+    reloadBuilding(modelUrl: string | string[]): Promise<void>;
     toggleWallTransparency(): void;
     toggleFloorExpand(): void;
     setWallTransparency(transparent: boolean): void;

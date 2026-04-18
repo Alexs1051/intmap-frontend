@@ -2,6 +2,7 @@ import { Scene, SceneLoader, AbstractMesh, TransformNode } from "@babylonjs/core
 import "@babylonjs/loaders/glTF";
 import { injectable, inject } from "inversify";
 import { TYPES } from "@core/di/container";
+import { apiFetch } from "@core/api/api-client";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
@@ -17,6 +18,7 @@ export interface LoadResult {
 export class BuildingLoader implements IBuildingLoader {
     private logger: Logger;
     private scene?: Scene;
+    private readonly objectUrls: string[] = [];
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
@@ -30,47 +32,70 @@ export class BuildingLoader implements IBuildingLoader {
     }
 
     public async loadModel(
-        modelUrl: string,
+        modelUrl: string | string[],
         onProgress?: (progress: number) => void
     ): Promise<LoadResult> {
         if (!this.scene) {
             throw new Error("Scene not set before load");
         }
 
-        this.logger.info(`Loading model from: ${modelUrl}`);
-        this.eventBus.emit(EventType.LOADING_START, { url: modelUrl, type: 'building' });
+        const modelUrls = Array.isArray(modelUrl) ? modelUrl : [modelUrl];
+        this.logger.info(`Loading model assets from: ${modelUrls.join(', ')}`);
+        this.eventBus.emit(EventType.LOADING_START, { url: modelUrls, type: 'building' });
 
         try {
-            const result = await SceneLoader.ImportMeshAsync(
-                "",
-                "",
-                modelUrl,
-                this.scene,
-                (event) => {
-                    if (event.lengthComputable && onProgress) {
-                        onProgress(event.loaded / event.total);
-                        this.eventBus.emit(EventType.LOADING_PROGRESS, {
-                            component: 'building',
-                            progress: event.loaded / event.total
-                        });
-                    }
-                },
-                ".glb"
-            );
+            const allMeshes: AbstractMesh[] = [];
+            const allTransformNodes: TransformNode[] = [];
+            let rootMesh: AbstractMesh | null = null;
 
-            const transformNodes = result.transformNodes || [];
+            for (let index = 0; index < modelUrls.length; index++) {
+                const assetUrl = modelUrls[index];
+                if (!assetUrl) {
+                    continue;
+                }
+                const baseProgress = index / modelUrls.length;
+                const weight = 1 / modelUrls.length;
+                const resolvedAssetUrl = await this.resolveAssetUrl(assetUrl);
 
-            this.logger.info(`Model loaded: ${result.meshes.length} meshes, ${transformNodes.length} transform nodes`);
+                const result = await SceneLoader.ImportMeshAsync(
+                    "",
+                    "",
+                    resolvedAssetUrl,
+                    this.scene,
+                    (event) => {
+                        if (event.lengthComputable && onProgress) {
+                            const assetProgress = event.total > 0 ? event.loaded / event.total : 0;
+                            const overallProgress = baseProgress + (assetProgress * weight);
+                            onProgress(overallProgress);
+                            this.eventBus.emit(EventType.LOADING_PROGRESS, {
+                                component: 'building',
+                                progress: overallProgress
+                            });
+                        }
+                    },
+                    ".glb"
+                );
 
-            const rootMesh = result.meshes.find(mesh =>
-                ["__root__", "root", "scene"].includes(mesh.name)
-            ) || null;
+                allMeshes.push(...result.meshes);
+                allTransformNodes.push(...(result.transformNodes || []));
 
-            this.eventBus.emit(EventType.BUILDING_LOADED, { meshes: result.meshes.length });
+                if (!rootMesh) {
+                    rootMesh = result.meshes.find(mesh =>
+                        ["__root__", "root", "scene"].includes(mesh.name)
+                    ) || null;
+                }
+
+                if (onProgress) {
+                    onProgress((index + 1) / modelUrls.length);
+                }
+            }
+            this.logger.info(`Model assets loaded: ${allMeshes.length} meshes, ${allTransformNodes.length} transform nodes`);
+
+            this.eventBus.emit(EventType.BUILDING_LOADED, { meshes: allMeshes.length });
 
             return {
-                meshes: result.meshes,
-                transformNodes: transformNodes,
+                meshes: allMeshes,
+                transformNodes: allTransformNodes,
                 rootMesh
             };
         } catch (error) {
@@ -78,6 +103,32 @@ export class BuildingLoader implements IBuildingLoader {
             this.eventBus.emit(EventType.LOADING_ERROR, { error });
             throw error;
         }
+    }
+
+    private async resolveAssetUrl(assetUrl: string): Promise<string> {
+        if (!this.requiresAuthenticatedFetch(assetUrl)) {
+            return assetUrl;
+        }
+
+        const response = await apiFetch(assetUrl, {
+            method: 'GET',
+            headers: {
+                Accept: 'model/gltf-binary, application/octet-stream'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch protected asset: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        this.objectUrls.push(objectUrl);
+        return objectUrl;
+    }
+
+    private requiresAuthenticatedFetch(assetUrl: string): boolean {
+        return assetUrl.includes('/api/v1/buildings/') && assetUrl.includes('/file');
     }
 
     public unloadModel(): void {
@@ -98,6 +149,16 @@ export class BuildingLoader implements IBuildingLoader {
         );
 
         meshesToRemove.forEach(mesh => mesh.dispose());
+        this.disposeObjectUrls();
         this.logger.info(`Unloaded ${meshesToRemove.length} meshes`);
+    }
+
+    private disposeObjectUrls(): void {
+        while (this.objectUrls.length > 0) {
+            const url = this.objectUrls.pop();
+            if (url) {
+                URL.revokeObjectURL(url);
+            }
+        }
     }
 }

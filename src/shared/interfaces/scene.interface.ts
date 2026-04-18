@@ -13,7 +13,7 @@ export interface ILoadableComponent extends ISceneComponent {
 export interface ISceneManager {
     readonly scene: Scene;
     readonly isLoading: boolean;
-    loadAll(modelUrl: string): Promise<void>;
+    loadAll(modelUrl: string | string[]): Promise<void>;
     render(deltaTime: number): void;
     dispose(): void;
     getCameraManager(): any;

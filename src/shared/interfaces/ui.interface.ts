@@ -206,6 +206,8 @@ export interface IBuildingTitle {
     setBuildings(options: BuildingOption[], selectedId?: string): void;
     /** Добавить здание */
     addBuilding(option: BuildingOption, select?: boolean): void;
+    /** Выбрать здание программно */
+    selectBuilding(buildingId: string, notify?: boolean): boolean;
     /** Установить колбэк смены здания */
     setOnBuildingChange(callback: (buildingId: string) => void): void;
     /** Получить выбранное здание */

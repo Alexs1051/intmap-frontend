@@ -1,5 +1,5 @@
 import { Mesh, Nullable, Quaternion, Ray, Scene, TransformNode, Vector3 } from "@babylonjs/core";
-import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA, UserInfo } from "@shared/types";
+import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA, UserInfo, BuildingOption } from "@shared/types";
 import { MarkerGraph } from "@features/markers/graph/marker-graph";
 import { ICameraManager } from "./camera.interface";
 import { IWallManager } from "./building.interface";
@@ -75,6 +75,7 @@ export interface IMarkerManager extends ILoadableComponent {
     dispose(): void;
 
     setBuildingManager(buildingManager: any): void;
+    setCurrentBuilding(building: BuildingOption | null): void;
 
     setAllMarkersVisible(visible: boolean): void;
 

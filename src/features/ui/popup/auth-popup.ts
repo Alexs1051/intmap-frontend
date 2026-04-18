@@ -1,5 +1,6 @@
 import { injectable } from "inversify";
 import { Logger } from "@core/logger/logger";
+import { AuthApi } from "@core/api/auth-api";
 import { UI } from "@shared/constants";
 import { IAuthPopup } from "@shared/interfaces";
 import { AuthResult } from "@shared/types";
@@ -17,6 +18,7 @@ export class AuthPopup implements IAuthPopup {
   private _isVisible: boolean = false;
   private onCloseCallback: (() => void) | null = null;
   private onAuthCallback: ((result: AuthResult) => void) | null = null;
+  private readonly authApi: AuthApi = new AuthApi();
 
   constructor(
     logger: Logger) {
@@ -185,7 +187,7 @@ export class AuthPopup implements IAuthPopup {
     this.popup.appendChild(form);
   }
 
-  private handleLoginSubmit(event: Event): void {
+  private async handleLoginSubmit(event: Event): Promise<void> {
     event.preventDefault();
 
     const form = event.target as HTMLFormElement;
@@ -195,24 +197,18 @@ export class AuthPopup implements IAuthPopup {
 
     this.logger.debug(`Login attempt: ${login}`);
 
-    if (login === this.config.TEST_USER && password === this.config.TEST_PASS) {
+    try {
+      const response = await this.authApi.login(login, password);
       this.logger.info(`Login success: ${login}`);
       this.onAuthCallback?.({
         success: true,
-        username: login,
-        role: this.config.TEST_ROLE
+        username: response.login,
+        role: response.role?.toLowerCase(),
+        token: response.token
       });
       this.hide();
-    } else if (login === this.config.TEST_ADMIN_USER && password === this.config.TEST_ADMIN_PASS) {
-      this.logger.info(`Admin login success: ${login}`);
-      this.onAuthCallback?.({
-        success: true,
-        username: login,
-        role: this.config.TEST_ADMIN_ROLE
-      });
-      this.hide();
-    } else {
-      this.logger.warn(`Login failed: ${login}`);
+    } catch (error) {
+      this.logger.warn(`Login failed: ${login}`, error);
       this.showError('Неверный логин или пароль');
     }
   }

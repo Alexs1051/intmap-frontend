@@ -24,6 +24,8 @@ export interface AuthResult {
     username?: string;
     /** Роль пользователя */
     role?: string;
+    /** JWT токен */
+    token?: string;
     /** Сообщение об ошибке */
     error?: string;
 }
@@ -48,10 +50,16 @@ export interface PopupOptions {
 export interface BuildingOption {
     /** Уникальный идентификатор здания */
     id: string;
+    /** Backend UUID здания */
+    backendId?: string;
+    /** Код здания из backend */
+    buildingCode?: string;
     /** Отображаемое название */
     name: string;
     /** URL модели здания */
     modelUrl?: string;
+    /** Набор URL asset'ов для составной загрузки */
+    modelUrls?: string[];
     /** Иконка для списка */
     iconPath?: string;
 }

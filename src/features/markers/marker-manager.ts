@@ -4,11 +4,12 @@ import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
+import { MarkerApi } from "@core/api/marker-api";
 import { Marker } from "./marker";
 import { MarkerGraph } from "./graph/marker-graph";
 import { MarkerGraphRenderer } from "./graph/marker-graph-renderer";
 import { Pathfinder } from "./pathfinder";
-import { MarkerType, AnyMarkerData, FocusOptions, PathResult, UserInfo } from "@shared/types";
+import { MarkerType, AnyMarkerData, FocusOptions, PathResult, UserInfo, BuildingOption } from "@shared/types";
 import { ICameraManager, IMarkerManager, IBuildingManager, IWallManager } from "@shared/interfaces";
 import { container } from "@core/di/container";
 import { convertParsedToMarkerData } from "./marker-helpers";
@@ -47,8 +48,10 @@ export class MarkerManager implements IMarkerManager {
   private _fromMarkerId: string | null = null;
   private _toMarkerId: string | null = null;
   private _buildingManager: any = null;
+  private _currentBuilding: BuildingOption | null = null;
   private _userInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
   private _markersMuted: boolean = false;
+  private readonly markerApi: MarkerApi = new MarkerApi();
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -81,6 +84,10 @@ export class MarkerManager implements IMarkerManager {
   public setBuildingManager(buildingManager: any): void {
     this._buildingManager = buildingManager;
     this.logger.debug('BuildingManager set in MarkerManager');
+  }
+
+  public setCurrentBuilding(building: BuildingOption | null): void {
+    this._currentBuilding = building;
   }
 
   private setupHoverDetection(): void {
@@ -161,43 +168,29 @@ export class MarkerManager implements IMarkerManager {
 
     this.clearAllMarkers();
 
-    const buildingManager = container.get<IBuildingManager>(TYPES.BuildingManager);
-    const markersFromBuilding = buildingManager.getMarkers();
-
-    if (markersFromBuilding && markersFromBuilding.size > 0) {
-      this.logger.info(`Loading ${markersFromBuilding.size} markers from building data`);
-
-      for (const [, markerData] of markersFromBuilding) {
-        const anyMarkerData = convertParsedToMarkerData(markerData);
-        this.createMarker(anyMarkerData);
-      }
-
-      this.logger.info(`Successfully loaded ${this._markers.size} markers`);
-    } else {
-      this.logger.warn("No markers found in building data");
+    const expectsBackendMarkers = !!this._currentBuilding?.backendId && !!(this._currentBuilding?.buildingCode ?? this._currentBuilding?.id);
+    const loadedFromBackend = await this.tryLoadMarkersFromBackend();
+    if (!loadedFromBackend && !expectsBackendMarkers) {
+      this.loadMarkersFromBuildingParser();
+    } else if (!loadedFromBackend && expectsBackendMarkers) {
+      this.logger.error(`Backend marker loading failed for building ${this._currentBuilding?.buildingCode ?? this._currentBuilding?.id}; local parser fallback disabled`);
     }
 
-    // Добавляем связи в граф
-    this._markers.forEach(marker => {
-      const connections = marker.data.connections;
-      if (connections && connections.length > 0) {
-        for (const conn of connections) {
-          if (typeof conn === 'string') {
-            this._graph.addConnection(marker.id, conn, 'two-way');
-          } else if (typeof conn === 'object' && conn.toId) {
-            this._graph.addConnection(conn.fromId || marker.id, conn.toId, conn.direction || 'two-way');
-          }
-        }
-      }
-    });
+    this.rebuildGraphFromMarkerConnections();
 
     this._graphRenderer.renderAll();
     this._graphRenderer.setMarkerManager(this);
     this._graphRenderer.hide();
 
-    // Начальное состояние: граф выключен, показываем только маркеры 1-го этажа
+    // Начальное состояние синхронизируем с текущим режимом FloorManager,
+    // чтобы не было эффекта "сначала только первый этаж".
     this._graphVisible = false;
-    this._currentFloor = 1;
+    const floorManager = this._buildingManager?.floorManager;
+    const viewMode = floorManager?.getViewMode?.() ?? 'all';
+    this._currentFloor = viewMode === 'all'
+      ? 'all'
+      : (floorManager?.currentFloor ?? 1);
+    this.updateMarkersVisibility();
 
     this.eventBus.on(EventType.FLOOR_CHANGED, (event) => {
       const floorData = event.data;
@@ -216,6 +209,75 @@ export class MarkerManager implements IMarkerManager {
     const stats = this.getMarkersStats();
     this.logger.info(`MarkerManager initialized: ${stats.total} markers, ${stats.connections} connections`);
     this.eventBus.emit(EventType.MARKERS_LOADED, stats);
+  }
+
+  private async tryLoadMarkersFromBackend(): Promise<boolean> {
+    const backendId = this._currentBuilding?.backendId;
+    const buildingCode = this._currentBuilding?.buildingCode ?? this._currentBuilding?.id;
+
+    if (!backendId || !buildingCode) {
+      return false;
+    }
+
+    try {
+      const parsedMarkers = this._buildingManager?.getMarkers?.() as Map<string, any> | undefined;
+      const parsedMarkersByExternalId = new Map<string, any>();
+      parsedMarkers?.forEach((parsedMarker, key) => {
+        parsedMarkersByExternalId.set(key, parsedMarker);
+      });
+
+      const markers = await this.markerApi.getMarkerGraph(
+        backendId,
+        buildingCode,
+        this._userInfo.role ?? 'guest',
+        parsedMarkersByExternalId
+      );
+      if (markers.length === 0) {
+        this.logger.warn(`Backend returned no markers for building ${buildingCode}`);
+        return false;
+      }
+
+      this.logger.info(`Loading ${markers.length} markers from backend`);
+      markers.forEach((markerData) => this.createMarker(markerData));
+      this.logger.info(`Successfully loaded ${this._markers.size} backend markers`);
+      return true;
+    } catch (error) {
+      this.logger.warn('Failed to load markers from backend, falling back to local parser', error);
+      return false;
+    }
+  }
+
+  private loadMarkersFromBuildingParser(): void {
+    const buildingManager = this._buildingManager ?? container.get<IBuildingManager>(TYPES.BuildingManager);
+    const markersFromBuilding = buildingManager.getMarkers();
+
+    if (markersFromBuilding && markersFromBuilding.size > 0) {
+      this.logger.info(`Loading ${markersFromBuilding.size} markers from building data`);
+
+      for (const [, markerData] of markersFromBuilding) {
+        const anyMarkerData = convertParsedToMarkerData(markerData);
+        this.createMarker(anyMarkerData);
+      }
+
+      this.logger.info(`Successfully loaded ${this._markers.size} markers`);
+    } else {
+      this.logger.warn("No markers found in building data");
+    }
+  }
+
+  private rebuildGraphFromMarkerConnections(): void {
+    this._markers.forEach(marker => {
+      const connections = marker.data.connections;
+      if (connections && connections.length > 0) {
+        for (const conn of connections) {
+          if (typeof conn === 'string') {
+            this._graph.addConnection(marker.id, conn, 'two-way');
+          } else if (typeof conn === 'object' && conn.toId) {
+            this._graph.addConnection(conn.fromId || marker.id, conn.toId, conn.direction || 'two-way', conn.weight);
+          }
+        }
+      }
+    });
   }
 
   /**
@@ -320,7 +382,10 @@ export class MarkerManager implements IMarkerManager {
     }
 
     const parsedMarker = this._buildingManager?.getMarkerById?.(markerId);
-    return MarkerUtils.hasRequiredRole(this._userInfo.role, parsedMarker?.metadata?.requiredRole);
+    return MarkerUtils.hasRequiredRole(
+      this._userInfo.role,
+      marker.data.requiredRole ?? parsedMarker?.metadata?.requiredRole
+    );
   }
 
   /**
@@ -486,12 +551,13 @@ export class MarkerManager implements IMarkerManager {
 
     if (data.type === MarkerType.GATEWAY) {
       const parsedMarker = this._buildingManager?.getMarkerById?.(data.id);
-      const hasAccess = MarkerUtils.hasRequiredRole(this._userInfo.role, parsedMarker?.metadata?.requiredRole);
+      const requiredRole = data.requiredRole ?? parsedMarker?.metadata?.requiredRole;
+      const hasAccess = data.hasAccess ?? MarkerUtils.hasRequiredRole(this._userInfo.role, requiredRole);
 
       data.hasAccess = hasAccess;
       data.isBlocked = !hasAccess;
       data.iconName = hasAccess ? 'gateway-allowed' : 'gateway-blocked';
-      data.requiredRole = parsedMarker?.metadata?.requiredRole;
+      data.requiredRole = requiredRole;
       data.backgroundColor = { r: 0, g: 0, b: 0, a: 0 };
       data.textColor = hasAccess
         ? { r: 0.95, g: 0.8, b: 0.2, a: 1 }
@@ -520,9 +586,7 @@ export class MarkerManager implements IMarkerManager {
     this._markers.set(data.id, marker);
     this._graph.addNode(marker);
 
-    const isCorrectFloor = this._currentFloor === 'all' || marker.floor === this._currentFloor;
-    const showWaypoint = isCorrectFloor && this._graphVisible;
-    marker.setVisible(marker.type === MarkerType.WAYPOINT ? showWaypoint : isCorrectFloor);
+    marker.setVisible(false);
 
     this.eventBus.emit(EventType.MARKER_ADDED, { marker: marker.id });
     return marker;
@@ -892,7 +956,8 @@ export class MarkerManager implements IMarkerManager {
     marker.data.hasAccess = hasAccess;
     marker.data.isBlocked = !hasAccess;
     marker.data.iconName = hasAccess ? 'gateway-allowed' : 'gateway-blocked';
-    marker.data.requiredRole = this._buildingManager?.getMarkerById?.(marker.id)?.metadata?.requiredRole;
+    marker.data.requiredRole = marker.data.requiredRole
+      ?? this._buildingManager?.getMarkerById?.(marker.id)?.metadata?.requiredRole;
     marker.data.blockedMessage = hasAccess ? undefined : 'Нет доступа';
     marker.data.backgroundColor = backgroundColor;
     marker.data.textColor = textColor;

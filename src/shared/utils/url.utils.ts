@@ -42,3 +42,28 @@ export const buildUrl = (base: string, params: Record<string, string>): string =
     });
     return url.toString();
 };
+
+const CURRENT_BUILDING_REF_KEY = '__INTMAP_CURRENT_BUILDING__';
+
+/**
+ * Возвращает текущий выбранный building ref из runtime-контекста
+ */
+export const getCurrentBuildingRef = (): string | null => {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    const value = (window as typeof window & Record<string, unknown>)[CURRENT_BUILDING_REF_KEY];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
+/**
+ * Сохраняет текущий выбранный building ref в runtime-контекст
+ */
+export const setCurrentBuildingRef = (buildingRef: string): void => {
+    if (typeof window === 'undefined' || !buildingRef.trim()) {
+        return;
+    }
+
+    (window as typeof window & Record<string, unknown>)[CURRENT_BUILDING_REF_KEY] = buildingRef.trim();
+};

@@ -1,8 +1,6 @@
-name: Deploy to GitHub Pages
+name: Disabled GitHub Pages Deploy
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +14,7 @@ concurrency:
 
 jobs:
   build:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -58,6 +57,7 @@ jobs:
           path: './dist'
 
   deploy:
+    if: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

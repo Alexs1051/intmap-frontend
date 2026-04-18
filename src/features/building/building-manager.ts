@@ -67,7 +67,7 @@ export class BuildingManager implements IBuildingManager {
     }
 
     public async loadBuilding(
-        modelUrl: string,
+        modelUrl: string | string[],
         onProgress?: (progress: number) => void
     ): Promise<void> {
         if (!this.scene) {
@@ -223,8 +223,9 @@ export class BuildingManager implements IBuildingManager {
         this.logger.info("Construction animation complete");
     }
 
-    public async reloadBuilding(modelUrl: string): Promise<void> {
-        this.logger.info(`Reloading building: ${modelUrl}`);
+    public async reloadBuilding(modelUrl: string | string[]): Promise<void> {
+        const label = Array.isArray(modelUrl) ? modelUrl.join(', ') : modelUrl;
+        this.logger.info(`Reloading building: ${label}`);
         this._loader.unloadModel();
 
         if (this._data) {

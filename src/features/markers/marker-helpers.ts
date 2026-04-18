@@ -1,5 +1,6 @@
 import { ParsedMarker, AnyMarkerData, MarkerType, RGBA } from "@shared/types";
 import { MARKER_COLORS } from "@shared/constants";
+import { getCurrentBuildingRef, getQueryParam } from "@shared/utils/url.utils";
 import markerTemplate from '../../data/templates/marker.md';
 import flagTemplate from '../../data/templates/flag.md';
 
@@ -98,11 +99,13 @@ function getFlagQrValue(parsedMarker: ParsedMarker): string {
   }
 
   const flagId = parsedMarker.id || `flag_${parsedMarker.metadata?.number || 'unknown'}`;
+  const currentBuildingRef = getCurrentBuildingRef() ?? getQueryParam('b') ?? 'test_building_02';
+  const encodedBuildingRef = encodeURIComponent(currentBuildingRef);
   const encodedFlagId = encodeURIComponent(flagId);
 
   if (typeof window !== 'undefined' && typeof window.location?.origin === 'string' && window.location.origin) {
-    return `${window.location.origin}/?flag=${encodedFlagId}`;
+    return `${window.location.origin}/?b=${encodedBuildingRef}&f=${encodedFlagId}`;
   }
 
-  return `intmap://flag/${flagId}`;
+  return `intmap://flag/${currentBuildingRef}/${flagId}`;
 }

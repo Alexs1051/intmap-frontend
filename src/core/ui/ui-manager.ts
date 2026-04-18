@@ -1,12 +1,15 @@
 import { injectable, inject } from "inversify";
 import { Scene } from "@babylonjs/core";
 import QrScanner from "qr-scanner";
+import { BuildingApi } from "@core/api/building-api";
+import { clearStoredAuthSession, getStoredAuthSession, setStoredAuthSession } from "@core/api/api-client";
 import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { UIFactory } from "./ui-factory";
 import { RouteManager } from "@core/route/route-manager";
 import { UIEventType, NotificationType, SearchResult, AuthResult, UserInfo, MarkerType, CameraMode } from "@shared/types";
+import { getQueryParam, setCurrentBuildingRef } from "@shared/utils/url.utils";
 import { Marker } from "@features/markers/marker";
 import { EventType } from "@core/events/event-types";
 import {
@@ -57,6 +60,9 @@ export class UIManager implements IUIManager {
   private qrScannerStatus: HTMLDivElement | null = null;
   private qrScannerInstance: QrScanner | null = null;
   private qrScannerResolve: ((value: string | null) => void) | null = null;
+  private pendingDeepLink: { buildingId: string; flagRef: string } | null = null;
+  private isHandlingDeepLink: boolean = false;
+  private readonly buildingApi: BuildingApi = new BuildingApi();
 
   constructor(
     @inject(TYPES.Logger) logger: Logger,
@@ -85,6 +91,7 @@ export class UIManager implements IUIManager {
     this.logger.debug('UIManager.initialize: markerManager =', this.markerManager);
 
     this.createUIComponents();
+    void this.initializeBuildingCatalog();
 
     if (this.markerManager) {
       this.logger.debug('MarkerManager set in UIManager');
@@ -97,19 +104,24 @@ export class UIManager implements IUIManager {
       this.eventBus.on(EventType.MARKERS_LOADED, () => {
         this.logger.debug('MARKERS_LOADED event received');
         this.searchBar?.refreshMarkers();
+        void this.processPendingDeepLink();
       });
     }
 
     this.setupCallbacks();
     this.setupEventBusListeners();
     this.loadTheme();
+    this.restoreStoredAuthSession();
     this.controlPanel?.setAuthState(this.currentUserInfo);
     this.markerManager?.setUserInfo(this.currentUserInfo);
     this.buildingManager?.setUserInfo(this.currentUserInfo);
+    this.syncCurrentBuildingContext();
+    this.capturePendingDeepLink();
     this.syncCameraModeButton(false);
     this.syncControlModeButton(false);
     this.controlPanel?.setMarkersVisible(this.markersVisible);
     this.refreshFloorButtons();
+    void this.processPendingDeepLink();
 
     this.eventBus.on(EventType.LOADING_ERROR, (data: any) => {
       const errorMessage = data.error?.message || data.error || data.message || "Неизвестная ошибка";
@@ -169,6 +181,27 @@ export class UIManager implements IUIManager {
       element.classList.add('ui-status-pill');
       statusStack?.appendChild(element);
     });
+  }
+
+  private async initializeBuildingCatalog(): Promise<void> {
+    try {
+      const buildingOptions = await this.buildingApi.getBuildingOptions();
+      if (buildingOptions.length > 0) {
+        const selectedId = this.pendingDeepLink?.buildingId ?? buildingOptions[0]?.id;
+        this.buildingTitle?.setBuildings(buildingOptions, selectedId);
+        this.routeManager.setCurrentBuilding(this.buildingTitle?.selectedBuilding ?? null);
+        this.markerManager?.setCurrentBuilding(this.buildingTitle?.selectedBuilding ?? null);
+        this.syncCurrentBuildingContext();
+        await this.reloadSelectedBuilding(false);
+        return;
+      }
+
+      this.logger.error('No building models returned from backend');
+      this.popupManager?.error('Модели в БД не найдены');
+    } catch (error) {
+      this.logger.error('Failed to load building catalog from backend', error);
+      this.popupManager?.error('Не удалось загрузить модели с backend');
+    }
   }
   private setupEventBusListeners(): void {
     this.eventBus.on(EventType.FLOOR_CHANGED, (event) => {
@@ -458,44 +491,7 @@ export class UIManager implements IUIManager {
   }
 
   private async handleBuildingChange(_buildingId: string): Promise<void> {
-    if (!this.buildingTitle?.selectedBuilding?.modelUrl || !this.buildingManager || !this.markerManager || !this.cameraManager) {
-      return;
-    }
-
-    const selectedBuilding = this.buildingTitle.selectedBuilding;
-    if (!selectedBuilding?.modelUrl) {
-      return;
-    }
-
-    this.controlPanel?.setButtonsEnabled(false);
-    this.markerDetailsPanel?.hide();
-    this.routeManager.resetRoute();
-
-    try {
-      await this.buildingManager.reloadBuilding(selectedBuilding.modelUrl);
-      await this.markerManager.initialize();
-
-      this.cameraManager.setDimensions(this.buildingManager.dimensions);
-      this.cameraManager.setTargetPosition(this.buildingManager.center);
-      await this.cameraManager.switchToMode(CameraMode.FREE_FLIGHT);
-      await this.cameraManager.initialize();
-
-      const floorManager = this.buildingManager.floorManager;
-      this.markerManager.setCurrentFloor(
-        floorManager.getViewMode() === 'single' ? floorManager.currentFloor : 'all'
-      );
-
-      this.searchBar?.refreshMarkers();
-      this.refreshFloorButtons();
-      this.syncControlModeButton(false);
-      this.popupManager?.success(`Загружено: ${selectedBuilding.name}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error('Failed to switch building', error);
-      this.popupManager?.error(`Не удалось загрузить ${selectedBuilding.name}: ${message}`);
-    } finally {
-      this.controlPanel?.setButtonsEnabled(true);
-    }
+    await this.reloadSelectedBuilding(true);
   }
 
   private toggleViewMode(): void {
@@ -916,22 +912,120 @@ export class UIManager implements IUIManager {
     this.routeManager.clearRoute();
   }
 
+  private syncCurrentBuildingContext(): void {
+    const currentBuildingId = this.buildingTitle?.selectedBuilding?.id;
+    if (currentBuildingId) {
+      setCurrentBuildingRef(currentBuildingId);
+    }
+    this.routeManager.setCurrentBuilding(this.buildingTitle?.selectedBuilding ?? null);
+    this.markerManager?.setCurrentBuilding(this.buildingTitle?.selectedBuilding ?? null);
+  }
+
+  private capturePendingDeepLink(): void {
+    const buildingId = getQueryParam('b')?.trim();
+    const flagRef = getQueryParam('f')?.trim();
+
+    if (buildingId && flagRef) {
+      this.pendingDeepLink = { buildingId, flagRef };
+    }
+  }
+
+  private async processPendingDeepLink(): Promise<void> {
+    if (
+      this.isHandlingDeepLink ||
+      !this.pendingDeepLink ||
+      !this.buildingTitle ||
+      !this.markerManager
+    ) {
+      return;
+    }
+
+    const { buildingId, flagRef } = this.pendingDeepLink;
+    this.isHandlingDeepLink = true;
+
+    try {
+      if (this.buildingTitle.selectedBuilding?.id !== buildingId) {
+        const selected = this.buildingTitle.selectBuilding(buildingId, false);
+        if (!selected) {
+          this.logger.warn(`Deep-link building not found: ${buildingId}`);
+          this.pendingDeepLink = null;
+          return;
+        }
+
+        await this.handleBuildingChange(buildingId);
+      }
+
+      const marker = this.findMarkerByDeepLinkFlag(flagRef);
+      if (!marker) {
+        this.logger.debug(`Deep-link marker not found yet: ${flagRef}`);
+        return;
+      }
+
+      this.pendingDeepLink = null;
+      this.markerManager.setSelectedMarker(marker);
+      this.markerDetailsPanel?.show(marker as Marker);
+      await this.markerManager.focusOnMarker(marker.id, { distance: 8, duration: 1.2 });
+      this.popupManager?.info(`Открыта метка: ${marker.name}`, 3500);
+    } finally {
+      this.isHandlingDeepLink = false;
+    }
+  }
+
+  private findMarkerByDeepLinkFlag(flagRef: string): IMarker | undefined {
+    return this.markerManager?.getAllMarkers().find((marker) => this.matchesDeepLinkFlag(marker, flagRef));
+  }
+
+  private matchesDeepLinkFlag(marker: IMarker, flagRef: string): boolean {
+    if (!marker.hasQR()) {
+      return false;
+    }
+
+    if (marker.id === flagRef) {
+      return true;
+    }
+
+    const qr = marker.getQR();
+    if (!qr) {
+      return false;
+    }
+
+    try {
+      const parsedUrl = new URL(qr, window.location.origin);
+      return parsedUrl.searchParams.get('f') === flagRef;
+    } catch {
+      return qr.includes(`f=${encodeURIComponent(flagRef)}`) || qr.endsWith(`/${flagRef}`);
+    }
+  }
+
   private handleAuthResult(result: AuthResult): void {
     this.currentUserInfo = result.success
       ? {
         isAuthenticated: true,
         username: result.username,
-        role: (result.role as UserInfo['role']) ?? 'user'
+        role: (result.role as UserInfo['role']) ?? 'user',
+        token: result.token
       }
       : {
         isAuthenticated: false,
         role: 'guest'
       };
 
+    if (result.success && result.username && result.token) {
+      setStoredAuthSession({
+        token: result.token,
+        login: result.username,
+        role: this.currentUserInfo.role ?? 'user'
+      });
+    } else if (!result.success) {
+      clearStoredAuthSession();
+    }
+
     this.controlPanel?.setAuthState(this.currentUserInfo);
     this.markerManager?.setUserInfo(this.currentUserInfo);
     this.buildingManager?.setUserInfo(this.currentUserInfo);
     this.searchBar?.refreshMarkers();
+    this.routeManager.resetRoute();
+    void this.refreshSceneAccessState();
 
     const currentMarker = this.markerDetailsPanel?.currentMarker;
     if (currentMarker && currentMarker.type === MarkerType.GATEWAY) {
@@ -944,6 +1038,100 @@ export class UIManager implements IUIManager {
     } else {
       this.popupManager?.info('Вы вышли из системы');
       this.eventBus.emit(EventType.UI_AUTH_LOGOUT, this.currentUserInfo);
+    }
+  }
+
+  private restoreStoredAuthSession(): void {
+    const session = getStoredAuthSession();
+    if (!session) {
+      return;
+    }
+
+    this.currentUserInfo = {
+      isAuthenticated: true,
+      username: session.login,
+      role: session.role,
+      token: session.token
+    };
+  }
+
+  private async refreshSceneAccessState(): Promise<void> {
+    try {
+      this.controlPanel?.setButtonsEnabled(false);
+      const currentBuildingId = this.buildingTitle?.selectedBuilding?.id;
+      const buildingOptions = await this.buildingApi.getBuildingOptions();
+      if (buildingOptions.length > 0) {
+        this.buildingTitle?.setBuildings(buildingOptions, currentBuildingId ?? buildingOptions[0]?.id);
+        this.syncCurrentBuildingContext();
+        await this.reloadSelectedBuilding(false);
+      } else {
+        await this.markerManager?.initialize();
+        this.markerManager?.updateMarkersVisibility();
+        this.searchBar?.refreshMarkers();
+        this.refreshFloorButtons();
+      }
+    } catch (error) {
+      this.logger.error('Failed to refresh scene access state after auth change', error);
+      try {
+        await this.markerManager?.initialize();
+        this.markerManager?.updateMarkersVisibility();
+        this.searchBar?.refreshMarkers();
+        this.refreshFloorButtons();
+      } catch (nestedError) {
+        this.logger.error('Fallback scene access refresh also failed', nestedError);
+      }
+    } finally {
+      this.controlPanel?.setButtonsEnabled(true);
+    }
+  }
+
+  private async reloadSelectedBuilding(showToast: boolean): Promise<void> {
+    if (!this.buildingTitle?.selectedBuilding?.modelUrl || !this.buildingManager || !this.markerManager || !this.cameraManager) {
+      return;
+    }
+
+    const selectedBuilding = this.buildingTitle.selectedBuilding;
+    if (!selectedBuilding?.modelUrl) {
+      return;
+    }
+
+    const selectedModel = selectedBuilding.modelUrls?.length ? selectedBuilding.modelUrls : selectedBuilding.modelUrl;
+
+    this.controlPanel?.setButtonsEnabled(false);
+    this.markerDetailsPanel?.hide();
+    this.routeManager.resetRoute();
+
+    try {
+      this.markerManager?.setCurrentBuilding(selectedBuilding);
+      this.routeManager.setCurrentBuilding(selectedBuilding);
+      await this.buildingManager.reloadBuilding(selectedModel);
+      await this.markerManager.initialize();
+
+      this.cameraManager.setDimensions(this.buildingManager.dimensions);
+      this.cameraManager.setTargetPosition(this.buildingManager.center);
+      await this.cameraManager.switchToMode(CameraMode.FREE_FLIGHT);
+      await this.cameraManager.initialize();
+      this.syncCurrentBuildingContext();
+
+      const floorManager = this.buildingManager.floorManager;
+      this.markerManager.setCurrentFloor(
+        floorManager.getViewMode() === 'single' ? floorManager.currentFloor : 'all'
+      );
+
+      this.searchBar?.refreshMarkers();
+      this.refreshFloorButtons();
+      this.syncControlModeButton(false);
+      await this.processPendingDeepLink();
+
+      if (showToast) {
+        this.popupManager?.success(`Загружено: ${selectedBuilding.name}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Failed to switch building', error);
+      this.popupManager?.error(`Не удалось загрузить ${selectedBuilding.name}: ${message}`);
+    } finally {
+      this.controlPanel?.setButtonsEnabled(true);
     }
   }
 

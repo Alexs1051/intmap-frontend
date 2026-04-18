@@ -22,8 +22,10 @@ import { BabylonEngine } from "@core/engine/babylon-engine";
 import { SceneManager } from "@core/scene/scene-manager";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
+import { BuildingApi } from "@core/api/building-api";
 import { ConfigService } from "@core/config/config-service";
 import { LoadingHandler } from "@core/ui/loading-handler";
+import { getQueryParam } from "@shared/utils/url.utils";
 
 import './styles/main.css';
 
@@ -37,6 +39,7 @@ class App {
   private eventBus!: EventBus;
   private config!: ConfigService;
   private loadingHandler!: LoadingHandler;
+  private buildingApi!: BuildingApi;
   private isRunning: boolean = false;
   private renderLoopId: number | null = null;
 
@@ -74,6 +77,7 @@ class App {
     this.sceneManager = container.get<SceneManager>(TYPES.SceneManager);
     this.eventBus = container.get<EventBus>(TYPES.EventBus);
     this.config = container.get<ConfigService>(TYPES.ConfigService);
+    this.buildingApi = new BuildingApi();
   }
 
   /**
@@ -156,7 +160,7 @@ class App {
     try {
       this.logger.info('Starting application...');
 
-      const modelUrl = this.config.get().modelUrl;
+      const modelUrl = await this.resolveStartupModel();
       this.logger.info(`Loading model from: ${modelUrl}`);
 
       // 1. Загружаем все ресурсы
@@ -185,16 +189,7 @@ class App {
         }
       }
 
-      // 3. Создаём маркеры
-      if (markerManager) {
-        this.logger.info('Creating markers...');
-        await markerManager.initialize();
-
-        markerManager.setAllMarkersVisible(false);
-        this.logger.info('Markers created and hidden');
-      }
-
-      // 4. Делаем здание видимым
+      // 3. Делаем здание видимым
       if (buildingManager && buildingManager.data) {
         buildingManager.data.elements.forEach(element => {
           element.mesh.isVisible = true;
@@ -202,13 +197,13 @@ class App {
         });
       }
 
-      // 5. Показываем сцену
+      // 4. Показываем сцену
       await this.sceneManager.showScene();
 
-      // 6. Запускаем рендер-луп
+      // 5. Запускаем рендер-луп
       this.startRenderLoop();
 
-      // 7. Запускаем анимации с небольшой задержкой
+      // 6. Запускаем анимации с небольшой задержкой
       if (cameraManager) {
         setTimeout(() => {
           this.logger.info('Starting camera intro animation...');
@@ -216,15 +211,18 @@ class App {
         }, 300);
       }
 
-      // 8. Анимацию строительства запускаем последней
+      // 7. Анимацию строительства запускаем последней
       if (buildingManager && buildingManager.isLoaded) {
         setTimeout(async () => {
           this.logger.info('Starting construction animation...');
           await buildingManager.animateConstruction();
 
           if (markerManager) {
-            // Применяем логику видимости из MarkerManager
-            markerManager.setCurrentFloor('all');
+            const floorManager = buildingManager.floorManager;
+            const currentFloor = floorManager.getViewMode() === 'single'
+              ? floorManager.currentFloor
+              : 'all';
+            markerManager.setCurrentFloor(currentFloor);
             markerManager.updateMarkersVisibility();
             this.logger.info('Markers visibility updated after construction animation');
           }
@@ -237,6 +235,35 @@ class App {
       const error = err instanceof Error ? err : new Error(String(err));
       this.logger.error('Failed to start application', error);
       showCriticalError(error.message);
+    }
+  }
+
+  private async resolveStartupModel(): Promise<string | string[]> {
+    try {
+      const buildingOptions = await this.buildingApi.getBuildingOptions();
+      if (buildingOptions.length === 0) {
+        throw new Error('Модели в БД не найдены');
+      }
+
+      const requestedBuildingId = getQueryParam('b')?.trim();
+      const selectedBuilding = requestedBuildingId
+        ? buildingOptions.find((building) => building.id === requestedBuildingId || building.buildingCode === requestedBuildingId)
+        : undefined;
+
+      const startupBuilding = selectedBuilding ?? buildingOptions[0];
+      if (!startupBuilding) {
+        throw new Error('Модели в БД не найдены');
+      }
+
+      return startupBuilding.modelUrls?.length
+        ? startupBuilding.modelUrls
+        : (startupBuilding.modelUrl ?? (() => { throw new Error('Модели в БД не найдены'); })());
+    } catch (error) {
+      this.logger.error('Failed to resolve startup building from backend', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Не удалось получить модели с backend');
     }
   }
 
