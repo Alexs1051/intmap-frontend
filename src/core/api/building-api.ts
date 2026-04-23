@@ -93,13 +93,7 @@ export class BuildingApi {
   }
 
   private getIconPath(buildingCode: string): string {
-    switch (buildingCode) {
-      case 'test_building_01':
-        return 'icons/ui/object.png';
-      case 'test_building_02':
-        return 'icons/ui/pin.png';
-      default:
-        return 'icons/ui/object.png';
-    }
+    void buildingCode;
+    return 'icons/ui/object.png';
   }
 }

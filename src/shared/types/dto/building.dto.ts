@@ -43,26 +43,6 @@ export interface FloorData {
 }
 
 /**
- * Результат парсинга модели здания
- */
-export interface BuildingParseResult {
-    /** Все элементы здания (маппинг по имени) */
-    elements: Map<string, BuildingElement>;
-    /** Элементы, сгруппированные по этажам */
-    floors: Map<number, BuildingElement[]>;
-    /** Ноды этажей (пустые TransformNode для группировки) */
-    floorNodes: Map<number, TransformNode>;
-    /** Все стены */
-    walls: BuildingElement[];
-    /** Все окна */
-    windows: BuildingElement[];
-    /** Все двери */
-    doors: BuildingElement[];
-    /** Все лестницы */
-    stairs: BuildingElement[];
-}
-
-/**
  * Габаритные размеры здания
  */
 export interface BuildingDimensions {

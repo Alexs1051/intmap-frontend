@@ -462,7 +462,9 @@ export class ControlPanel implements IControlPanel {
 
         this.buildingNestedPanel.replaceChildren();
         this.appendButtons(this.buildingNestedPanel, ['floor-current', 'floor-up', 'floor-down']);
-        this.buildingNestedPanel.classList.toggle('open', this.floorSubgroupOpen);
+        if (!this.floorSubgroupOpen) {
+            this.buildingNestedPanel.classList.remove('open');
+        }
 
         const viewButton = this.buttons.get('view');
         if (viewButton && !this.buildingNestedSlot.contains(viewButton)) {
@@ -490,6 +492,7 @@ export class ControlPanel implements IControlPanel {
         } else {
             panel.appendChild(this.getBuildingNestedSlot());
             this.appendButtons(panel, ['expand', 'walls']);
+            this.syncBuildingNestedPanelAnimation();
         }
 
         if (!slot.contains(button)) {
@@ -520,8 +523,25 @@ export class ControlPanel implements IControlPanel {
     private closeGroups(): void {
         this.activeGroup = null;
         this.floorSubgroupOpen = false;
+        this.buildingNestedPanel?.classList.remove('open');
         this.closeFloorOverlay();
         this.renderPanels();
+    }
+
+    private syncBuildingNestedPanelAnimation(): void {
+        if (!this.buildingNestedPanel) {
+            return;
+        }
+
+        if (!this.floorSubgroupOpen) {
+            this.buildingNestedPanel.classList.remove('open');
+            return;
+        }
+
+        this.buildingNestedPanel.classList.remove('open');
+        requestAnimationFrame(() => {
+            this.buildingNestedPanel?.classList.add('open');
+        });
     }
 
     private updateButtonAppearance(button: HTMLButtonElement, isActive: boolean): void {

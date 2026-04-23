@@ -14,9 +14,6 @@ export class ConfigService {
     this.logConfig();
   }
 
-  /**
-   * Глубокое слияние конфигураций
-   */
   private mergeConfig(defaults: any, overrides: any): any {
     if (!defaults || typeof defaults !== 'object') {
       return overrides ?? defaults;
@@ -40,23 +37,14 @@ export class ConfigService {
     return result;
   }
 
-  /**
-   * Получить полную конфигурацию
-   */
   public get(): IAppConfig {
     return this.config;
   }
 
-  /**
-   * Получить секцию конфигурации
-   */
   public getSection<T extends keyof IAppConfig>(section: T): IAppConfig[T] {
     return this.config[section];
   }
 
-  /**
-   * Получить значение по пути (например, 'camera.zoomSpeed')
-   */
   public getValue<T = any>(path: string, defaultValue?: T): T {
     const parts = path.split('.');
     let result: any = this.config;
@@ -71,19 +59,12 @@ export class ConfigService {
     return (result !== undefined ? result : defaultValue) as T;
   }
 
-  /**
-   * Обновить конфигурацию
-   */
   public update(updates: Partial<IAppConfig>): void {
     this.config = this.mergeConfig(this.config, updates);
     this.logConfig();
   }
 
-  /**
-   * Обновить секцию
-   */
   public updateSection<T extends keyof IAppConfig>(section: T, updates: Partial<IAppConfig[T]>): void {
-    // ✅ Исправлено: проверяем, что секция существует и является объектом
     const currentSection = this.config[section];
 
     if (currentSection && typeof currentSection === 'object' && !Array.isArray(currentSection)) {
@@ -93,37 +74,24 @@ export class ConfigService {
     }
   }
 
-  /**
-   * Проверить, включен ли режим отладки
-   */
   public isDebug(): boolean {
     return this.config.debug;
   }
 
-  /**
-   * Логирование текущей конфигурации
-   */
   private logConfig(): void {
     if (this.config.debug) {
       Logger.getInstance().getLogger('ConfigService').debug('Configuration loaded:', {
         version: this.config.version,
         environment: this.config.environment,
-        debug: this.config.debug,
-        modelUrl: this.config.modelUrl
+        debug: this.config.debug
       });
     }
   }
 
-  /**
-   * Проверить, является ли окружение production
-   */
   public isProduction(): boolean {
     return this.config.environment === 'production';
   }
 
-  /**
-   * Проверить, является ли окружение development
-   */
   public isDevelopment(): boolean {
     return this.config.environment === 'development';
   }

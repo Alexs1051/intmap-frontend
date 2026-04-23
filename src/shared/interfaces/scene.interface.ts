@@ -1,4 +1,8 @@
 import { Scene, Color3, Vector3 } from "@babylonjs/core";
+import type { IBuildingManager } from "./building.interface";
+import type { ICameraManager } from "./camera.interface";
+import type { IMarkerManager } from "./marker.interface";
+import type { IUIManager } from "./ui.interface";
 
 export interface ISceneComponent {
     initialize(): Promise<void>;
@@ -16,10 +20,10 @@ export interface ISceneManager {
     loadAll(modelUrl: string | string[]): Promise<void>;
     render(deltaTime: number): void;
     dispose(): void;
-    getCameraManager(): any;
-    getBuildingManager(): any;
-    getMarkerManager(): any;
-    getUIManager(): any;
+    getCameraManager(): ICameraManager | undefined;
+    getBuildingManager(): IBuildingManager | undefined;
+    getMarkerManager(): IMarkerManager | undefined;
+    getUIManager(): IUIManager | undefined;
 }
 
 export interface IBackgroundManager extends ISceneComponent {

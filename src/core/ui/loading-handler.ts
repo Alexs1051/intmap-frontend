@@ -11,6 +11,10 @@ import { showCriticalError, hideCriticalError } from "@core/utils/ui-helpers";
 export class LoadingHandler {
   private logger: Logger;
   private config: ConfigService;
+  private loadingEl: HTMLElement | null = null;
+  private barEl: HTMLElement | null = null;
+  private percentEl: HTMLElement | null = null;
+  private statusEl: HTMLElement | null = null;
 
   constructor(
     private eventBus: EventBus,
@@ -24,6 +28,8 @@ export class LoadingHandler {
    * Настроить обработчики событий загрузки
    */
   public setup(): void {
+    this.cacheElements();
+
     this.eventBus.on(EventType.LOADING_PROGRESS, (data: any) => {
       const progress = data.data?.overall || data.overall || 0;
       const component = data.data?.component || data.component || 'ресурсов';
@@ -31,7 +37,7 @@ export class LoadingHandler {
     });
 
     this.eventBus.on(EventType.LOADING_START, () => {
-      this.updateProgress(0, 'Начало загрузки...');
+      this.show('Начало загрузки...', 0);
       hideCriticalError();
     });
 
@@ -52,15 +58,13 @@ export class LoadingHandler {
   /**
    * Обновить прогресс загрузки
    */
-  private updateProgress(progress: number, status: string): void {
-    const percent = Math.floor(progress * 100);
-    const bar = document.getElementById('loading-bar');
-    const percentEl = document.getElementById('loading-percent');
-    const statusEl = document.getElementById('loading-status');
+  public updateProgress(progress: number, status: string): void {
+    this.show(status, progress);
 
-    if (bar) bar.style.width = `${percent}%`;
-    if (percentEl) percentEl.textContent = `${percent}%`;
-    if (statusEl) statusEl.textContent = status;
+    const percent = Math.floor(progress * 100);
+    if (this.barEl) this.barEl.style.width = `${percent}%`;
+    if (this.percentEl) this.percentEl.textContent = `${percent}%`;
+    if (this.statusEl) this.statusEl.textContent = status;
 
     if (this.config.isDebug() && (percent === 0 || percent === 50 || percent === 100)) {
       this.logger.debug(`Loading progress: ${percent}%`);
@@ -70,13 +74,44 @@ export class LoadingHandler {
   /**
    * Скрыть экран загрузки
    */
-  private hide(): void {
-    const loadingEl = document.getElementById('app-loading');
-    if (loadingEl) {
-      loadingEl.classList.add('hidden');
+  public hide(): void {
+    if (this.loadingEl) {
+      this.loadingEl.classList.add('hidden');
       setTimeout(() => {
-        loadingEl.style.display = 'none';
+        if (this.loadingEl?.classList.contains('hidden')) {
+          this.loadingEl.style.display = 'none';
+        }
       }, 500);
     }
+  }
+
+  public show(status: string, progress: number = 0): void {
+    this.cacheElements();
+    this.syncTheme();
+
+    if (this.loadingEl) {
+      this.loadingEl.style.display = 'flex';
+      this.loadingEl.classList.remove('hidden');
+    }
+
+    const percent = Math.floor(progress * 100);
+    if (this.barEl) this.barEl.style.width = `${percent}%`;
+    if (this.percentEl) this.percentEl.textContent = `${percent}%`;
+    if (this.statusEl) this.statusEl.textContent = status;
+  }
+
+  private cacheElements(): void {
+    this.loadingEl = document.getElementById('app-loading');
+    this.barEl = document.getElementById('loading-bar');
+    this.percentEl = document.getElementById('loading-percent');
+    this.statusEl = document.getElementById('loading-status');
+  }
+
+  private syncTheme(): void {
+    if (!this.loadingEl) {
+      return;
+    }
+
+    this.loadingEl.classList.toggle('theme-light', document.documentElement.classList.contains('theme-light'));
   }
 }

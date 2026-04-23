@@ -1,7 +1,8 @@
 import { AbstractMesh, TransformNode } from "@babylonjs/core";
 import { injectable } from "inversify";
 import { ParsedMarker, ParsedRoom } from "@shared/types";
-import { ConnectionParser, MarkerUtils } from './connection-parser';
+import { ConnectionParser } from './connection-parser';
+import { MarkerUtils } from './marker-utils';
 
 /**
  * Парсер маркеров и комнат из иерархии сцены

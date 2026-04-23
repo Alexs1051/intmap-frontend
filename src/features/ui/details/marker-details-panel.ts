@@ -1,10 +1,9 @@
-import { Marker } from "@features/markers/marker";
 import { marked } from 'marked';
 import QRCode from 'qrcode';
 import { logger } from "@core/logger/logger";
 import { MarkerData, MarkerType, RGBA } from "@shared/types";
 import { MARKER_WIDGET } from "@shared/constants";
-import { IMarkerDetailsPanel } from "@shared/interfaces";
+import { IMarker, IMarkerDetailsPanel } from "@shared/interfaces";
 
 // Значения по умолчанию для иконок
 const DEFAULT_ICON_NAME: string = 'location_on';
@@ -29,14 +28,14 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
     private _container!: HTMLDivElement;
     private _contentContainer!: HTMLDivElement;
     private _isVisible: boolean = false;
-    private _currentMarker: Marker | null = null;
+    private _currentMarker: IMarker | null = null;
     private _onCloseCallback: (() => void) | null = null;
-    private _onFocusCallback: ((marker: Marker) => void) | null = null;
+    private _onFocusCallback: ((marker: IMarker) => void) | null = null;
 
     private _fromActive: boolean = false;
     private _toActive: boolean = false;
-    private _onFromToggle: ((marker: Marker, type: 'from') => void) | null = null;
-    private _onToToggle: ((marker: Marker, type: 'to') => void) | null = null;
+    private _onFromToggle: ((marker: IMarker, type: 'from') => void) | null = null;
+    private _onToToggle: ((marker: IMarker, type: 'to') => void) | null = null;
 
     constructor() {
         this.createPanel();
@@ -47,8 +46,8 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
     }
 
     public setRouteCallbacks(
-        onFromToggle: (marker: Marker, type: 'from') => void,
-        onToToggle: (marker: Marker, type: 'to') => void
+        onFromToggle: (marker: IMarker, type: 'from') => void,
+        onToToggle: (marker: IMarker, type: 'to') => void
     ): void {
         this._onFromToggle = onFromToggle;
         this._onToToggle = onToToggle;
@@ -111,7 +110,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         document.body.appendChild(this._container);
     }
 
-    public show(marker: Marker): void {
+    public show(marker: IMarker): void {
         this._currentMarker = marker;
         this.updateContent(marker);
         this._container.classList.add('visible');
@@ -127,7 +126,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         detailsLogger.debug("Панель скрыта");
     }
 
-    private updateContent(marker: Marker): void {
+    private updateContent(marker: IMarker): void {
         const data = marker.data as MarkerData;
         this._contentContainer.innerHTML = '';
 
@@ -268,7 +267,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         return button;
     }
 
-    private createTitleSection(marker: Marker, data: MarkerData): HTMLDivElement {
+    private createTitleSection(marker: IMarker, data: MarkerData): HTMLDivElement {
         const container = document.createElement('div');
         container.className = 'title-section';
 
@@ -431,7 +430,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         this._onCloseCallback = callback;
     }
 
-    public setFocusCallback(callback: (marker: Marker) => void): void {
+    public setFocusCallback(callback: (marker: IMarker) => void): void {
         this._onFocusCallback = callback;
     }
 
@@ -439,7 +438,7 @@ export class MarkerDetailsPanel implements IMarkerDetailsPanel {
         return this._isVisible;
     }
 
-    public get currentMarker(): Marker | null {
+    public get currentMarker(): IMarker | null {
         return this._currentMarker;
     }
 

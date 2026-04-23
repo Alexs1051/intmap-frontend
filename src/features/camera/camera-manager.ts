@@ -511,7 +511,10 @@ export class CameraManager implements ICameraManager {
     }
 
     public async focusOnPoint(point: Vector3, distance?: number, duration?: number): Promise<void> {
-        if (this.isTransitioning || this.animator.isAnimating) return;
+        if (this.isTransitioning || this.animator.isAnimating) {
+            this.stopAllMovements();
+            this.isTransitioning = false;
+        }
 
         const animDuration = duration || 0.8;
         const targetDistance = distance || 15;
@@ -526,6 +529,25 @@ export class CameraManager implements ICameraManager {
                 radius: targetDistance,
                 target: point
             }, animDuration);
+        } else if (this.modeManager.is2DMode) {
+            const currentTarget = this._flightCamera.getTarget().clone();
+            const height = Math.max(
+                targetDistance,
+                Math.abs(this._flightCamera.position.y - currentTarget.y)
+            );
+            const endPos = new Vector3(point.x, point.y + height, point.z);
+            const startUp = this._flightCamera.upVector.clone();
+            const endUp = this.getTopDownUpVector();
+
+            await this.animateFlightTransition(
+                this._flightCamera.position.clone(),
+                currentTarget,
+                endPos,
+                point.clone(),
+                animDuration,
+                startUp,
+                endUp
+            );
         }
 
         this.modeManager.setPivotPoint(point);

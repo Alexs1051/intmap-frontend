@@ -2,7 +2,6 @@ import { IAppConfig } from "@shared/types";
 
 export const CONFIG_DEFAULTS: IAppConfig = {
     apiUrl: '/api',
-    modelUrl: 'models/building_02.glb',
     basePath: '',
     debug: true,
     version: '1.0.0',
@@ -114,9 +113,6 @@ export const CONFIG_DEFAULTS: IAppConfig = {
         cancelButtonText: 'Отмена',
         submitButtonText: 'Войти',
         logoutConfirmText: 'Вы уверены, что хотите выйти?',
-        logoutButtonText: 'Выйти',
-        testUser: 'test',
-        testPass: 'test',
-        testRole: 'user'
+        logoutButtonText: 'Выйти'
     }
 };

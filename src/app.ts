@@ -3,18 +3,8 @@ import "reflect-metadata";
 import { Logger } from "@core/logger/logger";
 import { showCriticalError, updateDebug } from "@core/utils/ui-helpers";
 
-Logger.getInstance().getLogger('App').debug('=== APP STARTING ===');
-
-// Глобальный обработчик ошибок
-window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
-  updateDebug(`Error: ${event.error?.message || event.message}`);
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled rejection:', event.reason);
-  updateDebug(`Promise Error: ${event.reason?.message || event.reason}`);
-});
+const bootstrapLogger = Logger.getInstance().getLogger('App');
+bootstrapLogger.debug('=== APP STARTING ===');
 
 import { container, TYPES } from "@core/di/container";
 import { configureContainer } from "@core/di/container-config";
@@ -151,11 +141,14 @@ class App {
    */
   private handleInitError(err: unknown): void {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error('Failed to initialize application:', error);
+    this.logger.error('Failed to initialize application', error);
     updateDebug(`Error: ${error.message}`);
     showCriticalError(error.message);
   }
 
+  /**
+   * Определяет стартовую backend-модель для первого рендера сцены.
+   */
   private async start(): Promise<void> {
     try {
       this.logger.info('Starting application...');
@@ -203,31 +196,7 @@ class App {
       // 5. Запускаем рендер-луп
       this.startRenderLoop();
 
-      // 6. Запускаем анимации с небольшой задержкой
-      if (cameraManager) {
-        setTimeout(() => {
-          this.logger.info('Starting camera intro animation...');
-          cameraManager.initialize();
-        }, 300);
-      }
-
-      // 7. Анимацию строительства запускаем последней
-      if (buildingManager && buildingManager.isLoaded) {
-        setTimeout(async () => {
-          this.logger.info('Starting construction animation...');
-          await buildingManager.animateConstruction();
-
-          if (markerManager) {
-            const floorManager = buildingManager.floorManager;
-            const currentFloor = floorManager.getViewMode() === 'single'
-              ? floorManager.currentFloor
-              : 'all';
-            markerManager.setCurrentFloor(currentFloor);
-            markerManager.updateMarkersVisibility();
-            this.logger.info('Markers visibility updated after construction animation');
-          }
-        }, 500);
-      }
+      await this.runInitialSceneReveal(cameraManager, buildingManager, markerManager);
 
       this.logger.info('Application started successfully');
 
@@ -238,6 +207,9 @@ class App {
     }
   }
 
+  /**
+   * Получает стартовое здание из backend-каталога с учётом query-параметра `b`.
+   */
   private async resolveStartupModel(): Promise<string | string[]> {
     try {
       const buildingOptions = await this.buildingApi.getBuildingOptions();
@@ -267,6 +239,9 @@ class App {
     }
   }
 
+  /**
+   * Запускает основной render loop Babylon-сцены.
+   */
   private startRenderLoop(): void {
     if (this.isRunning) return;
 
@@ -295,6 +270,36 @@ class App {
     this.logger.debug('Render loop started');
   }
 
+  private async runInitialSceneReveal(
+    cameraManager: ReturnType<SceneManager['getCameraManager']>,
+    buildingManager: ReturnType<SceneManager['getBuildingManager']>,
+    markerManager: ReturnType<SceneManager['getMarkerManager']>
+  ): Promise<void> {
+    if (!cameraManager || !buildingManager || !buildingManager.isLoaded) {
+      return;
+    }
+
+    markerManager?.setMarkersMuted(true);
+    await new Promise((resolve) => setTimeout(resolve, 320));
+
+    this.logger.info('Starting camera and construction intro animations...');
+    await Promise.all([
+      cameraManager.initialize(),
+      buildingManager.animateConstruction()
+    ]);
+
+    if (markerManager) {
+      const floorManager = buildingManager.floorManager;
+      const currentFloor = floorManager.getViewMode() === 'single'
+        ? floorManager.currentFloor
+        : 'all';
+      markerManager.setCurrentFloor(currentFloor);
+      markerManager.setMarkersMuted(false);
+      markerManager.updateMarkersVisibility();
+      this.logger.info('Markers visibility updated after intro animations');
+    }
+  }
+
   public stop(): void {
     if (!this.isRunning) return;
 
@@ -316,12 +321,12 @@ class App {
 }
 
 window.addEventListener('load', () => {
-  Logger.getInstance().getLogger('App').debug('Window loaded');
+  bootstrapLogger.debug('Window loaded');
   try {
     const app = new App();
     (window as any).__APP__ = app;
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error('Failed to create app instance:', error);
+    bootstrapLogger.error('Failed to create app instance', error);
   }
 });

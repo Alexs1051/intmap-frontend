@@ -10,14 +10,14 @@
   --color-text-muted: #6a6a7a;
   --color-text-disabled: #9a9aaa;
 
-  --color-accent-primary: #0066cc;
-  --color-accent-secondary: #2a5a9a;
-  --color-accent-hover: #3388dd;
+  --color-accent-primary: #3a7bd5;
+  --color-accent-secondary: #00d2ff;
+  --color-accent-hover: #5d92dd;
 
   --color-success: #22aa22;
   --color-warning: #dd8800;
   --color-error: #dd3333;
-  --color-info: #0066cc;
+  --color-info: #3a7bd5;
 
   --color-button-bg: rgba(0, 0, 0, 0.05);
   --color-button-bg-hover: rgba(0, 0, 0, 0.1);
@@ -38,8 +38,10 @@
   --color-surface-floating-border-soft: rgba(25, 35, 60, 0.08);
   --color-surface-group: rgba(225, 232, 245, 0.92);
   --color-surface-subgroup: rgba(208, 218, 236, 0.94);
+  --color-selection-highlight: rgba(58, 123, 213, 0.84);
+  --color-selection-highlight-soft: rgba(58, 123, 213, 0.2);
 
-  --gradient-loading: linear-gradient(135deg, #e8e8f0 0%, #d8d8e8 100%);
+  --gradient-loading: linear-gradient(135deg, #eef4ff 0%, #dce9ff 100%);
 
   --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);

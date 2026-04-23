@@ -1,4 +1,3 @@
-// ContainerConfig.ts
 import { container, TYPES } from "./container";
 import { BabylonEngine } from "@core/engine/babylon-engine";
 import { Logger, logger } from "@core/logger/logger";
@@ -46,91 +45,77 @@ import { BuildingTitle } from "@features/ui/hud/building-title";
 import { AuthPopup } from "@features/ui/popup/auth-popup";
 import { RouteManager } from "@core/route/route-manager";
 
-
-
 /**
  * Конфигурация DI контейнера
  */
 export function configureContainer(): void {
-  // Core Services
-  container.bind<BabylonEngine>(TYPES.BabylonEngine).to(BabylonEngine).inSingletonScope();
+  const bindSingleton = <T>(serviceId: symbol, implementation: new (...args: any[]) => T): void => {
+    container.bind<T>(serviceId).to(implementation).inSingletonScope();
+  };
+
+  const bindFactory = <T>(serviceId: symbol, factory: () => T): void => {
+    container.bind<T>(serviceId).toDynamicValue(factory).inSingletonScope();
+  };
+
+  bindSingleton(TYPES.BabylonEngine, BabylonEngine);
   container.bind<Logger>(TYPES.Logger).toConstantValue(logger);
-  container.bind<EventBus>(TYPES.EventBus).to(EventBus).inSingletonScope();
-  container.bind<ConfigService>(TYPES.ConfigService).to(ConfigService).inSingletonScope();
-  container.bind<AssetLoader>(TYPES.AssetLoader).to(AssetLoader).inSingletonScope();
-  container.bind<ResourceCache>(TYPES.ResourceCache).to(ResourceCache).inSingletonScope();
-  container.bind<PerformanceTracker>(TYPES.PerformanceTracker).to(PerformanceTracker).inSingletonScope();
-  container.bind<SceneManager>(TYPES.SceneManager).to(SceneManager).inSingletonScope();
+  bindSingleton(TYPES.EventBus, EventBus);
+  bindSingleton(TYPES.ConfigService, ConfigService);
+  bindSingleton(TYPES.AssetLoader, AssetLoader);
+  bindSingleton(TYPES.ResourceCache, ResourceCache);
+  bindSingleton(TYPES.PerformanceTracker, PerformanceTracker);
+  bindSingleton(TYPES.SceneManager, SceneManager);
 
-  // Camera components
-  container.bind(TYPES.CameraAnimator).toDynamicValue(() => {
-    return new CameraAnimator();
-  }).inSingletonScope();
+  bindFactory(TYPES.CameraAnimator, () => new CameraAnimator());
+  bindFactory(TYPES.CameraModeManager, () => new CameraModeManager());
+  bindFactory(TYPES.CameraInputHandler, () => new CameraInputHandler());
 
-  container.bind(TYPES.CameraModeManager).toDynamicValue(() => {
-    return new CameraModeManager();
-  }).inSingletonScope();
-
-  container.bind(TYPES.CameraInputHandler).toDynamicValue(() => {
-    return new CameraInputHandler();
-  }).inSingletonScope();
-
-  container.bind(TYPES.CameraManager).toDynamicValue(() => {
+  bindFactory(TYPES.CameraManager, () => {
     const logger = container.get<Logger>(TYPES.Logger);
     const eventBus = container.get<EventBus>(TYPES.EventBus);
     const animator = container.get<CameraAnimator>(TYPES.CameraAnimator);
     const modeManager = container.get<CameraModeManager>(TYPES.CameraModeManager);
     const inputHandler = container.get<CameraInputHandler>(TYPES.CameraInputHandler);
     return new CameraManager(logger, eventBus, animator, modeManager, inputHandler);
-  }).inSingletonScope();
+  });
 
-  // Feature Managers
-  container.bind(TYPES.BackgroundManager).to(BackgroundManager).inSingletonScope();
-  container.bind(TYPES.GridManager).to(GridManager).inSingletonScope();
-  container.bind(TYPES.LightingManager).to(LightingManager).inSingletonScope();
-  container.bind(TYPES.BuildingManager).to(BuildingManager).inSingletonScope();
-  container.bind(TYPES.FloorManager).to(FloorManager).inSingletonScope();
-  container.bind(TYPES.WallManager).to(WallManager).inSingletonScope();
-  container.bind(TYPES.FloorExpander).to(FloorExpander).inSingletonScope();
+  bindSingleton(TYPES.BackgroundManager, BackgroundManager);
+  bindSingleton(TYPES.GridManager, GridManager);
+  bindSingleton(TYPES.LightingManager, LightingManager);
+  bindSingleton(TYPES.BuildingManager, BuildingManager);
+  bindSingleton(TYPES.FloorManager, FloorManager);
+  bindSingleton(TYPES.WallManager, WallManager);
+  bindSingleton(TYPES.FloorExpander, FloorExpander);
+  bindSingleton(TYPES.BuildingLoader, BuildingLoader);
+  bindSingleton(TYPES.BuildingParser, BuildingParser);
+  bindSingleton(TYPES.BuildingAnimator, BuildingAnimator);
 
-  // Building Components
-  container.bind(TYPES.BuildingLoader).to(BuildingLoader).inSingletonScope();
-  container.bind(TYPES.BuildingParser).to(BuildingParser).inSingletonScope();
-  container.bind(TYPES.BuildingAnimator).to(BuildingAnimator).inSingletonScope();
-
-  // Marker components (обычные классы, не @injectable)
-  container.bind(TYPES.MarkerGraph).toDynamicValue(() => {
+  bindFactory(TYPES.MarkerGraph, () => {
     const eventBus = container.get<EventBus>(TYPES.EventBus);
     return new MarkerGraph(eventBus);
-  }).inSingletonScope();
+  });
 
-  container.bind(TYPES.MarkerGraphRenderer).to(MarkerGraphRenderer).inSingletonScope();
+  bindSingleton(TYPES.MarkerGraphRenderer, MarkerGraphRenderer);
 
-  container.bind(TYPES.Pathfinder).toDynamicValue(() => {
+  bindFactory(TYPES.Pathfinder, () => {
     const logger = container.get<Logger>(TYPES.Logger);
     const eventBus = container.get<EventBus>(TYPES.EventBus);
     const graph = container.get<MarkerGraph>(TYPES.MarkerGraph);
     return new Pathfinder(logger, eventBus, graph);
-  }).inSingletonScope();
+  });
 
-  container.bind(TYPES.MarkerManager).to(MarkerManager).inSingletonScope();
-
-  // Route
-  container.bind(TYPES.RouteManager).to(RouteManager).inSingletonScope();
-
-  // UI
-  container.bind(TYPES.UIFactory).to(UIFactory).inSingletonScope();
-  container.bind(TYPES.UIManager).to(UIManager).inSingletonScope();
-
-  // UI Components
-  container.bind(TYPES.ControlPanel).to(ControlPanel).inSingletonScope();
-  container.bind(TYPES.SearchBar).to(SearchBar).inSingletonScope();
-  container.bind(TYPES.PopupManager).to(PopupManager).inSingletonScope();
-  container.bind(TYPES.MarkerDetailsPanel).to(MarkerDetailsPanel).inSingletonScope();
-  container.bind(TYPES.ConnectionScreen).to(ConnectionScreen).inSingletonScope();
-  container.bind(TYPES.FPSCounter).to(FPSCounter).inSingletonScope();
-  container.bind(TYPES.BuildingTitle).to(BuildingTitle).inSingletonScope();
-  container.bind(TYPES.AuthPopup).to(AuthPopup).inSingletonScope();
+  bindSingleton(TYPES.MarkerManager, MarkerManager);
+  bindSingleton(TYPES.RouteManager, RouteManager);
+  bindSingleton(TYPES.UIFactory, UIFactory);
+  bindSingleton(TYPES.UIManager, UIManager);
+  bindSingleton(TYPES.ControlPanel, ControlPanel);
+  bindSingleton(TYPES.SearchBar, SearchBar);
+  bindSingleton(TYPES.PopupManager, PopupManager);
+  bindSingleton(TYPES.MarkerDetailsPanel, MarkerDetailsPanel);
+  bindSingleton(TYPES.ConnectionScreen, ConnectionScreen);
+  bindSingleton(TYPES.FPSCounter, FPSCounter);
+  bindSingleton(TYPES.BuildingTitle, BuildingTitle);
+  bindSingleton(TYPES.AuthPopup, AuthPopup);
 }
 
 export { container };

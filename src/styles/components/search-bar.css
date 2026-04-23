@@ -80,7 +80,11 @@
 }
 
 .search-result-item:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-selection-highlight-soft);
+}
+
+.search-result-item.selected {
+  background: var(--color-selection-highlight);
 }
 
 .search-result-icon-wrapper {

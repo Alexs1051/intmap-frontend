@@ -2,6 +2,7 @@ import { Scene, Vector3, AbstractMesh, TransformNode, Mesh } from "@babylonjs/co
 import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, UserInfo } from "@shared/types";
 import { ISceneComponent, ILoadableComponent } from "./scene.interface";
 import { ParsedMarker, ParsedRoom } from "@shared/types/dto/building.dto";
+import type { IMarkerManager } from "./marker.interface";
 
 export interface IBuildingLoader {
     setScene(scene: Scene): void;
@@ -26,6 +27,7 @@ export interface IBuildingAnimator {
 export interface IFloorManager extends ISceneComponent {
     setScene(scene: Scene): void;
     setWallManager(wallManager: IWallManager): void;
+    setMarkerManager(markerManager: IMarkerManager): void;
     setUserInfo(userInfo: UserInfo): void;
     addFloor(element: BuildingElement, floorNode?: TransformNode): void;
     addRoom(room: ParsedRoom): void;
@@ -72,7 +74,7 @@ export interface IBuildingManager extends ILoadableComponent {
     toggleWallTransparency(): void;
     toggleFloorExpand(): void;
     setWallTransparency(transparent: boolean): void;
-    setMarkerManager(markerManager: any): void;
+    setMarkerManager(markerManager: IMarkerManager): void;
     setUserInfo(userInfo: UserInfo): void;
     getElement(name: string): BuildingElement | undefined;
     getElementsByType(type: ElementType): BuildingElement[];
@@ -84,14 +86,8 @@ export interface IBuildingManager extends ILoadableComponent {
     /** Получить маркер по ID */
     getMarkerById(id: string): ParsedMarker | undefined;
 
-    /** Получить все парсенные комнаты */
-    getRooms(): Map<string, ParsedRoom>;
-
-    /** Получить комнату по ID */
-    getRoomById(id: string): ParsedRoom | undefined;
-
-    /** Получить маркеры по этажу */
-    getMarkersByFloor(floorNumber: number): ParsedMarker[];
+    hasAccessToFloor(floorNumber: number): boolean;
+    hasAccessToRoom(roomId?: string): boolean;
 
     readonly isLoaded: boolean;
     readonly dimensions: BuildingDimensions;

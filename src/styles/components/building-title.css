@@ -82,7 +82,7 @@
 }
 
 .building-title-dropdown-item.active {
-  background: rgba(110, 136, 228, 0.92);
+  background: var(--color-selection-highlight);
 }
 
 .building-title-dropdown-item .fa-check {

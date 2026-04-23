@@ -6,9 +6,10 @@ import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
 import { BuildingElement, FloorData, UserInfo } from "@shared/types";
 import { FLOOR_CONFIG } from "@shared/constants";
-import { IFloorManager, IWallManager } from "@shared/interfaces";
+import { IFloorManager, IMarkerManager, IWallManager } from "@shared/interfaces";
+import { ParsedRoom } from "@shared/types/dto/building.dto";
 import { FloorExpander } from "./floor-expander";
-import { MarkerUtils } from "./connection-parser";
+import { MarkerUtils } from "./marker-utils";
 
 @injectable()
 export class FloorManager implements IFloorManager {
@@ -44,7 +45,7 @@ export class FloorManager implements IFloorManager {
         this.floorExpander.setScene(scene);
     }
 
-    public setMarkerManager(markerManager: any): void {
+    public setMarkerManager(markerManager: IMarkerManager): void {
         this.floorExpander.setMarkerManager(markerManager);
         this.logger.debug('MarkerManager set in FloorManager');
     }
@@ -83,7 +84,7 @@ export class FloorManager implements IFloorManager {
         this.wallManager = wallManager;
     }
 
-    public addRoom(room: any): void {
+    public addRoom(room: ParsedRoom): void {
         if (room.node) {
             this.roomNodes.set(room.id, room.node);
         }

@@ -1,11 +1,16 @@
 .qr-scanner-overlay {
   z-index: calc(var(--z-auth-popup) + 10);
+  overflow-y: auto;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
 .qr-scanner-surface {
   width: min(440px, calc(100vw - 24px));
   padding: 16px;
-  overflow: hidden;
+  max-height: min(88vh, calc(100dvh - 24px));
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .qr-scanner-header {
@@ -81,5 +86,33 @@
   .qr-scanner-frame {
     width: min(62vw, 240px);
     height: min(62vw, 240px);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .qr-scanner-overlay {
+    align-items: start;
+    padding: 8px;
+  }
+
+  .qr-scanner-surface {
+    width: min(720px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    padding: 12px;
+  }
+
+  .qr-scanner-viewport {
+    aspect-ratio: auto;
+    min-height: 180px;
+    max-height: calc(100dvh - 132px);
+  }
+
+  .qr-scanner-frame {
+    width: min(34vh, 200px);
+    height: min(34vh, 200px);
+  }
+
+  .qr-scanner-status {
+    margin-top: 10px;
   }
 }

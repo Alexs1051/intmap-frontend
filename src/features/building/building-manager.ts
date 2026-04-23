@@ -4,9 +4,9 @@ import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
 import { EventBus } from "@core/events/event-bus";
 import { EventType } from "@core/events/event-types";
-import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, ParsedMarker, ParsedRoom, UserInfo } from "@shared/types";
-import type { IBuildingAnimator, IBuildingLoader, IBuildingManager, IBuildingParser, IFloorManager, IWallManager } from "@shared/interfaces";
-import { MarkerUtils } from "./connection-parser";
+import { BuildingElement, ElementType, BuildingParseResult, BuildingDimensions, ParsedMarker, UserInfo } from "@shared/types";
+import type { IBuildingAnimator, IBuildingLoader, IBuildingManager, IBuildingParser, IFloorManager, IMarkerManager, IWallManager } from "@shared/interfaces";
+import { MarkerUtils } from "./marker-utils";
 
 @injectable()
 export class BuildingManager implements IBuildingManager {
@@ -25,7 +25,7 @@ export class BuildingManager implements IBuildingManager {
     private _dimensions: BuildingDimensions = { height: 30, width: 30, depth: 30 };
     private _center: Vector3 = Vector3.Zero();
     private _userInfo: UserInfo = { isAuthenticated: false, role: 'guest' };
-    private _markerManagerRef: any = null;
+    private _markerManagerRef: IMarkerManager | null = null;
 
     constructor(
         @inject(TYPES.Logger) logger: Logger,
@@ -49,8 +49,8 @@ export class BuildingManager implements IBuildingManager {
         this.scene = scene;
         this._loader.setScene(scene);
         this._animator.setScene(scene);
-        (this._floorManager as any).setScene?.(scene);
-        (this._wallManager as any).setScene?.(scene);
+        this._floorManager.setScene(scene);
+        this._wallManager.setScene(scene);
         this._floorManager.setWallManager(this._wallManager);
     }
 
@@ -121,7 +121,7 @@ export class BuildingManager implements IBuildingManager {
         this._floorManager.showAllFloors();
 
         // Инициализируем FloorManager после добавления всех этажей
-        (this._floorManager as any).initialize?.();
+        this._floorManager.initialize();
 
         this.logger.info(`Managers initialized. Floors: ${this._floorManager.floorCount}, Walls: ${this._wallManager.count}`);
     }
@@ -129,9 +129,9 @@ export class BuildingManager implements IBuildingManager {
     /**
      * Установить MarkerManager (вызывается после инициализации MarkerManager)
      */
-    public setMarkerManager(markerManager: any): void {
+    public setMarkerManager(markerManager: IMarkerManager): void {
         this._markerManagerRef = markerManager;
-        (this._floorManager as any).setMarkerManager?.(markerManager);
+        this._floorManager.setMarkerManager(markerManager);
         this.logger.debug('MarkerManager set in BuildingManager -> FloorManager');
     }
 
@@ -241,7 +241,7 @@ export class BuildingManager implements IBuildingManager {
         }
         this._floorManager.setWallManager(this._wallManager);
         if (this._markerManagerRef) {
-            (this._floorManager as any).setMarkerManager?.(this._markerManagerRef);
+            this._floorManager.setMarkerManager(this._markerManagerRef);
         }
 
         this._data = null;
@@ -254,7 +254,7 @@ export class BuildingManager implements IBuildingManager {
     }
 
     public toggleFloorExpand(): void {
-        (this._floorManager as any).toggleFloorExpand?.();
+        void this._floorManager.toggleFloorExpand();
     }
 
     public setWallTransparency(transparent: boolean): void {
@@ -273,8 +273,8 @@ export class BuildingManager implements IBuildingManager {
     public dispose(): void {
         this._loader.unloadModel();
         this._animator.resetAllElements(this._data ? Array.from(this._data.elements.values()) : []);
-        (this._floorManager as any).dispose?.();
-        (this._wallManager as any).dispose?.();
+        this._floorManager.dispose();
+        this._wallManager.dispose();
         this._data = null;
         this._isLoaded = false;
     }
@@ -295,34 +295,6 @@ export class BuildingManager implements IBuildingManager {
      */
     public getMarkerById(id: string): ParsedMarker | undefined {
         return this._data?.markers.get(id);
-    }
-
-    /**
-     * Получить все парсенные комнаты
-     */
-    public getRooms(): Map<string, ParsedRoom> {
-        return this._data?.rooms || new Map();
-    }
-
-    /**
-     * Получить комнату по ID
-     */
-    public getRoomById(id: string): ParsedRoom | undefined {
-        return this._data?.rooms.get(id);
-    }
-
-    /**
-     * Получить маркеры по этажу
-     */
-    public getMarkersByFloor(floorNumber: number): ParsedMarker[] {
-        if (!this._data) return [];
-        const markers: ParsedMarker[] = [];
-        for (const marker of this._data.markers.values()) {
-            if (marker.floorNumber === floorNumber) {
-                markers.push(marker);
-            }
-        }
-        return markers;
     }
 
     public hasAccessToFloor(floorNumber: number): boolean {

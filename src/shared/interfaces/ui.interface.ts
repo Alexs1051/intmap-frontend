@@ -1,10 +1,9 @@
 import { Scene } from "@babylonjs/core";
-import { Marker } from "@features/markers/marker";
 import {
     UIEvent, UserInfo, NotificationType, SearchResult,
     PopupOptions, BuildingOption, AuthResult
 } from "@shared/types";
-import { ICameraManager, IBuildingManager, IMarkerManager } from "./index";
+import { ICameraManager, IBuildingManager, IMarker, IMarkerManager } from "./index";
 
 /**
  * Интерфейс UI менеджера
@@ -15,7 +14,7 @@ export interface IUIManager {
     initialize(scene: Scene, dependencies: UIManagerDependencies): void;
 
     /** Экран загрузки */
-    showLoading(status: string): void;
+    showLoading(status: string, progress?: number): void;
     updateLoadingProgress(progress: number, status?: string): void;
     hideLoading(): void;
 
@@ -34,6 +33,7 @@ export interface IUIManager {
 
     /** Поиск */
     toggleSearch(): void;
+    setControlsEnabled(enabled: boolean): void;
 
     /** FPS счётчик */
     updateFPS(): void;
@@ -144,7 +144,7 @@ export interface IPopupManager {
  */
 export interface IMarkerDetailsPanel {
     /** Показать панель для маркера */
-    show(marker: Marker): void;
+    show(marker: IMarker): void;
     /** Скрыть панель */
     hide(): void;
     /** Обновить состояние кнопки "Отсюда" */
@@ -155,16 +155,16 @@ export interface IMarkerDetailsPanel {
     /** Установить колбэк закрытия */
     setCloseCallback(callback: () => void): void;
     /** Установить колбэк фокуса */
-    setFocusCallback(callback: (marker: Marker) => void): void;
+    setFocusCallback(callback: (marker: IMarker) => void): void;
     /** Установить колбэки маршрута */
     setRouteCallbacks(
-        onFromToggle: (marker: Marker) => void,
-        onToToggle: (marker: Marker) => void
+        onFromToggle: (marker: IMarker) => void,
+        onToToggle: (marker: IMarker) => void
     ): void;
     /** Видима ли панель */
     readonly isVisible: boolean;
     /** Текущий маркер */
-    readonly currentMarker: Marker | null;
+    readonly currentMarker: IMarker | null;
     /** Уничтожить */
     dispose(): void;
 }

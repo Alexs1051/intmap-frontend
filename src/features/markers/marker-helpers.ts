@@ -99,7 +99,7 @@ function getFlagQrValue(parsedMarker: ParsedMarker): string {
   }
 
   const flagId = parsedMarker.id || `flag_${parsedMarker.metadata?.number || 'unknown'}`;
-  const currentBuildingRef = getCurrentBuildingRef() ?? getQueryParam('b') ?? 'test_building_02';
+  const currentBuildingRef = getCurrentBuildingRef() ?? getQueryParam('b') ?? 'building';
   const encodedBuildingRef = encodeURIComponent(currentBuildingRef);
   const encodedFlagId = encodeURIComponent(flagId);
 

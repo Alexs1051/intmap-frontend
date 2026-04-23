@@ -1,8 +1,9 @@
 import { Mesh, Nullable, Quaternion, Ray, Scene, TransformNode, Vector3 } from "@babylonjs/core";
 import { MarkerType, MarkerData, FocusOptions, PathResult, RGBA, UserInfo, BuildingOption } from "@shared/types";
 import { MarkerGraph } from "@features/markers/graph/marker-graph";
+import { Pathfinder } from "@features/markers/pathfinder";
 import { ICameraManager } from "./camera.interface";
-import { IWallManager } from "./building.interface";
+import { IBuildingManager, IWallManager } from "./building.interface";
 import { ILoadableComponent } from "./scene.interface";
 
 export interface IMarker {
@@ -43,8 +44,8 @@ export interface IMarkerManager extends ILoadableComponent {
     readonly selectedMarker: IMarker | null;
     readonly hoveredMarker: IMarker | null;
     readonly graphVisible: boolean;
-    readonly graph: any;
-    readonly pathfinder: any;
+    readonly graph: MarkerGraph;
+    readonly pathfinder: Pathfinder;
 
     setScene(scene: Scene): void;
     setCameraManager(cameraManager: ICameraManager): void;
@@ -63,6 +64,7 @@ export interface IMarkerManager extends ILoadableComponent {
     clearPathHighlight(): void;
 
     focusOnMarker(markerId: string, options?: FocusOptions): Promise<void>;
+    setGraphVisible(visible: boolean): void;
     setWaypointsVisible(visible: boolean): void;
     toggleGraph(): void;
 
@@ -74,10 +76,8 @@ export interface IMarkerManager extends ILoadableComponent {
     update(deltaTime: number): void;
     dispose(): void;
 
-    setBuildingManager(buildingManager: any): void;
+    setBuildingManager(buildingManager: IBuildingManager): void;
     setCurrentBuilding(building: BuildingOption | null): void;
-
-    setAllMarkersVisible(visible: boolean): void;
 
     setCurrentFloor(floor: number | 'all'): void;
     setUserInfo(userInfo: UserInfo): void;
@@ -85,8 +85,10 @@ export interface IMarkerManager extends ILoadableComponent {
     hasAccessToMarker(markerId: string): boolean;
     setFromMarker(markerId: string): void;
     setToMarker(markerId: string): void;
+    clearRouteSelection(): void;
     getFromMarker(): string | null;
     getToMarker(): string | null;
+    getSelectedMarkersForPath(): string[];
 
     updateMarkersVisibility(): void;
     rebuildGraph(): void;

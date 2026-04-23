@@ -4,7 +4,9 @@ import { EventType } from "@core/events/event-types";
 import { EventBus } from "@core/events/event-bus";
 import { SearchResult, MarkerType } from "@shared/types";
 import { UI, MARKER_WIDGET } from "@shared/constants";
-import { ISearchBar } from "@shared/interfaces";
+import { IMarkerManager, ISearchBar } from "@shared/interfaces";
+import { SearchBarIndexService } from "./search-bar-index-service";
+import { SearchBarQueryService } from "./search-bar-query-service";
 
 /**
  * Поисковая строка
@@ -14,6 +16,8 @@ export class SearchBar implements ISearchBar {
   private logger: Logger;
   private eventBus: EventBus;
   private config: typeof UI.SEARCH;
+  private readonly indexService = new SearchBarIndexService();
+  private readonly queryService = new SearchBarQueryService();
 
   private container!: HTMLDivElement;
   private input!: HTMLInputElement;
@@ -22,7 +26,7 @@ export class SearchBar implements ISearchBar {
 
   private _isVisible: boolean = false;
   private allMarkers: SearchResult[] = [];
-  private markerManager: any = null;
+  private markerManager: IMarkerManager | null = null;
   private searchTimeout: ReturnType<typeof setTimeout> | null = null;
   private selectedIndex: number = -1;
 
@@ -97,10 +101,7 @@ export class SearchBar implements ISearchBar {
 
   private setupInputHandlers(): void {
     this.input.addEventListener('input', () => {
-      const clearButton = this.container.querySelector('.search-clear') as HTMLElement;
-      if (clearButton) {
-        clearButton.style.display = this.input.value ? 'block' : 'none';
-      }
+      this.setClearButtonVisible(Boolean(this.input.value));
 
       if (this.input.value.length >= this.config.MIN_QUERY_LENGTH) {
         if (this.searchTimeout) clearTimeout(this.searchTimeout);
@@ -139,7 +140,6 @@ export class SearchBar implements ISearchBar {
           break;
         case 'Enter':
           e.preventDefault();
-          // ✅ Исправляем: проверяем существование элемента перед кликом
           if (this.selectedIndex >= 0 && this.selectedIndex < items.length) {
             const selectedItem = items[this.selectedIndex];
             if (selectedItem) {
@@ -159,10 +159,10 @@ export class SearchBar implements ISearchBar {
   private updateSelection(items: HTMLDivElement[]): void {
     items.forEach((item, index) => {
       if (index === this.selectedIndex && item) {
-        item.style.backgroundColor = 'rgba(100, 100, 200, 0.3)';
+        item.classList.add('selected');
         item.scrollIntoView({ block: 'nearest' });
       } else if (item) {
-        item.style.backgroundColor = 'transparent';
+        item.classList.remove('selected');
       }
     });
   }
@@ -177,31 +177,18 @@ export class SearchBar implements ISearchBar {
     this.resultsContainer.innerHTML = '';
     this.resultsContainer.style.display = 'none';
     this.selectedIndex = -1;
-
-    const counter = this.container.querySelector('.search-counter');
-    if (counter) {
-      counter.textContent = '📋 0';
-      (counter as HTMLElement).style.display = 'none';
-    }
+    this.updateCounter(0);
   }
 
   private performSearch(): void {
-    const query = this.input.value.toLowerCase().trim();
+    const query = this.input.value.trim();
 
     if (query.length < this.config.MIN_QUERY_LENGTH) {
       this.clearResults();
       return;
     }
 
-    const filtered = this.allMarkers
-      .filter(m => {
-        const nameMatch = m.name.toLowerCase().includes(query);
-        const typeMatch = m.type.toLowerCase().includes(query);
-        const floorMatch = m.floor && m.floor.toString().includes(query);
-        const idMatch = m.id.toLowerCase().includes(query);
-        return nameMatch || typeMatch || floorMatch || idMatch;
-      })
-      .slice(0, this.config.MAX_RESULTS);
+    const filtered = this.queryService.filterResults(this.allMarkers, query, this.config.MAX_RESULTS);
 
     this.showResults(filtered);
     this.onSearchCallback?.(query);
@@ -211,12 +198,7 @@ export class SearchBar implements ISearchBar {
     this.resultsContainer.innerHTML = '';
     this.resultsContainer.style.display = 'block';
     this.selectedIndex = -1;
-
-    const counter = this.container.querySelector('.search-counter');
-    if (counter) {
-      counter.textContent = `📋 ${results.length}`;
-      (counter as HTMLElement).style.display = results.length ? 'inline' : 'none';
-    }
+    this.updateCounter(results.length);
 
     if (results.length === 0) {
       const noResults = document.createElement('div');
@@ -266,14 +248,7 @@ export class SearchBar implements ISearchBar {
 
     const metaSpan = document.createElement('div');
     metaSpan.className = 'search-result-meta';
-    const typeIcon = this.getTypeIcon(result.type);
-    const typeName = this.getTypeName(result.type);
-
-    if (result.floor) {
-      metaSpan.innerHTML = `${typeIcon} ${typeName} • ${result.floor} этаж`;
-    } else {
-      metaSpan.innerHTML = `${typeIcon} ${typeName}`;
-    }
+    metaSpan.innerHTML = this.buildMetaLabel(result);
 
     textContainer.appendChild(nameSpan);
     textContainer.appendChild(metaSpan);
@@ -284,11 +259,13 @@ export class SearchBar implements ISearchBar {
     item.setAttribute('data-result-id', result.id);
 
     item.addEventListener('mouseenter', () => {
-      item.style.backgroundColor = 'rgba(100, 100, 200, 0.2)';
+      item.classList.add('selected');
     });
 
     item.addEventListener('mouseleave', () => {
-      item.style.backgroundColor = 'transparent';
+      if (item !== this.resultsContainer.querySelectorAll('.search-result-item')[this.selectedIndex]) {
+        item.classList.remove('selected');
+      }
     });
 
     item.addEventListener('click', () => {
@@ -334,52 +311,22 @@ export class SearchBar implements ISearchBar {
     }
   }
 
-  private getDefaultIconForType(type: MarkerType): string {
-    switch (type) {
-      case MarkerType.MARKER: return '📍';
-      case MarkerType.FLAG: return '🚩';
-      case MarkerType.GATEWAY: return 'gateway-blocked';
-      default: return '📍';
-    }
-  }
-
   public refreshMarkers(): void {
     if (!this.markerManager) return;
 
     try {
-      const markers = this.markerManager.getAllMarkers();
-
-      this.allMarkers = markers
-        .filter((m: any) => m.type !== MarkerType.WAYPOINT)
-        .map((m: any) => {
-          // Берём цвета из геттеров маркера (они уже содержат fallback на константы)
-          const bgColor = m.backgroundColor;
-          const textColor = m.textColor;
-          const floor = m.floor !== undefined ? m.floor : 1;
-          const name = m.name || 'Без названия';
-
-          return {
-            id: m.id,
-            name,
-            type: m.type,
-            iconName: m.iconName || this.getDefaultIconForType(m.type),
-            floor,
-            marker: m,
-            backgroundColor: bgColor,
-            textColor: textColor
-          };
-        });
+      this.allMarkers = this.indexService.buildResults(this.markerManager);
 
       if (this._isVisible && this.input.value.length >= this.config.MIN_QUERY_LENGTH) {
         this.performSearch();
       }
     } catch (error) {
-      console.error('Error refreshing markers:', error);
+      this.logger.error('Error refreshing markers', error);
       this.allMarkers = [];
     }
   }
 
-  public setMarkerManager(manager: any): void {
+  public setMarkerManager(manager: IMarkerManager): void {
     this.markerManager = manager;
     this.refreshMarkers();
   }
@@ -390,12 +337,6 @@ export class SearchBar implements ISearchBar {
     this.overlay.classList.add('visible');
     this.clearResults();
     this.selectedIndex = -1;
-
-    const counter = this.container.querySelector('.search-counter');
-    if (counter) {
-      counter.textContent = '📋 0';
-      (counter as HTMLElement).style.display = 'none';
-    }
 
     this.input.focus();
     requestAnimationFrame(() => this.input.focus());
@@ -439,5 +380,31 @@ export class SearchBar implements ISearchBar {
 
   public get isVisible(): boolean {
     return this._isVisible;
+  }
+
+  private updateCounter(count: number): void {
+    const counter = this.container.querySelector('.search-counter');
+    if (!counter) {
+      return;
+    }
+
+    counter.textContent = `📋 ${count}`;
+    (counter as HTMLElement).style.display = count > 0 ? 'inline' : 'none';
+  }
+
+  private setClearButtonVisible(visible: boolean): void {
+    const clearButton = this.container.querySelector('.search-clear') as HTMLElement | null;
+    if (clearButton) {
+      clearButton.style.display = visible ? 'block' : 'none';
+    }
+  }
+
+  private buildMetaLabel(result: SearchResult): string {
+    const typeIcon = this.getTypeIcon(result.type);
+    const typeName = this.getTypeName(result.type);
+
+    return typeof result.floor === 'number'
+      ? `${typeIcon} ${typeName} • ${result.floor} этаж`
+      : `${typeIcon} ${typeName}`;
   }
 }

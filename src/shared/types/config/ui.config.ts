@@ -100,12 +100,6 @@ export interface IAuthPopupConfig {
     logoutConfirmText: string;
     /** Текст кнопки выхода */
     logoutButtonText: string;
-    /** Тестовый пользователь (для отладки) */
-    testUser: string;
-    /** Тестовый пароль (для отладки) */
-    testPass: string;
-    /** Роль тестового пользователя */
-    testRole: string;
     /** Разрешить демо-режим */
     allowDemo?: boolean;
 }

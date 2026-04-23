@@ -13,8 +13,6 @@ import { IControlPanelConfig, ISearchBarConfig, IPopupManagerConfig, ILoadingScr
 export interface IAppConfig {
     /** URL API сервера */
     apiUrl: string;
-    /** URL модели здания (.glb файл) */
-    modelUrl: string;
     basePath: string;
     /** Режим отладки (включает дополнительные логи) */
     debug: boolean;

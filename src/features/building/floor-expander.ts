@@ -4,7 +4,8 @@ import { TYPES } from "@core/di/container";
 import { Logger } from "@core/logger/logger";
 import { FLOOR_EXPAND_CONFIG } from "@shared/constants";
 import { BuildingElement } from "@shared/types";
-import { Marker } from "@features/markers/marker";
+import { IMarker, IMarkerManager } from "@shared/interfaces";
+import { FloorExpanderGraphState } from "./floor-expander-graph-state";
 
 /**
  * Менеджер раскрытия этажей
@@ -24,21 +25,9 @@ export class FloorExpander {
 
     private originalFloorPositions: Map<number, number> = new Map();
     private markerOriginalPositions: Map<string, Vector3> = new Map();
-    private markers: Marker[] = [];
-    private markerManager: any = null;
-
-    // Состояние графа и маршрута перед анимацией
-    private savedGraphState: {
-        graphWasVisible: boolean;
-        fromMarkerId: string | null;
-        toMarkerId: string | null;
-        highlightedPath: string[] | null;
-    } = {
-            graphWasVisible: false,
-            fromMarkerId: null,
-            toMarkerId: null,
-            highlightedPath: null
-        };
+    private markers: IMarker[] = [];
+    private markerManager: IMarkerManager | null = null;
+    private graphState: FloorExpanderGraphState | null = null;
 
     constructor(
         @inject(TYPES.Logger) logger: Logger
@@ -53,16 +42,16 @@ export class FloorExpander {
     /**
      * Установить MarkerManager для динамического получения маркеров
      */
-    public setMarkerManager(markerManager: any): void {
+    public setMarkerManager(markerManager: IMarkerManager): void {
         this.markerManager = markerManager;
+        this.graphState = new FloorExpanderGraphState(this.logger, markerManager);
         this.logger.debug('MarkerManager set for dynamic marker access');
-        console.log('[FloorExpander] MarkerManager set');
     }
 
     /**
-     * Установить ссылки на маркеры из MarkerManager (legacy)
+     * Передаёт актуальные runtime-маркеры для синхронизации анимации этажей.
      */
-    public setMarkers(markers: Marker[]): void {
+    public setMarkers(markers: IMarker[]): void {
         this.markers = markers;
         this.logger.debug(`Set ${markers.length} markers for floor expansion`);
 
@@ -76,15 +65,13 @@ export class FloorExpander {
     /**
      * Получить актуальный список маркеров
      */
-    private getCurrentMarkers(): Marker[] {
+    private getCurrentMarkers(): IMarker[] {
         if (this.markerManager) {
             const markers = this.markerManager.getAllMarkers();
             this.logger.debug(`Getting ${markers.length} markers from MarkerManager dynamically`);
-            console.log('[FloorExpander] Getting markers from MarkerManager:', markers.length);
             return markers;
         }
         this.logger.debug(`Using static markers list: ${this.markers.length}`);
-        console.log('[FloorExpander] Using static markers list:', this.markers.length);
         return this.markers;
     }
 
@@ -103,13 +90,11 @@ export class FloorExpander {
             if (root) {
                 this.markerOriginalPositions.set(marker.id, root.position.clone());
                 storedCount++;
-                console.log(`[FloorExpander] Stored marker position: ${marker.id}, floor=${marker.floor}, Y=${root.position.y}`);
             }
         });
 
         if (storedCount > 0) {
             this.logger.debug(`Stored ${storedCount} marker positions`);
-            console.log('[FloorExpander] Stored marker positions:', storedCount);
         }
     }
 
@@ -117,80 +102,14 @@ export class FloorExpander {
      * Сохранить состояние графа и маршрута, затем скрыть их
      */
     public saveAndHideGraphState(): void {
-        if (!this.markerManager) return;
-
-        this.savedGraphState.graphWasVisible = this.markerManager.graphVisible;
-        this.savedGraphState.fromMarkerId = this.markerManager.getFromMarker();
-        this.savedGraphState.toMarkerId = this.markerManager.getToMarker();
-
-        // Получаем текущий выделенный путь через проверку внутренних маркеров
-        try {
-            const selectedMarkers = this.markerManager.getSelectedMarkersForPath?.();
-            this.savedGraphState.highlightedPath = selectedMarkers && selectedMarkers.length > 0
-                ? selectedMarkers
-                : null;
-        } catch {
-            this.savedGraphState.highlightedPath = null;
-        }
-
-        console.log('[FloorExpander] Saved graph state:', this.savedGraphState);
-
-        // Скрываем граф и очищаем маршрут
-        if (this.savedGraphState.graphWasVisible) {
-            this.markerManager.setGraphVisible(false);
-        }
-        this.markerManager.clearRouteSelection();
-        this.markerManager.clearPathHighlight();
-
-        this.logger.debug('Graph state saved and hidden');
+        this.graphState?.saveAndHide();
     }
 
     /**
      * Восстановить состояние графа и маршрута после анимации
      */
     public restoreGraphState(): void {
-        if (!this.markerManager) return;
-
-        console.log('[FloorExpander] Restoring graph state:', this.savedGraphState);
-
-        // Восстанавливаем граф если он был видим
-        if (this.savedGraphState.graphWasVisible) {
-            this.logger.debug('Restoring graph with new positions');
-            // Ждём завершения анимации маркеров (800ms + 200ms запас)
-            setTimeout(() => {
-                // Полностью перестраиваем граф с новыми позициями
-                this.markerManager.rebuildGraph();
-                this.logger.debug('Graph rebuilt with current positions');
-                console.log('[FloorExpander] Graph rebuilt after animation delay');
-            }, 1000);
-            this.logger.debug('Graph restore scheduled (1000ms delay)');
-        }
-
-        // Восстанавливаем маршрут если он был
-        if (this.savedGraphState.fromMarkerId && this.savedGraphState.toMarkerId) {
-            // Ждём завершения анимации маркеров (800ms + 300ms запас)
-            setTimeout(() => {
-                this.markerManager.setFromMarker(this.savedGraphState.fromMarkerId);
-                this.markerManager.setToMarker(this.savedGraphState.toMarkerId);
-
-                // Пересчитываем и подсвечиваем маршрут заново
-                try {
-                    const pathResult = this.markerManager.findPath(this.savedGraphState.fromMarkerId, this.savedGraphState.toMarkerId);
-                    if (pathResult && pathResult.path) {
-                        const pathIds = pathResult.path.map((p: any) => p.markerId || p);
-                        this.markerManager.highlightPath(pathIds);
-                        this.logger.debug(`Route recalculated and highlighted: ${pathIds.length} nodes`);
-                    }
-                } catch (error) {
-                    this.logger.warn('Failed to recalculate route after expand', error);
-                }
-
-                this.logger.debug(`Route restored: ${this.savedGraphState.fromMarkerId} -> ${this.savedGraphState.toMarkerId}`);
-            }, 1100);
-            this.logger.debug('Route restore scheduled (1100ms delay)');
-        }
-
-        this.logger.debug('Graph state restored');
+        this.graphState?.restore();
     }
 
     /**
@@ -227,12 +146,6 @@ export class FloorExpander {
         });
 
         this.logger.debug(`Stored original positions for ${floorNodes.size} floors and ${markersStored}/${currentMarkers.length} markers, total stored: ${this.markerOriginalPositions.size}`);
-        console.log('[FloorExpander] Stored positions:', {
-            floors: floorNodes.size,
-            markersStored,
-            totalMarkers: currentMarkers.length,
-            totalInMap: this.markerOriginalPositions.size
-        });
     }
 
     /**
@@ -250,11 +163,6 @@ export class FloorExpander {
 
         this.logger.info('Expanding floors');
         this.logger.debug(`Floor nodes: ${floorNodes.size}, markers: ${this.getCurrentMarkers().length}, allElements: ${allElements?.size || 0}`);
-        console.log('[FloorExpander] Starting expand:', {
-            floorNodes: floorNodes.size,
-            markers: this.getCurrentMarkers().length,
-            floorNumbers: Array.from(floorNodes.keys())
-        });
         this.isAnimating = true;
 
         // Сохраняем позиции маркеров ПЕРЕД анимацией (они могут быть созданы позже)
@@ -339,17 +247,11 @@ export class FloorExpander {
 
             const targetY = originalPos.y + (floorIndex * FLOOR_EXPAND_CONFIG.FLOOR_OFFSET);
             this.logger.debug(`Marker ${marker.id}: floor=${floorNum}, floorIndex=${floorIndex}, originalY=${originalPos.y}, targetY=${targetY}`);
-            console.log(`[FloorExpander] Animating marker ${marker.id}: floor=${floorNum}, from Y=${originalPos.y} to Y=${targetY}`);
             animations.push(this.animateTransformNodePosition(root, targetY));
             markersAnimated++;
         });
 
         this.logger.debug(`Markers: ${markersAnimated} animated, ${markersSkipped} skipped`);
-        console.log('[FloorExpander] Markers animated:', {
-            animated: markersAnimated,
-            skipped: markersSkipped,
-            total: currentMarkers.length
-        });
 
         await Promise.all(animations);
 
@@ -363,7 +265,6 @@ export class FloorExpander {
         this.restoreGraphState();
 
         this.logger.info('Floor expansion complete');
-        console.log('[FloorExpander] Expand complete');
     }
 
     /**
@@ -502,7 +403,7 @@ export class FloorExpander {
     /**
      * Анимировать позицию Mesh
      */
-    private animateMeshPosition(mesh: any, targetY: number): Promise<void> {
+    private animateMeshPosition(mesh: TransformNode, targetY: number): Promise<void> {
         return new Promise((resolve) => {
             if (!this.scene) {
                 resolve();

@@ -100,8 +100,8 @@
 }
 
 .control-panel-button.active {
-  background: rgba(110, 136, 228, 0.92);
-  box-shadow: 0 0 14px rgba(110, 136, 228, 0.38);
+  background: color-mix(in srgb, var(--color-accent-primary) 84%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--color-accent-primary) 36%, transparent);
 }
 
 .control-panel-button.active img {
@@ -122,7 +122,8 @@
 
 .control-panel-floor-current {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 14px;
+  font-size: 20px;
+  line-height: 1;
   font-weight: 700;
 }
 
@@ -191,6 +192,9 @@
   width: min(320px, calc(100vw - 32px));
   max-height: min(70vh, 420px);
   padding: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .control-panel-floor-title {
@@ -205,11 +209,15 @@
   flex-direction: column;
   gap: 10px;
   width: 100%;
+  align-items: stretch;
 }
 
 .control-panel-floor-option {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
+  align-self: stretch;
+  box-sizing: border-box;
   min-height: 48px;
   border: 1px solid var(--color-surface-floating-border);
   border-radius: 16px;
@@ -226,7 +234,7 @@
 }
 
 .control-panel-floor-option.active {
-  background: rgba(110, 136, 228, 0.92);
+  background: color-mix(in srgb, var(--color-accent-primary) 84%, transparent);
 }
 
 @media (max-width: 768px) {
@@ -251,6 +259,7 @@
   .control-panel-floor-option {
     min-height: 52px;
     text-align: center;
+    justify-content: center;
   }
 }
 
@@ -263,7 +272,7 @@
   }
 
   .control-panel-floor-dialog {
-    width: min(280px, calc(100vw - 24px));
+    width: min(320px, calc(100vw - 20px));
     padding: 14px;
   }
 }

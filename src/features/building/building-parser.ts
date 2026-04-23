@@ -5,7 +5,7 @@ import { BuildingElement, ElementType, BuildingParseResult } from "@shared/types
 import { BUILDING_PARSER } from "@shared/constants";
 import { IBuildingParser } from "@shared/interfaces";
 import { MarkerParser } from './marker-parser';
-import { MarkerUtils } from './connection-parser';
+import { MarkerUtils } from './marker-utils';
 
 /**
  * Парсер загруженной GLB модели здания
