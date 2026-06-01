@@ -67,13 +67,14 @@ export class BuildingApi {
 
     return modelInfos.map(({ info, assets }) => {
       const selectedAssetUrls = this.pickPreferredAssetUrls(assets);
+      const fallbackModelUrl = this.normalizeAssetUrl(info.modelUrl);
       return {
         id: info.code,
         backendId: info.buildingId,
         buildingCode: info.code,
         name: info.name,
-        modelUrl: selectedAssetUrls[0] ?? info.modelUrl,
-        modelUrls: selectedAssetUrls.length > 0 ? selectedAssetUrls : [info.modelUrl],
+        modelUrl: selectedAssetUrls[0] ?? fallbackModelUrl,
+        modelUrls: selectedAssetUrls.length > 0 ? selectedAssetUrls : [fallbackModelUrl],
         iconPath: this.getIconPath(info.code)
       };
     });
@@ -89,11 +90,32 @@ export class BuildingApi {
       .filter((asset) => asset.assetType === 'FLOOR')
       .sort((left, right) => (left.floorNumber ?? 0) - (right.floorNumber ?? 0));
 
-    return floorAssets.map((asset) => asset.modelUrl);
+    return floorAssets.map((asset) => this.normalizeAssetUrl(asset.modelUrl));
   }
 
   private getIconPath(buildingCode: string): string {
     void buildingCode;
     return 'icons/ui/object.png';
+  }
+
+  private normalizeAssetUrl(modelUrl: string): string {
+    if (typeof window === 'undefined' || !window.location?.origin) {
+      return modelUrl;
+    }
+
+    try {
+      const parsedUrl = new URL(modelUrl, window.location.origin);
+      const currentOrigin = new URL(window.location.origin);
+
+      if (parsedUrl.hostname !== currentOrigin.hostname) {
+        return parsedUrl.toString();
+      }
+
+      // Reuse the current secure origin so model file requests do not fall back to
+      // backend-generated absolute http URLs behind reverse proxies.
+      return `${window.location.origin}${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+    } catch {
+      return modelUrl;
+    }
   }
 }

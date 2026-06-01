@@ -200,7 +200,7 @@ export class MarkerApi {
           hasAccess,
           isBlocked: markerType === MarkerType.GATEWAY ? !hasAccess : false,
           blockedMessage: markerType === MarkerType.GATEWAY && !hasAccess ? 'Нет доступа' : undefined,
-          qr: qrCodeData ?? this.buildFallbackQr(buildingCode, publicToken),
+          qr: this.normalizeQrPayload(qrCodeData, buildingCode, publicToken),
           accessRights: requiredRole ? [requiredRole] : []
         } satisfies MarkerData;
       });
@@ -229,5 +229,26 @@ export class MarkerApi {
     }
 
     return `intmap://flag/${buildingCode}/${publicToken}`;
+  }
+
+  private normalizeQrPayload(
+    qrCodeData: string | undefined,
+    buildingCode: string,
+    publicToken?: string | null
+  ): string | undefined {
+    const raw = qrCodeData?.trim();
+    if (!raw) {
+      return this.buildFallbackQr(buildingCode, publicToken);
+    }
+
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+
+    if (raw.startsWith('/') && typeof window !== 'undefined' && window.location.origin) {
+      return `${window.location.origin}${raw}`;
+    }
+
+    return raw;
   }
 }

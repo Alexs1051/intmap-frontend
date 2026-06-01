@@ -1,69 +1,60 @@
 # IntMap Frontend Architecture
 
-Этот документ фиксирует текущую архитектурную карту `intmap-frontend`, основные зоны ответственности и порядок безопасного рефакторинга.
+Этот документ описывает актуальную архитектуру `intmap-frontend` после рефакторинга, а не только планируемое направление развития.
 
-Цель фронтового рефакторинга:
+Документ нужен как опорная архитектурная карта для:
 
-- сделать структуру фронта читаемой;
-- убрать legacy-ветки и мёртвый код;
-- уменьшить связанность между крупными менеджерами;
-- подготовить кодовую базу к более явному domain-oriented разложению без полного переписывания UI и Babylon-сцены.
+- понимания устройства frontend;
+- подготовки пояснительной записки;
+- сопровождения проекта;
+- дальнейшей точечной полировки без хаотичного переписывания.
 
-Проект не требует перехода на отдельные SPA-модули, микрофронтенды или сложную feature platform. Целевой стиль для него: **domain-oriented frontend с тонким core orchestration**.
+## Архитектурная идея
 
-## Что уже изменилось
+Frontend организован как **domain-oriented клиентское приложение** с несколькими крупными зонами ответственности и тонким bootstrap-слоем.
 
-На текущем этапе frontend:
+Ключевой принцип:
 
-- больше не работает как автономный viewer для локальных `.glb` из репозитория;
-- получает каталог зданий, маркеры, связи и маршруты с backend;
-- загружает защищённые asset’ы через авторизованный backend flow;
-- учитывает роли и ограничения доступа при отображении помещений, этажей, gateway и маршрутов.
+- визуальная часть, сцена, интеграция с backend и UI должны быть разделены логически;
+- крупные классы должны оставаться orchestration-узлами, а не монолитами, в которых смешано всё подряд.
 
-Уже выполнены заметные структурные изменения:
+Текущий стиль можно описать так:
 
-- `UIManager` разделён на `building`, `control`, `session`, `deep-link` и `QR` flow;
-- `MarkerManager` разделён на loading/visibility/selection/interaction/path сервисы;
-- `SceneManager` разделён на registry и loading flow;
-- `SearchBar` получил отдельный индексный слой и меньше зависит от marker-логики напрямую.
+- `bootstrap` — запуск приложения;
+- `scene` — жизненный цикл Babylon-сцены;
+- `building` — загрузка и структура здания;
+- `navigation` — маркеры, граф и маршруты;
+- `ui-shell` — orchestration пользовательского интерфейса;
+- `integration` — API, auth session и backend-driven flow.
 
-Это значит, что архитектура фронта должна описывать не только Babylon scene, но и integration flow с backend.
+## Верхнеуровневая структура проекта
 
-## Текущая верхнеуровневая структура
+Основные каталоги:
 
-Исходники разбиты на:
-
+- `src/app.ts`
 - `src/core`
 - `src/features`
 - `src/shared`
 - `src/styles`
-- `src/data`
+- `public`
 
-В текущем виде это уже лучше плоской структуры, но несколько больших классов по-прежнему играют роль “центров тяжести”.
+### `app.ts`
 
-## Основные архитектурные зоны
+Роль:
 
-### 1. `app` / bootstrap
+- точка входа frontend;
+- создание контейнера зависимостей;
+- инициализация сцены;
+- запуск первичной загрузки;
+- контроль критических ошибок на старте.
 
-Файл:
+`app.ts` должен оставаться bootstrap-слоем и не должен постепенно превращаться в ещё один большой orchestration-класс.
 
-- `src/app.ts`
+## Зона `core`
 
-Ответственность:
+`core` — это инфраструктурный слой frontend.
 
-- старт приложения;
-- настройка контейнера зависимостей;
-- запуск initial loading flow;
-- запуск render loop;
-- старт первой сцены и intro-анимаций.
-
-`app.ts` должен оставаться максимально тонким bootstrap-слоем. Он не должен со временем превращаться в ещё один `UIManager`.
-
-## 2. `core`
-
-`core` — это техническая инфраструктура фронта.
-
-Текущие подзоны:
+Подкаталоги:
 
 - `core/api`
 - `core/assets`
@@ -77,103 +68,95 @@
 - `core/ui`
 - `core/utils`
 
-### 2.1 `core/scene`
-
-Ключевой файл:
-
-- `scene-manager.ts`
-
-Ответственность:
-
-- создание и владение Babylon `Scene`;
-- регистрация компонентов сцены;
-- orchestration загрузки ресурсов;
-- orchestration initialize/render/dispose;
-- связывание `camera`, `building`, `markers`, `ui`.
-
-Проблема:
-
-- `SceneManager` уже достаточно крупный и знает слишком много о lifecycle разных подсистем;
-- в нём смешаны:
-  - registry компонентов,
-  - loading pipeline,
-  - initialization pipeline,
-  - emergency fallback camera,
-  - UI wiring.
-
-Направление рефакторинга:
-
-- сохранить его как central scene orchestrator;
-- вынести из него отдельные responsibilities:
-  - component registry
-  - loading pipeline
-  - post-load initialization
-
-### 2.2 `core/ui`
-
-Ключевые файлы:
-
-- `ui-manager.ts`
-- `ui-factory.ts`
-- `loading-handler.ts`
-
-Ответственность:
-
-- orchestration верхнего UI;
-- координация building switch / auth refresh / theme / QR / notifications;
-- связывание `ControlPanel`, `SearchBar`, `BuildingTitle`, `MarkerDetailsPanel`, `AuthPopup`, `RouteManager`.
-
-Проблема:
-
-- `UIManager` — самый тяжёлый класс фронта;
-- он содержит:
-  - auth flow
-  - building catalog flow
-  - building reload flow
-  - route reset
-  - deep-link handling
-  - QR scanner logic
-  - theme switching
-  - loading overlay control
-  - floor button orchestration
-
-То есть это главный кандидат на постепенное разбиение.
-
-### 2.3 `core/route`
-
-Ключевой файл:
-
-- `route-manager.ts`
-
-Ответственность:
-
-- состояние маршрута;
-- координация path selection;
-- интеграция между UI и marker/path logic.
-
-Это логическая зона, близкая к отдельному домену “navigation flow”, хотя физически она пока лежит в `core`.
-
-### 2.4 `core/api`
-
-Файлы:
-
-- `api-client.ts`
-- `building-api.ts`
-- `marker-api.ts`
+### `core/api`
 
 Ответственность:
 
 - работа с backend API;
-- JWT-aware запросы;
-- загрузка building catalog и marker graph.
+- хранение базовой логики `apiFetch`;
+- подстановка JWT;
+- нормализация URL для reverse proxy / HTTPS;
+- преобразование backend DTO в frontend-friendly структуры.
 
-Эта зона уже выглядит относительно хорошо и ближе к infrastructure-слою.
+Ключевые файлы:
 
-## 3. `features`
+- `api-client.ts`
+- `auth-api.ts`
+- `building-api.ts`
+- `marker-api.ts`
+- `route-api.ts`
 
-`features` — предметные и визуальные части приложения.
+Особенно важно:
 
-Текущие зоны:
+- `api-client.ts` — единая точка авторизованных запросов;
+- `building-api.ts` — собирает frontend-ready каталог зданий из нескольких backend endpoint'ов;
+- `marker-api.ts` — строит клиентское представление маркерного графа;
+- `route-api.ts` — отвечает только за запрос маршрута, а не за визуализацию пути.
+
+### `core/scene`
+
+Ответственность:
+
+- создание и владение Babylon `Scene`;
+- orchestration загрузки и инициализации подсистем;
+- связывание `building`, `camera`, `markers`, `ui`;
+- жизненный цикл сцены и её компонентов.
+
+После рефакторинга зона состоит из:
+
+- `scene-manager.ts`
+- `scene-manager-registry.ts`
+- `scene-manager-loading-flow.ts`
+
+Разделение сделано так:
+
+- `SceneManager` остался центральным координатором;
+- registry отвечает за регистрацию и связь компонентов;
+- loading flow управляет последовательностью загрузки модели и связанных систем.
+
+### `core/ui`
+
+Это orchestration-слой пользовательского интерфейса.
+
+Ключевые файлы:
+
+- `ui-manager.ts`
+- `ui-manager-building-flow.ts`
+- `ui-manager-control-flow.ts`
+- `ui-manager-session-flow.ts`
+- `ui-manager-deep-link-flow.ts`
+- `ui-manager-qr-scanner.ts`
+- `ui-factory.ts`
+- `loading-handler.ts`
+
+До рефакторинга `UIManager` был основным “божественным” классом frontend.  
+Теперь большая часть его обязанностей вынесена в отдельные flow-классы:
+
+- переключение зданий;
+- логин/логаут и session refresh;
+- QR-сканирование;
+- deep-link;
+- orchestration control panel и floor switching.
+
+Сам `UIManager` теперь ближе к роли координатора верхнего UI.
+
+### `core/route`
+
+Отвечает за маршрут как состояние и сценарий пользовательского взаимодействия.
+
+Задачи:
+
+- orchestration route selection;
+- взаимодействие между маркерами и UI;
+- управление пользовательским route flow.
+
+Это логически уже отдельная предметная зона, хотя физически она всё ещё лежит в `core`.
+
+## Зона `features`
+
+`features` — это предметные подсистемы приложения.
+
+Каталоги:
 
 - `background`
 - `building`
@@ -183,7 +166,16 @@
 - `markers`
 - `ui`
 
-### 3.1 `features/building`
+### `features/building`
+
+Задачи:
+
+- загрузка 3D-модели;
+- построение клиентского представления здания;
+- этажи, комнаты, стены;
+- animation flow построения;
+- floor expand/collapse;
+- синхронизация с graph state и route state.
 
 Ключевые файлы:
 
@@ -193,30 +185,27 @@
 - `building-animator.ts`
 - `floor-manager.ts`
 - `floor-expander.ts`
+- `floor-expander-graph-state.ts`
 - `wall-manager.ts`
-- `connection-parser.ts`
+- `marker-utils.ts`
 
-Ответственность:
+Эта зона уже не только про визуализацию mesh'ей, но и про поведение здания как навигационной структуры.
 
-- загрузка и разбор модели здания;
-- floor/wall representation;
-- room/floor visibility;
-- construction animation;
-- access-aware floor and room handling.
+Что было улучшено:
 
-Проблема:
+- `MarkerUtils` вынесен отдельно и больше не живёт внутри `connection-parser`;
+- `floor-expander` разгружен через отдельный `floor-expander-graph-state.ts`;
+- часть связей с marker-сценариями стала чище.
 
-- домен здания уже разделён лучше, чем раньше, но внутри него есть legacy parser-хвосты;
-- `connection-parser.ts` и часть marker-related helper logic живут в building-зоне, хотя фактически уже влияют на navigation/access;
-- `FloorManager` и `FloorExpander` остаются довольно тяжёлыми.
+### `features/camera`
 
-Направление рефакторинга:
+Задачи:
 
-- оставить `building` отдельным доменом;
-- почистить parser/helper слой;
-- уменьшить связность `building -> markers`.
-
-### 3.2 `features/camera`
+- управление режимами камеры;
+- фокусировка;
+- переходы между режимами;
+- анимации камеры;
+- синхронизация UI-состояния с camera state.
 
 Ключевые файлы:
 
@@ -225,49 +214,47 @@
 - `camera-input-handler.ts`
 - `camera-mode-manager.ts`
 
-Ответственность:
+Эта зона уже достаточно хорошо выделена доменно.
 
-- режимы камеры;
-- transition анимации;
-- input handling;
-- фокусировка на точках, этажах, маршрутах.
+### `features/markers`
 
-Эта зона уже достаточно доменно выделена. Здесь важнее не распил, а локальная чистка длинных методов и режима зависимостей.
+Это одна из ключевых предметных зон frontend.
 
-### 3.3 `features/markers`
+Задачи:
 
-Ключевые файлы:
+- backend loading маркеров и связей;
+- создание marker entities;
+- видимость маркеров по этажу, роли и состоянию graph;
+- route selection;
+- pathfinding и path highlight;
+- hover/click/double click interaction;
+- gateway-aware behavior;
+- billboard и marker widgets.
+
+Ключевые файлы после рефакторинга:
 
 - `marker-manager.ts`
+- `marker-loading-service.ts`
+- `marker-visibility-service.ts`
+- `marker-selection-service.ts`
+- `marker-interaction-service.ts`
+- `marker-path-service.ts`
 - `marker.ts`
 - `marker-animator.ts`
+- `pathfinder.ts`
+- `components/marker-widget.ts`
 - `graph/marker-graph.ts`
 - `graph/marker-graph-renderer.ts`
-- `pathfinder.ts`
 
-Ответственность:
+Что важно архитектурно:
 
-- marker lifecycle;
-- marker visibility;
-- marker graph;
-- pathfinding;
-- gateway access-aware behavior;
-- rendering/selection/highlight.
+- `MarkerManager` теперь не тащит на себе всю логику целиком;
+- сервисы вокруг него разделены по responsibility;
+- сам manager выполняет orchestration и объединяет доменные подсценарии.
 
-Проблема:
+### `features/ui`
 
-- `MarkerManager` сейчас содержит сразу:
-  - backend loading
-  - graph rebuild
-  - visibility policy
-  - path state
-  - selection state
-  - gateway access visuals
-  - input interaction
-
-Это второй по приоритету кандидат на разбиение после `UIManager`.
-
-### 3.4 `features/ui`
+Это набор виджетов и визуальных сценариев.
 
 Подзоны:
 
@@ -278,57 +265,58 @@
 - `popup`
 - `search`
 
-Ответственность:
-
-- конкретные UI-виджеты;
-- мелкие локальные UI-сценарии.
-
-Эта зона по структуре уже ближе к нормальной feature UI library. Главная проблема тут не модулизация, а локальные перегруженные виджеты:
+Ключевые файлы:
 
 - `control-panel.ts`
 - `marker-details-panel.ts`
+- `building-title.ts`
+- `auth-popup.ts`
+- `popup-manager.ts`
 - `search-bar.ts`
+- `search-bar-index-service.ts`
+- `search-bar-query-service.ts`
 
-## 4. `shared`
+После рефакторинга `SearchBar` больше не содержит в себе и UI, и индекс, и фильтрацию одновременно:
 
-`shared` — общие типы, интерфейсы, константы и утилиты.
+- индекс вынесен в `search-bar-index-service.ts`
+- фильтрация вынесена в `search-bar-query-service.ts`
 
-Подзоны:
+## Зона `shared`
 
-- `constants`
-- `errors`
-- `helpers`
-- `interfaces`
-- `types`
-- `utils`
+`shared` хранит:
 
-Проблема:
+- типы;
+- интерфейсы;
+- константы;
+- ошибки;
+- общие утилиты.
 
-- `shared` местами уже близок к “второму common-монолиту”;
-- там лежат как действительно общие вещи, так и довольно доменные контракты.
+Это общий слой, но уже не беспорядочная “свалка”.
 
-Пока это не критично, но это зона для осторожной полировки:
+Тем не менее, он остаётся зоной, за которой надо следить, чтобы туда не стекалась вся доменная логика подряд.
 
-- типы backend DTO можно позже группировать ближе к `core/api`;
-- интерфейсы больших менеджеров можно дробить по доменам, а не держать всё в одном массиве abstractions.
+## Зона `styles`
 
-## 5. `styles`
+`styles` выполняет роль маленькой design system.
 
-`styles` сейчас играют роль общей design system:
+Что там сосредоточено:
 
-- base variables
-- theme overrides
-- component styles
+- базовые переменные;
+- theme tokens;
+- component styles;
+- layout styles;
+- visual consistency между desktop/mobile/light/dark.
 
-Это хорошее направление. Основная цель здесь не архитектурный распил, а сохранение консистентности:
+После последних правок:
 
-- одна система переменных;
-- одна система theme tokens;
-- меньше hardcoded colors в TS и CSS.
+- loading screen согласован с темами;
+- красный акцент закреплён за тёмной темой;
+- синий акцент закреплён за светлой темой;
+- мобильные overlay и QR-модалки улучшены.
 
-## Карта доменов фронта
+## Актуальная доменная карта frontend
 
-Если смотреть не на текущие папки, а на смысловые домены, фронт уже фактически состоит из таких 6 зон:
+Если смотреть не на файловую структуру, а на реальные смысловые зоны, frontend состоит из:
 
 ### 1. `bootstrap`
 
@@ -357,111 +345,123 @@
 ### 6. `integration`
 
 - `core/api`
-- auth session storage
+- auth/session storage
 - backend-driven asset loading
+- QR/deep-link external entry points
 
-Это и есть реальная frontend domain map. Она важнее текущей файловой структуры.
+## Последовательность работы приложения
 
-## Главные проблемные узлы
+Ниже приведён упрощённый жизненный цикл frontend.
 
-На текущем этапе самые тяжёлые и важные классы:
+### 1. Старт приложения
 
-1. `core/ui/ui-manager.ts`
-2. `features/markers/marker-manager.ts`
-3. `core/scene/scene-manager.ts`
-4. `features/ui/control-panel/control-panel.ts`
-5. `features/camera/camera-manager.ts`
-6. `features/building/floor-manager.ts`
-7. `features/building/floor-expander.ts`
+`app.ts`:
 
-Это не значит, что их надо срочно переписывать. Это значит, что именно они должны быть центром последовательной чистки.
+- собирает DI-контейнер;
+- получает основные менеджеры;
+- загружает каталог зданий;
+- определяет стартовое здание;
+- запускает полную загрузку сцены.
 
-## Рекомендуемый порядок рефакторинга
+### 2. Инициализация сцены
 
-### Этап 1. Зафиксировать карту
+`SceneManager`:
 
-Что сделать:
+- создаёт Babylon scene;
+- связывает camera/building/marker/ui менеджеры;
+- запускает loading flow.
 
-- использовать этот документ как опорную карту frontend-рефакторинга;
-- не резать файлы хаотично;
-- все изменения проверять через сборку.
+### 3. Загрузка модели
 
-### Этап 2. Чистка мёртвого кода
+`BuildingApi` + `BuildingManager` + `BuildingLoader`:
 
-Что делать:
+- получают `model-info` и список asset'ов;
+- выбирают `FULL` или набор `FLOOR` asset'ов;
+- скачивают их через backend;
+- передают в Babylon loader.
 
-- искать реально неиспользуемые файлы;
-- удалять устаревшие parser/test/demo хвосты;
-- убирать hardcoded fallback-ветки, которые больше не используются;
-- вычищать временные debug paths.
+### 4. Загрузка графа навигации
 
-### Этап 3. Разгрузка `UIManager`
+`MarkerApi` + `MarkerLoadingService`:
 
-Первая целевая декомпозиция:
+- загружают маркеры;
+- загружают связи;
+- преобразуют payload в клиентский graph;
+- передают данные в `MarkerManager`.
 
-- building switch orchestration
-- auth/session refresh orchestration
-- deep-link handler
-- QR scanner flow
-- loading overlay / scene transition flow
+### 5. Пользовательская работа
 
-То есть `UIManager` должен стать тоньше, а не продолжать расти.
+Дальше система поддерживает:
 
-### Этап 4. Разгрузка `MarkerManager`
+- выбор здания;
+- выбор этажа;
+- поиск;
+- открытие деталей маркера;
+- построение маршрута;
+- фокус камеры;
+- deep-link/QR;
+- логин/логаут.
 
-Вероятные кандидаты на выделение:
+## Что было сделано именно в архитектуре
 
-- marker visibility policy
-- marker backend loading
-- marker selection service
-- gateway access visual policy
-- path selection state
+### Разгрузка `UIManager`
 
-### Этап 5. Разгрузка `SceneManager`
+Было:
 
-Вероятные кандидаты на выделение:
+- один крупный класс с UI, auth, building reload, QR, deep-link и route cleanup.
 
-- scene component registry
-- scene loading orchestrator
-- post-load initializer
+Стало:
 
-### Этап 6. Полировка `building`-домена
+- orchestration-класс + набор flow-компонентов.
 
-Что смотреть:
+### Разгрузка `MarkerManager`
 
-- parser chain
-- связь `FloorManager` / `FloorExpander`
-- helper classes, которые сейчас логически уже ближе к navigation/access
+Было:
 
-### Этап 7. Документация
+- один класс с loading, selection, graph, pathfinding, visibility и interaction.
 
-После чистки:
+Стало:
 
-- обновить `README.md`;
-- зафиксировать новые границы слоёв и flow;
-- при желании описать sequence:
-  - app start
-  - scene load
-  - building catalog sync
-  - marker graph load
-  - auth refresh
-  - building switch
+- coordinator + набор marker-сервисов по responsibility.
 
-## Что не нужно делать
+### Разгрузка `SceneManager`
 
-- не пытаться переписать frontend под новый framework;
-- не превращать всё в “идеальную hexagonal architecture”;
-- не плодить десятки интерфейсов ради чистоты;
-- не дробить `shared` на много новых пакетов раньше времени;
-- не ломать рабочий Babylon flow ради красивой схемы.
+Было:
 
-## Практический итог
+- один класс, в котором смешивались registry, initialize и loading flow.
 
-Для frontend лучший путь сейчас такой:
+Стало:
 
-1. зафиксировать доменную карту;
-2. удалить мёртвый код и legacy-хвосты;
-3. разгрузить `UIManager`, `MarkerManager`, `SceneManager`;
-4. потом уже, если потребуется, доукладывать папки под более явную domain-oriented структуру.
+- manager + registry + loading flow.
 
-Это даст понятный и безопасный путь рефакторинга без “гига-переписывания” с высоким риском регрессий.
+### Изоляция API и HTTPS-проблем
+
+Было:
+
+- сильная зависимость от абсолютных backend URLs и reverse proxy нюансов.
+
+Стало:
+
+- нормализация URL на клиенте;
+- JWT-aware fetch;
+- backend asset loading через frontend-controlled flow.
+
+## Ключевые принципы дальнейшей разработки
+
+- не возвращать логику обратно в монолитные менеджеры;
+- новые UI-сценарии сначала относить к `flow` или `service`, а не сразу в `UIManager`;
+- новые marker-правила сначала относить к отдельным marker-сервисам;
+- любые backend URL и fetch-сценарии держать в `core/api`, а не размазывать по features;
+- поддерживать distinction между orchestration-классами и low-level доменной логикой.
+
+## Что ещё можно улучшать
+
+Следующие зоны для будущей полировки:
+
+- `ControlPanel` и часть floor animation logic;
+- более тонкая типизация некоторых shared interfaces;
+- остаточные parser/helper упрощения в `building`;
+- локальная чистка CSS и компонентных зависимостей;
+- дополнительная документация последовательностей работы UI.
+
+Но уже сейчас архитектура frontend достаточно оформлена и пригодна для описания в дипломном отчёте.

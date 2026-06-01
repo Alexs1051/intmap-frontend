@@ -56,6 +56,7 @@ export function clearStoredAuthSession(): void {
 }
 
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const normalizedInput = normalizeSecureRequestUrl(input);
   const headers = new Headers(init.headers ?? {});
   const session = getStoredAuthSession();
 
@@ -75,9 +76,32 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
     headers.set('Pragma', 'no-cache');
   }
 
-  return fetch(input, {
+  return fetch(normalizedInput, {
     ...init,
     cache: 'no-store',
     headers
   });
+}
+
+function normalizeSecureRequestUrl(input: string): string {
+  if (typeof window === 'undefined' || !window.location?.origin) {
+    return input;
+  }
+
+  try {
+    const requestedUrl = new URL(input, window.location.origin);
+    const currentUrl = new URL(window.location.origin);
+
+    if (currentUrl.protocol !== 'https:') {
+      return requestedUrl.toString();
+    }
+
+    if (requestedUrl.hostname !== currentUrl.hostname) {
+      return requestedUrl.toString();
+    }
+
+    return `${window.location.origin}${requestedUrl.pathname}${requestedUrl.search}${requestedUrl.hash}`;
+  } catch {
+    return input;
+  }
 }
